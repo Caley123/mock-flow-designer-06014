@@ -1,0 +1,231 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { mockDashboardStats } from '@/lib/mockData';
+import { Download, TrendingUp, Users, AlertTriangle, Calendar } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts';
+
+export const Reports = () => {
+  const stats = mockDashboardStats;
+
+  const monthlyTrend = [
+    { month: 'Jun', incidents: 142 },
+    { month: 'Jul', incidents: 168 },
+    { month: 'Ago', incidents: 195 },
+    { month: 'Sep', incidents: 223 },
+    { month: 'Oct', incidents: 187 },
+  ];
+
+  const weeklyData = [
+    { day: 'Lun', count: 8 },
+    { day: 'Mar', count: 12 },
+    { day: 'Mié', count: 15 },
+    { day: 'Jue', count: 10 },
+    { day: 'Vie', count: 13 },
+  ];
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Reportes y Estadísticas</h1>
+        <div className="flex gap-2">
+          <Button variant="outline">
+            <Calendar className="w-4 h-4 mr-2" />
+            Seleccionar Período
+          </Button>
+          <Button>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Reporte
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{stats.totalIncidents}</div>
+                <p className="text-sm text-muted-foreground">Total Incidencias</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{stats.studentsWithIncidents}</div>
+                <p className="text-sm text-muted-foreground">Estudiantes Involucrados</p>
+              </div>
+              <Users className="w-8 h-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{stats.averageReincidenceLevel.toFixed(1)}</div>
+                <p className="text-sm text-muted-foreground">Nivel Promedio</p>
+              </div>
+              <AlertTriangle className="w-8 h-8 text-warning" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</div>
+                <p className="text-sm text-muted-foreground">Casos Críticos</p>
+              </div>
+              <AlertTriangle className="w-8 h-8 text-danger" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tendencia Mensual</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={monthlyTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="incidents" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={2}
+                  name="Incidencias"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Incidencias por Día (Esta Semana)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={weeklyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="hsl(var(--primary))" name="Incidencias" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Incidencias por Grado</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={stats.incidentsByGrade} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis dataKey="grade" type="category" />
+                <Tooltip />
+                <Bar dataKey="count" fill="hsl(var(--primary))" name="Incidencias" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribución por Nivel de Reincidencia</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[
+                { level: 'Nivel 0 - Sin reincidencias', count: stats.levelDistribution.level0, color: 'success' },
+                { level: 'Nivel 1 - Primera reincidencia', count: stats.levelDistribution.level1, color: 'warning' },
+                { level: 'Nivel 2 - Reincidencia moderada', count: stats.levelDistribution.level2, color: 'warning' },
+                { level: 'Nivel 3 - Reincidencia alta', count: stats.levelDistribution.level3, color: 'danger' },
+                { level: 'Nivel 4 - Reincidencia crítica', count: stats.levelDistribution.level4, color: 'danger' },
+              ].map((item, index) => (
+                <div key={index}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">{item.level}</span>
+                    <span className="text-sm font-bold">{item.count}</span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{
+                        width: `${(item.count / stats.totalIncidents) * 100}%`,
+                        backgroundColor: item.color === 'success' ? 'hsl(var(--success))' :
+                                       item.color === 'warning' ? 'hsl(var(--warning))' :
+                                       'hsl(var(--danger))'
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top Faults Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Faltas Más Frecuentes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {stats.topFaults.map((fault, index) => (
+              <div key={index} className="flex items-center gap-4">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold">
+                  {index + 1}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium">{fault.faultType}</span>
+                    <span className="font-bold">{fault.count} incidencias</span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-3">
+                    <div
+                      className="bg-primary h-3 rounded-full transition-all"
+                      style={{ width: `${(fault.count / stats.topFaults[0].count) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {((fault.count / stats.totalIncidents) * 100).toFixed(1)}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
