@@ -2,16 +2,81 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { mockFaultTypes } from '@/lib/mockData';
 import { Search, Plus, Edit } from 'lucide-react';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
-import { FaultCategory } from '@/types';
+import { FaultCategory, FaultSeverity } from '@/types';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
+
+const faultFormSchema = z.object({
+  code: z.string()
+    .min(2, 'El código debe tener al menos 2 caracteres')
+    .max(10, 'Máximo 10 caracteres'),
+  name: z.string()
+    .min(3, 'El nombre debe tener al menos 3 caracteres')
+    .max(100, 'Máximo 100 caracteres'),
+  description: z.string()
+    .min(10, 'La descripción debe tener al menos 10 caracteres')
+    .max(500, 'Máximo 500 caracteres'),
+  category: z.enum(['Conducta', 'Uniforme', 'Académica', 'Puntualidad'] as const, {
+    required_error: 'La categoría es requerida',
+  }),
+  severity: z.enum(['Leve', 'Moderada', 'Grave', 'Muy Grave'] as const, {
+    required_error: 'La severidad es requerida',
+  }),
+  points: z.number()
+    .min(1, 'Los puntos deben ser al menos 1')
+    .max(100, 'Máximo 100 puntos'),
+});
+
+type FaultFormValues = z.infer<typeof faultFormSchema>;
 
 export const FaultsCatalog = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<FaultCategory | 'all'>('all');
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const form = useForm<FaultFormValues>({
+    resolver: zodResolver(faultFormSchema),
+    defaultValues: {
+      code: '',
+      name: '',
+      description: '',
+      category: undefined,
+      severity: undefined,
+      points: 5,
+    },
+  });
 
   const filteredFaults = mockFaultTypes.filter(fault => {
     const matchesSearch = fault.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -29,14 +94,158 @@ export const FaultsCatalog = () => {
     { value: 'Puntualidad', label: 'Puntualidad' },
   ];
 
+  const onSubmit = (data: FaultFormValues) => {
+    console.log('Nueva falta:', data);
+    toast.success('Falta agregada exitosamente');
+    setDialogOpen(false);
+    form.reset();
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Catálogo de Faltas</h1>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Nueva Falta
-        </Button>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Nueva Falta
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Agregar Nueva Falta</DialogTitle>
+              <DialogDescription>
+                Complete la información de la nueva falta. Todos los campos son obligatorios.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="code"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Código</FormLabel>
+                        <FormControl>
+                          <Input placeholder="F-001" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="points"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Puntos</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="5" 
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre de la Falta</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Uso inadecuado del uniforme" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Descripción</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Descripción detallada de la falta y su contexto..."
+                          className="min-h-[100px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="category"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Categoría</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar categoría" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Conducta">Conducta</SelectItem>
+                            <SelectItem value="Uniforme">Uniforme</SelectItem>
+                            <SelectItem value="Académica">Académica</SelectItem>
+                            <SelectItem value="Puntualidad">Puntualidad</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="severity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Severidad</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar severidad" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Leve">Leve</SelectItem>
+                            <SelectItem value="Moderada">Moderada</SelectItem>
+                            <SelectItem value="Grave">Grave</SelectItem>
+                            <SelectItem value="Muy Grave">Muy Grave</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit">Guardar Falta</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}

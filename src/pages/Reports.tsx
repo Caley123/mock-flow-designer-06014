@@ -1,5 +1,13 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { mockDashboardStats } from '@/lib/mockData';
 import { Download, TrendingUp, Users, AlertTriangle, Calendar } from 'lucide-react';
 import {
@@ -16,6 +24,7 @@ import {
 } from 'recharts';
 
 export const Reports = () => {
+  const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const stats = mockDashboardStats;
 
   const monthlyTrend = [
@@ -34,11 +43,30 @@ export const Reports = () => {
     { day: 'Vie', count: 13 },
   ];
 
+  // Filter data by grade
+  const filteredIncidentsByGrade = selectedGrade === 'all' 
+    ? stats.incidentsByGrade 
+    : stats.incidentsByGrade.filter(item => item.grade === selectedGrade);
+
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">Reportes y Estadísticas</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Select value={selectedGrade} onValueChange={setSelectedGrade}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filtrar por grado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los grados</SelectItem>
+              <SelectItem value="1° Básico">1° Básico</SelectItem>
+              <SelectItem value="2° Básico">2° Básico</SelectItem>
+              <SelectItem value="3° Básico">3° Básico</SelectItem>
+              <SelectItem value="4° Básico">4° Básico</SelectItem>
+              <SelectItem value="5° Básico">5° Básico</SelectItem>
+              <SelectItem value="6° Básico">6° Básico</SelectItem>
+            </SelectContent>
+          </Select>
           <Button variant="outline">
             <Calendar className="w-4 h-4 mr-2" />
             Seleccionar Período
@@ -143,18 +171,27 @@ export const Reports = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Incidencias por Grado</CardTitle>
+            <CardTitle>
+              Incidencias por Grado
+              {selectedGrade !== 'all' && ` - ${selectedGrade}`}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.incidentsByGrade} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="grade" type="category" />
-                <Tooltip />
-                <Bar dataKey="count" fill="hsl(var(--primary))" name="Incidencias" />
-              </BarChart>
-            </ResponsiveContainer>
+            {filteredIncidentsByGrade.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={filteredIncidentsByGrade} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis dataKey="grade" type="category" />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" name="Incidencias" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No hay datos para el grado seleccionado
+              </div>
+            )}
           </CardContent>
         </Card>
 
