@@ -91,93 +91,119 @@ export const Dashboard = () => {
   }));
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <div className="text-sm text-muted-foreground">
-          Usuario: <span className="font-semibold">María González (Supervisor)</span>
-        </div>
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <div className="animate-fade-in">
+        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+          Dashboard
+        </h1>
+        <p className="text-muted-foreground mt-1">Resumen de incidencias y estadísticas</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-up">
+        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Incidencias Hoy</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Calendar className="h-5 w-5 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.incidentsToday}</div>
-            <p className="text-xs text-muted-foreground">registradas hoy</p>
+            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
+              {stats.incidentsToday}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">registradas hoy</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Esta Semana</CardTitle>
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <CalendarDays className="h-5 w-5 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.incidentsThisWeek}</div>
-            <p className="text-xs text-muted-foreground">últimos 7 días</p>
+            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
+              {stats.incidentsThisWeek}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">últimos 7 días</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Mes</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.incidentsThisMonth}</div>
-            <p className="text-xs text-muted-foreground">mes actual</p>
+            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
+              {stats.incidentsThisMonth}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">mes actual</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Estudiantes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.studentsWithIncidents}</div>
-            <p className="text-xs text-muted-foreground">con incidencias</p>
+            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
+              {stats.studentsWithIncidents}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">con incidencias</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-scale-in">
         {/* Incidents by Grade */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart className="w-5 h-5 mr-2" />
+        <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
+            <CardTitle className="flex items-center text-lg">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
+                <BarChart className="w-4 h-4 text-primary" />
+              </div>
               Incidencias por Grado
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.incidentsByGrade}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="grade" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="hsl(var(--primary))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="grade" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "var(--radius)"
+                  }}
+                />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         {/* Reincidence Levels */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <AlertCircle className="w-5 h-5 mr-2" />
+        <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
+            <CardTitle className="flex items-center text-lg">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
+                <AlertCircle className="w-4 h-4 text-primary" />
+              </div>
               Distribución por Nivel de Reincidencia
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -194,7 +220,13 @@ export const Dashboard = () => {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "var(--radius)"
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -202,28 +234,35 @@ export const Dashboard = () => {
       </div>
 
       {/* Top Faults */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <TrendingUp className="w-5 h-5 mr-2" />
+      <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300 animate-slide-in-right">
+        <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
+          <CardTitle className="flex items-center text-lg">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
+              <TrendingUp className="w-4 h-4 text-primary" />
+            </div>
             Faltas Más Frecuentes
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+        <CardContent className="pt-6">
+          <div className="space-y-6">
             {stats.topFaults.map((fault: any, index: number) => (
-              <div key={index} className="flex items-center">
-                <div className="w-full">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{fault.fault_type}</span>
-                    <span className="text-sm font-bold">{fault.count}</span>
+              <div key={index} className="group">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                      #{index + 1}
+                    </div>
+                    <span className="text-sm font-medium group-hover:text-primary transition-colors">
+                      {fault.fault_type}
+                    </span>
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div 
-                      className="bg-primary h-2 rounded-full" 
-                      style={{ width: `${(fault.count / stats.topFaults[0].count) * 100}%` }}
-                    />
-                  </div>
+                  <span className="text-lg font-bold text-primary">{fault.count}</span>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-primary to-primary/60 h-2.5 rounded-full transition-all duration-500 ease-out" 
+                    style={{ width: `${(fault.count / stats.topFaults[0].count) * 100}%` }}
+                  />
                 </div>
               </div>
             ))}
