@@ -131,7 +131,12 @@ export const StudentsList = () => {
 
   const onSubmit = async (data: StudentFormValues) => {
     setLoading(true);
-    const { student, error } = await studentsService.create(data);
+    const { student, error } = await studentsService.create({
+      codigo_barras: data.codigo_barras,
+      nombre_completo: data.nombre_completo,
+      grado: data.grado,
+      seccion: data.seccion,
+    });
     if (error) {
       toast.error(error);
     } else {
