@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,8 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockDashboardStats } from '@/lib/mockData';
-import { Download, TrendingUp, Users, AlertTriangle, Calendar } from 'lucide-react';
+import { Download, TrendingUp, Users, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -22,17 +21,36 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
+import { dashboardService } from '@/lib/services';
+import { DashboardStats } from '@/types';
+import { toast } from 'sonner';
 
 export const Reports = () => {
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const stats = mockDashboardStats;
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    setLoading(true);
+    const { stats: dashboardStats, error } = await dashboardService.getDashboardStats();
+    if (error) {
+      toast.error('Error al cargar estadísticas');
+    } else if (dashboardStats) {
+      setStats(dashboardStats);
+    }
+    setLoading(false);
+  };
 
   const monthlyTrend = [
     { month: 'Jun', incidents: 142 },
     { month: 'Jul', incidents: 168 },
     { month: 'Ago', incidents: 195 },
     { month: 'Sep', incidents: 223 },
-    { month: 'Oct', incidents: 187 },
+    { month: 'Oct', incidents: stats?.incidentsThisMonth || 0 },
   ];
 
   const weeklyData = [
@@ -45,8 +63,24 @@ export const Reports = () => {
 
   // Filter data by grade
   const filteredIncidentsByGrade = selectedGrade === 'all' 
-    ? stats.incidentsByGrade 
-    : stats.incidentsByGrade.filter(item => item.grade === selectedGrade);
+    ? (stats?.incidentsByGrade || [])
+    : (stats?.incidentsByGrade || []).filter(item => item.grade === selectedGrade);
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="container mx-auto p-6">
+        <p className="text-muted-foreground">Error al cargar las estadísticas</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -59,21 +93,25 @@ export const Reports = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los grados</SelectItem>
-              <SelectItem value="1° Básico">1° Básico</SelectItem>
-              <SelectItem value="2° Básico">2° Básico</SelectItem>
-              <SelectItem value="3° Básico">3° Básico</SelectItem>
-              <SelectItem value="4° Básico">4° Básico</SelectItem>
-              <SelectItem value="5° Básico">5° Básico</SelectItem>
-              <SelectItem value="6° Básico">6° Básico</SelectItem>
+              <SelectItem value="1ro">1ro</SelectItem>
+              <SelectItem value="2do">2do</SelectItem>
+              <SelectItem value="3ro">3ro</SelectItem>
+              <SelectItem value="4to">4to</SelectItem>
+              <SelectItem value="5to">5to</SelectItem>
+              <SelectItem value="6to">6to</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline">
-            <Calendar className="w-4 h-4 mr-2" />
-            Seleccionar Período
+            <span className="flex items-center">
+              <Calendar className="w-4 h-4 mr-2" />
+              Seleccionar Período
+            </span>
           </Button>
-          <Button>
-            <Download className="w-4 h-4 mr-2" />
-            Exportar Reporte
+          <Button onClick={loadStats}>
+            <span className="flex items-center">
+              <Download className="w-4 h-4 mr-2" />
+              Exportar Reporte
+            </span>
           </Button>
         </div>
       </div>
@@ -109,7 +147,7 @@ export const Reports = () => {
                 <div className="text-2xl font-bold">{stats.averageReincidenceLevel.toFixed(1)}</div>
                 <p className="text-sm text-muted-foreground">Nivel Promedio</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-warning" />
+              <AlertTriangle className="w-8 h-8 text-yellow-600" />
             </div>
           </CardContent>
         </Card>
@@ -120,7 +158,7 @@ export const Reports = () => {
                 <div className="text-2xl font-bold">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</div>
                 <p className="text-sm text-muted-foreground">Casos Críticos</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-danger" />
+              <AlertTriangle className="w-8 h-8 text-red-600" />
             </div>
           </CardContent>
         </Card>
@@ -217,7 +255,7 @@ export const Reports = () => {
                     <div
                       className="h-2 rounded-full transition-all"
                       style={{
-                        width: `${(item.count / stats.totalIncidents) * 100}%`,
+                        width: `${stats.totalIncidents > 0 ? (item.count / stats.totalIncidents) * 100 : 0}%`,
                         backgroundColor: item.color === 'success' ? 'hsl(var(--success))' :
                                        item.color === 'warning' ? 'hsl(var(--warning))' :
                                        'hsl(var(--danger))'
@@ -237,30 +275,40 @@ export const Reports = () => {
           <CardTitle>Faltas Más Frecuentes</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {stats.topFaults.map((fault, index) => (
-              <div key={index} className="flex items-center gap-4">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold">
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium">{fault.faultType}</span>
-                    <span className="font-bold">{fault.count} incidencias</span>
+          {stats.topFaults.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No hay datos disponibles
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {stats.topFaults.map((fault, index) => (
+                <div key={index} className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold">
+                    {index + 1}
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-3">
-                    <div
-                      className="bg-primary h-3 rounded-full transition-all"
-                      style={{ width: `${(fault.count / stats.topFaults[0].count) * 100}%` }}
-                    />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium">{fault.faultType}</span>
+                      <span className="font-bold">{fault.count} incidencias</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-3">
+                      <div
+                        className="bg-primary h-3 rounded-full transition-all"
+                        style={{ 
+                          width: `${stats.topFaults.length > 0 && stats.topFaults[0].count > 0 
+                            ? (fault.count / stats.topFaults[0].count) * 100 
+                            : 0}%` 
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {stats.totalIncidents > 0 ? ((fault.count / stats.totalIncidents) * 100).toFixed(1) : 0}%
                   </div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {((fault.count / stats.totalIncidents) * 100).toFixed(1)}%
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

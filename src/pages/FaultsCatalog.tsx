@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,33 +28,29 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { mockFaultTypes } from '@/lib/mockData';
-import { Search, Plus, Edit } from 'lucide-react';
+import { Search, Plus, Edit, Loader2 } from 'lucide-react';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
-import { FaultCategory, FaultSeverity } from '@/types';
+import { FaultCategory } from '@/types';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import { faultsService } from '@/lib/services';
+import { FaultType } from '@/types';
 
 const faultFormSchema = z.object({
-  code: z.string()
-    .min(2, 'El código debe tener al menos 2 caracteres')
-    .max(10, 'Máximo 10 caracteres'),
-  name: z.string()
+  nombre_falta: z.string()
     .min(3, 'El nombre debe tener al menos 3 caracteres')
     .max(100, 'Máximo 100 caracteres'),
-  description: z.string()
-    .min(10, 'La descripción debe tener al menos 10 caracteres')
-    .max(500, 'Máximo 500 caracteres'),
-  category: z.enum(['Conducta', 'Uniforme', 'Académica', 'Puntualidad'] as const, {
+  descripcion: z.string()
+    .max(500, 'Máximo 500 caracteres')
+    .optional(),
+  categoria: z.enum(['Conducta', 'Uniforme', 'Académica', 'Puntualidad'] as const, {
     required_error: 'La categoría es requerida',
   }),
-  severity: z.enum(['Leve', 'Moderada', 'Grave', 'Muy Grave'] as const, {
-    required_error: 'La severidad es requerida',
-  }),
-  points: z.number()
+  es_grave: z.boolean(),
+  puntos_reincidencia: z.number()
     .min(1, 'Los puntos deben ser al menos 1')
     .max(100, 'Máximo 100 puntos'),
 });
@@ -65,23 +61,41 @@ export const FaultsCatalog = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<FaultCategory | 'all'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [faults, setFaults] = useState<FaultType[]>([]);
+  const [loading, setLoading] = useState(true);
+  // Estado temporal para Select dentro del Dialog
+  const [tempCategoria, setTempCategoria] = useState<FaultCategory | undefined>(undefined);
 
   const form = useForm<FaultFormValues>({
     resolver: zodResolver(faultFormSchema),
     defaultValues: {
-      code: '',
-      name: '',
-      description: '',
-      category: undefined,
-      severity: undefined,
-      points: 5,
+      nombre_falta: '',
+      descripcion: '',
+      categoria: undefined,
+      es_grave: false,
+      puntos_reincidencia: 1,
     },
   });
 
-  const filteredFaults = mockFaultTypes.filter(fault => {
+  useEffect(() => {
+    loadFaults();
+  }, []);
+
+  const loadFaults = async () => {
+    setLoading(true);
+    const { faults: faultList, error } = await faultsService.getAll(true);
+    if (error) {
+      toast.error('Error al cargar catálogo de faltas');
+      setFaults([]);
+    } else {
+      setFaults(faultList);
+    }
+    setLoading(false);
+  };
+
+  const filteredFaults = faults.filter(fault => {
     const matchesSearch = fault.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         fault.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         fault.description.toLowerCase().includes(searchTerm.toLowerCase());
+                         fault.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'all' || fault.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -94,18 +108,58 @@ export const FaultsCatalog = () => {
     { value: 'Puntualidad', label: 'Puntualidad' },
   ];
 
-  const onSubmit = (data: FaultFormValues) => {
-    console.log('Nueva falta:', data);
-    toast.success('Falta agregada exitosamente');
-    setDialogOpen(false);
-    form.reset();
+  const onSubmit = async (data: FaultFormValues) => {
+    setLoading(true);
+    const { fault, error } = await faultsService.create({
+      nombre_falta: data.nombre_falta,
+      categoria: data.categoria,
+      es_grave: data.es_grave,
+      puntos_reincidencia: data.puntos_reincidencia,
+      descripcion: data.descripcion || null,
+    });
+
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success('Falta agregada exitosamente');
+      setDialogOpen(false);
+      form.reset();
+      setTempCategoria(undefined);
+      loadFaults();
+    }
+    setLoading(false);
   };
+
+  // Resetear estado temporal cuando se abre/cierra el dialog
+  useEffect(() => {
+    if (!dialogOpen) {
+      setTempCategoria(undefined);
+    }
+  }, [dialogOpen]);
+
+  if (loading && faults.length === 0) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Catálogo de Faltas</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog 
+          open={dialogOpen} 
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) {
+              // Resetear el formulario cuando se cierra el dialog
+              form.reset();
+              setTempCategoria(undefined);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="w-4 h-4 mr-2" />
@@ -121,43 +175,9 @@ export const FaultsCatalog = () => {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="code"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Código</FormLabel>
-                        <FormControl>
-                          <Input placeholder="F-001" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="points"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Puntos</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="5" 
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="nombre_falta"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nombre de la Falta</FormLabel>
@@ -171,15 +191,16 @@ export const FaultsCatalog = () => {
 
                 <FormField
                   control={form.control}
-                  name="description"
+                  name="descripcion"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Descripción</FormLabel>
+                      <FormLabel>Descripción (Opcional)</FormLabel>
                       <FormControl>
                         <Textarea 
                           placeholder="Descripción detallada de la falta y su contexto..."
                           className="min-h-[100px]"
                           {...field}
+                          value={field.value || ''}
                         />
                       </FormControl>
                       <FormMessage />
@@ -190,11 +211,18 @@ export const FaultsCatalog = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="category"
+                    name="categoria"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Categoría</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select 
+                          value={tempCategoria || undefined}
+                          onValueChange={(value) => {
+                            const categoriaValue = value as FaultCategory;
+                            setTempCategoria(categoriaValue);
+                            field.onChange(categoriaValue);
+                          }}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar categoría" />
@@ -213,34 +241,61 @@ export const FaultsCatalog = () => {
                   />
                   <FormField
                     control={form.control}
-                    name="severity"
+                    name="puntos_reincidencia"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Severidad</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar severidad" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="Leve">Leve</SelectItem>
-                            <SelectItem value="Moderada">Moderada</SelectItem>
-                            <SelectItem value="Grave">Grave</SelectItem>
-                            <SelectItem value="Muy Grave">Muy Grave</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Puntos</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="1" 
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
 
+                <FormField
+                  control={form.control}
+                  name="es_grave"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Falta Grave</FormLabel>
+                        <div className="text-sm text-muted-foreground">
+                          Marque si esta falta es considerada grave
+                        </div>
+                      </div>
+                      <FormControl>
+                        <input
+                          type="checkbox"
+                          checked={field.value}
+                          onChange={field.onChange}
+                          className="h-4 w-4"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Guardar Falta</Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? (
+                      <span className="flex items-center">
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Guardando...
+                      </span>
+                    ) : (
+                      'Guardar Falta'
+                    )}
+                  </Button>
                 </DialogFooter>
               </form>
             </Form>
@@ -256,7 +311,7 @@ export const FaultsCatalog = () => {
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por nombre, código o descripción..."
+              placeholder="Buscar por nombre o descripción..."
               className="pl-10"
             />
           </div>
@@ -293,9 +348,9 @@ export const FaultsCatalog = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">{fault.description}</p>
+              <p className="text-sm text-muted-foreground">{fault.description || 'Sin descripción'}</p>
               <div className="flex items-center justify-between text-sm">
-                <span className="font-mono text-muted-foreground">{fault.code}</span>
+                <span className="text-muted-foreground">Categoría: {fault.category}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">Puntos:</span>
                   <Badge variant="outline">{fault.points}</Badge>

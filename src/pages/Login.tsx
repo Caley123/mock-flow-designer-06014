@@ -4,22 +4,51 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { FileText, LogIn } from 'lucide-react';
+import { FileText, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { authService } from '@/lib/services';
 
 export const Login = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (username && password) {
-      toast.success('Inicio de sesión exitoso');
-      navigate('/');
-    } else {
+    if (!username || !password) {
       toast.error('Por favor ingrese usuario y contraseña');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { user, error } = await authService.login(username, password);
+
+      if (error) {
+        toast.error(error);
+        setLoading(false);
+        return;
+      }
+
+      if (user) {
+        toast.success('Inicio de sesión exitoso');
+        
+        // Verificar si requiere cambio de contraseña
+        if (user.cambioPasswordObligatorio) {
+          // TODO: Redirigir a página de cambio de contraseña
+          toast.info('Debe cambiar su contraseña');
+        }
+
+        navigate('/');
+      }
+    } catch (error: any) {
+      console.error('Error en login:', error);
+      toast.error('Error al iniciar sesión. Intente nuevamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -63,9 +92,18 @@ export const Login = () => {
                 autoComplete="current-password"
               />
             </div>
-            <Button type="submit" className="w-full">
-              <LogIn className="w-4 h-4 mr-2" />
-              Iniciar Sesión
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <span className="flex items-center">
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Iniciando sesión...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Iniciar Sesión
+                </span>
+              )}
             </Button>
           </form>
           <div className="mt-4 text-center">

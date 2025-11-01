@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { mockDashboardStats } from '@/lib/mockData';
 import { 
   FileText, 
   Users, 
@@ -19,8 +18,12 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend
 } from 'recharts';
+import { useEffect, useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { dashboardService } from '@/lib/services';
+import { DashboardStats } from '@/types';
+import { toast } from 'sonner';
 
 const COLORS = {
   level0: 'hsl(var(--success))',
@@ -28,18 +31,64 @@ const COLORS = {
   level2: 'hsl(var(--warning))',
   level3: 'hsl(var(--danger))',
   level4: 'hsl(var(--danger))',
+  level5: 'hsl(var(--danger))',
 };
 
 export const Dashboard = () => {
-  const stats = mockDashboardStats;
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const levelData = [
-    { name: 'Nivel 0', value: stats.levelDistribution.level0, color: COLORS.level0 },
-    { name: 'Nivel 1', value: stats.levelDistribution.level1, color: COLORS.level1 },
-    { name: 'Nivel 2', value: stats.levelDistribution.level2, color: COLORS.level2 },
-    { name: 'Nivel 3', value: stats.levelDistribution.level3, color: COLORS.level3 },
-    { name: 'Nivel 4', value: stats.levelDistribution.level4, color: COLORS.level4 },
-  ];
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      
+      const { stats: dashboardStats, error } = await dashboardService.getDashboardStats();
+
+      if (error) {
+        console.error('Error fetching dashboard data:', error);
+        toast.error('Error al cargar estadísticas del dashboard');
+        setStats(null);
+      } else if (dashboardStats) {
+        setStats(dashboardStats);
+      }
+      
+      setLoading(false);
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-6 w-64" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return <div className="container mx-auto p-6">Error al cargar los datos del dashboard.</div>;
+  }
+  
+  const levelData = Object.entries(stats.levelDistribution).map(([level, value]) => ({
+    name: `Nivel ${level.replace('nivel_', '')}`,
+    value: value as number,
+    color: COLORS[`level${level.replace('nivel_', '')}` as keyof typeof COLORS] || '#8884d8',
+  }));
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -162,11 +211,11 @@ export const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {stats.topFaults.map((fault, index) => (
+            {stats.topFaults.map((fault: any, index: number) => (
               <div key={index} className="flex items-center">
                 <div className="w-full">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{fault.faultType}</span>
+                    <span className="text-sm font-medium">{fault.fault_type}</span>
                     <span className="text-sm font-bold">{fault.count}</span>
                   </div>
                   <div className="w-full bg-secondary rounded-full h-2">

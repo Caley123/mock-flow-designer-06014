@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -34,68 +34,129 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockStudents } from '@/lib/mockData';
-import { Search, Eye, Edit, UserPlus, Download } from 'lucide-react';
+import { Search, Eye, Edit, UserPlus, Download, Loader2 } from 'lucide-react';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { Badge } from '@/components/ui/badge';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import { studentsService } from '@/lib/services';
+import { Student } from '@/types';
 
 const studentFormSchema = z.object({
-  barcode: z.string()
+  codigo_barras: z.string()
     .min(1, 'El código de barras es requerido')
     .max(20, 'Máximo 20 caracteres'),
-  fullName: z.string()
+  nombre_completo: z.string()
     .min(3, 'El nombre debe tener al menos 3 caracteres')
-    .max(100, 'Máximo 100 caracteres'),
-  grade: z.string().min(1, 'El grado es requerido'),
-  section: z.string().min(1, 'La sección es requerida'),
-  birthDate: z.string().min(1, 'La fecha de nacimiento es requerida'),
-  parentName: z.string()
-    .min(3, 'El nombre del padre/madre es requerido')
-    .max(100, 'Máximo 100 caracteres'),
-  parentPhone: z.string()
-    .min(8, 'El teléfono debe tener al menos 8 dígitos')
-    .max(15, 'Máximo 15 dígitos'),
-  parentEmail: z.string()
-    .email('Email inválido')
-    .max(100, 'Máximo 100 caracteres'),
+    .max(150, 'Máximo 150 caracteres'),
+  grado: z.string().min(1, 'El grado es requerido'),
+  seccion: z.string().min(1, 'La sección es requerida'),
 });
 
 type StudentFormValues = z.infer<typeof studentFormSchema>;
 
 export const StudentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [students, setStudents] = useState<Student[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // Estados temporales para Select dentro del Dialog
+  const [tempGrado, setTempGrado] = useState<string>('');
+  const [tempSeccion, setTempSeccion] = useState<string>('');
 
   const form = useForm<StudentFormValues>({
     resolver: zodResolver(studentFormSchema),
     defaultValues: {
-      barcode: '',
-      fullName: '',
-      grade: '',
-      section: '',
-      birthDate: '',
-      parentName: '',
-      parentPhone: '',
-      parentEmail: '',
+      codigo_barras: '',
+      nombre_completo: '',
+      grado: '',
+      seccion: '',
     },
   });
 
-  const filteredStudents = mockStudents.filter(student =>
-    student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.barcode.includes(searchTerm) ||
-    student.grade.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Resetear formulario cuando se abre el dialog
+  useEffect(() => {
+    if (dialogOpen) {
+      form.reset({
+        codigo_barras: '',
+        nombre_completo: '',
+        grado: '',
+        seccion: '',
+      });
+      setTempGrado('');
+      setTempSeccion('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen]);
 
-  const onSubmit = (data: StudentFormValues) => {
-    console.log('Nuevo estudiante:', data);
-    toast.success('Estudiante agregado exitosamente');
-    setDialogOpen(false);
-    form.reset();
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  const loadStudents = async () => {
+    setLoading(true);
+    const { students: studentsList, error } = await studentsService.getAll({
+      search: searchTerm || undefined,
+      active: true,
+    });
+    if (error) {
+      toast.error('Error al cargar estudiantes');
+      setStudents([]);
+    } else {
+      setStudents(studentsList);
+    }
+    setLoading(false);
   };
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm !== undefined) {
+        loadStudents();
+      }
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  // Si hay searchTerm, el filtrado ya se hizo en el servidor
+  // Solo aplicamos filtro adicional si searchTerm está vacío (para filtrar localmente)
+  const filteredStudents = searchTerm 
+    ? students // Ya filtrado por el servidor
+    : students.filter(student =>
+        student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.barcode.includes(searchTerm) ||
+        student.grade.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+  const onSubmit = async (data: StudentFormValues) => {
+    setLoading(true);
+    const { student, error } = await studentsService.create(data);
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success('Estudiante agregado exitosamente');
+      setDialogOpen(false);
+      form.reset();
+      loadStudents();
+    }
+    setLoading(false);
+  };
+
+  const stats = {
+    total: students.length,
+    sinIncidencias: students.filter(s => (s.reincidenceLevel || 0) === 0).length,
+    nivelModerado: students.filter(s => (s.reincidenceLevel || 0) >= 1 && (s.reincidenceLevel || 0) <= 2).length,
+    nivelAlto: students.filter(s => (s.reincidenceLevel || 0) >= 3).length,
+  };
+
+  if (loading && students.length === 0) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -106,7 +167,16 @@ export const StudentsList = () => {
             <Download className="w-4 h-4 mr-2" />
             Exportar
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog 
+            open={dialogOpen} 
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) {
+                // Resetear el formulario cuando se cierra el dialog
+                form.reset();
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -122,38 +192,22 @@ export const StudentsList = () => {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="barcode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Código de Barras</FormLabel>
-                          <FormControl>
-                            <Input placeholder="000000000000" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="birthDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Fecha de Nacimiento</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
                   <FormField
                     control={form.control}
-                    name="fullName"
+                    name="codigo_barras"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Código de Barras</FormLabel>
+                        <FormControl>
+                          <Input placeholder="000000000000" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="nombre_completo"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nombre Completo</FormLabel>
@@ -164,27 +218,32 @@ export const StudentsList = () => {
                       </FormItem>
                     )}
                   />
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="grade"
+                      name="grado"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Grado</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select 
+                            value={tempGrado || undefined}
+                            onValueChange={(value) => {
+                              setTempGrado(value);
+                              field.onChange(value);
+                            }}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccionar grado" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="1° Básico">1° Básico</SelectItem>
-                              <SelectItem value="2° Básico">2° Básico</SelectItem>
-                              <SelectItem value="3° Básico">3° Básico</SelectItem>
-                              <SelectItem value="4° Básico">4° Básico</SelectItem>
-                              <SelectItem value="5° Básico">5° Básico</SelectItem>
-                              <SelectItem value="6° Básico">6° Básico</SelectItem>
+                              <SelectItem value="1ro">1ro</SelectItem>
+                              <SelectItem value="2do">2do</SelectItem>
+                              <SelectItem value="3ro">3ro</SelectItem>
+                              <SelectItem value="4to">4to</SelectItem>
+                              <SelectItem value="5to">5to</SelectItem>
+                              <SelectItem value="6to">6to</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -193,11 +252,17 @@ export const StudentsList = () => {
                     />
                     <FormField
                       control={form.control}
-                      name="section"
+                      name="seccion"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Sección</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select 
+                            value={tempSeccion || undefined}
+                            onValueChange={(value) => {
+                              setTempSeccion(value);
+                              field.onChange(value);
+                            }}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccionar sección" />
@@ -215,59 +280,20 @@ export const StudentsList = () => {
                       )}
                     />
                   </div>
-
-                  <div className="border-t pt-4">
-                    <h3 className="font-semibold mb-4">Información del Padre/Madre/Tutor</h3>
-                    <div className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="parentName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Nombre del Padre/Madre/Tutor</FormLabel>
-                            <FormControl>
-                              <Input placeholder="María García" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="parentPhone"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Teléfono</FormLabel>
-                              <FormControl>
-                                <Input placeholder="12345678" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="parentEmail"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Correo Electrónico</FormLabel>
-                              <FormControl>
-                                <Input type="email" placeholder="correo@ejemplo.com" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button type="submit">Guardar Estudiante</Button>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? (
+                        <span className="flex items-center">
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Guardando...
+                        </span>
+                      ) : (
+                        'Guardar Estudiante'
+                      )}
+                    </Button>
                   </DialogFooter>
                 </form>
               </Form>
@@ -295,30 +321,30 @@ export const StudentsList = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{mockStudents.length}</div>
+            <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-sm text-muted-foreground">Total Estudiantes</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-success">
-              {mockStudents.filter(s => s.reincidenceLevel === 0).length}
+            <div className="text-2xl font-bold text-green-600">
+              {stats.sinIncidencias}
             </div>
             <p className="text-sm text-muted-foreground">Sin Incidencias</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-warning">
-              {mockStudents.filter(s => s.reincidenceLevel >= 1 && s.reincidenceLevel <= 2).length}
+            <div className="text-2xl font-bold text-yellow-600">
+              {stats.nivelModerado}
             </div>
             <p className="text-sm text-muted-foreground">Nivel Moderado</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-danger">
-              {mockStudents.filter(s => s.reincidenceLevel >= 3).length}
+            <div className="text-2xl font-bold text-red-600">
+              {stats.nivelAlto}
             </div>
             <p className="text-sm text-muted-foreground">Nivel Alto</p>
           </CardContent>
@@ -331,53 +357,59 @@ export const StudentsList = () => {
           <CardTitle>Listado de Estudiantes</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Código</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Grado</TableHead>
-                <TableHead>Sección</TableHead>
-                <TableHead>Faltas (60d)</TableHead>
-                <TableHead>Nivel</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStudents.map((student) => (
-                <TableRow key={student.id}>
-                  <TableCell className="font-mono text-sm">{student.barcode}</TableCell>
-                  <TableCell>
-                    <p className="font-medium">{student.fullName}</p>
-                  </TableCell>
-                  <TableCell>{student.grade}</TableCell>
-                  <TableCell>{student.section}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{student.faultsLast60Days}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <ReincidenceBadge level={student.reincidenceLevel} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={student.active ? 'default' : 'secondary'}>
-                      {student.active ? 'Activo' : 'Inactivo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          {filteredStudents.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No se encontraron estudiantes
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Grado</TableHead>
+                  <TableHead>Sección</TableHead>
+                  <TableHead>Faltas (60d)</TableHead>
+                  <TableHead>Nivel</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredStudents.map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell className="font-mono text-sm">{student.barcode}</TableCell>
+                    <TableCell>
+                      <p className="font-medium">{student.fullName}</p>
+                    </TableCell>
+                    <TableCell>{student.grade}</TableCell>
+                    <TableCell>{student.section}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{student.faultsLast60Days || 0}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <ReincidenceBadge level={student.reincidenceLevel || 0} />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={student.active ? 'default' : 'secondary'}>
+                        {student.active ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

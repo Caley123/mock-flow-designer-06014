@@ -1,70 +1,150 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { mockStudents, mockFaultTypes } from '@/lib/mockData';
 import { Student, FaultType } from '@/types';
-import { Barcode, Search, AlertTriangle, Upload, Save, X } from 'lucide-react';
+import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2 } from 'lucide-react';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getReincidenceLevelDescription, getSuggestedAction } from '@/lib/utils/reincidenceUtils';
 import { toast } from 'sonner';
+import { studentsService, faultsService, incidentsService, evidenceService } from '@/lib/services';
+import { authService } from '@/lib/services';
 
 export const RegisterIncident = () => {
   const [barcodeInput, setBarcodeInput] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedFault, setSelectedFault] = useState<string>('');
   const [observations, setObservations] = useState('');
   const [showReincidenceAlert, setShowReincidenceAlert] = useState(false);
+  const [faults, setFaults] = useState<FaultType[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const student = mockStudents.find(s => s.barcode === barcodeInput);
-    if (student) {
-      setSelectedStudent(student);
-      if (student.reincidenceLevel >= 2) {
-        setShowReincidenceAlert(true);
+  // Cargar faltas al montar el componente
+  useEffect(() => {
+    const loadFaults = async () => {
+      const { faults: faultList, error } = await faultsService.getAll(true);
+      if (error) {
+        toast.error('Error al cargar catálogo de faltas');
+      } else {
+        setFaults(faultList);
       }
-      toast.success(`Estudiante encontrado: ${student.fullName}`);
+    };
+    loadFaults();
+  }, []);
+
+  // Búsqueda de estudiantes por nombre
+  useEffect(() => {
+    if (searchInput.length >= 2) {
+      const searchStudents = async () => {
+        setSearching(true);
+        const { students, error } = await studentsService.searchByName(searchInput, 10);
+        if (!error) {
+          setSearchResults(students);
+        }
+        setSearching(false);
+      };
+      
+      const timeoutId = setTimeout(searchStudents, 300);
+      return () => clearTimeout(timeoutId);
     } else {
+      setSearchResults([]);
+    }
+  }, [searchInput]);
+
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!barcodeInput.trim()) return;
+
+    setLoading(true);
+    const { student, error } = await studentsService.getByBarcode(barcodeInput.trim());
+    
+    if (error || !student) {
       toast.error('Código de barras no encontrado');
+      setBarcodeInput('');
+      setLoading(false);
+      return;
     }
+
+    setSelectedStudent(student);
+    if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
+      setShowReincidenceAlert(true);
+    }
+    toast.success(`Estudiante encontrado: ${student.fullName}`);
     setBarcodeInput('');
+    setLoading(false);
   };
 
-  const handleSearchSelect = (studentId: string) => {
-    const student = mockStudents.find(s => s.id === studentId);
-    if (student) {
-      setSelectedStudent(student);
-      if (student.reincidenceLevel >= 2) {
-        setShowReincidenceAlert(true);
-      }
+  const handleSearchSelect = async (studentId: string) => {
+    const { student, error } = await studentsService.getById(parseInt(studentId));
+    if (error || !student) {
+      toast.error('Error al cargar estudiante');
+      return;
     }
+    
+    setSelectedStudent(student);
+    if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
+      setShowReincidenceAlert(true);
+    }
+    setSearchInput('');
+    setSearchResults([]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedStudent || !selectedFault) {
       toast.error('Por favor complete todos los campos requeridos');
       return;
     }
-    
-    toast.success('Incidencia registrada correctamente', {
-      description: `ID: INC-2024-${Math.floor(Math.random() * 1000)}`,
-    });
-    
-    // Reset form
-    setSelectedStudent(null);
-    setSelectedFault('');
-    setObservations('');
-    setShowReincidenceAlert(false);
+
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Debe iniciar sesión para registrar incidencias');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { incident, error } = await incidentsService.create({
+        id_estudiante: selectedStudent.id,
+        id_falta: parseInt(selectedFault),
+        id_usuario_registro: currentUser.id,
+        observaciones: observations.trim() || null,
+      });
+
+      if (error) {
+        toast.error(error);
+        setLoading(false);
+        return;
+      }
+
+      toast.success('Incidencia registrada correctamente', {
+        description: `ID: ${incident?.id}`,
+      });
+
+      // Reset form
+      setSelectedStudent(null);
+      setSelectedFault('');
+      setObservations('');
+      setShowReincidenceAlert(false);
+      setSearchInput('');
+      setSearchResults([]);
+    } catch (error: any) {
+      toast.error('Error al registrar incidencia');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const groupedFaults = mockFaultTypes.reduce((acc, fault) => {
+  const groupedFaults = faults.reduce((acc, fault) => {
     if (!acc[fault.category]) {
       acc[fault.category] = [];
     }
@@ -92,10 +172,17 @@ export const RegisterIncident = () => {
               placeholder="Escanee o ingrese el código de barras..."
               autoFocus
               className="font-mono"
+              disabled={loading}
             />
-            <Button type="submit">
-              <Search className="w-4 h-4 mr-2" />
-              Buscar
+            <Button type="submit" disabled={loading}>
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <span className="flex items-center">
+                  <Search className="w-4 h-4 mr-2" />
+                  Buscar
+                </span>
+              )}
             </Button>
           </form>
         </CardContent>
@@ -111,19 +198,34 @@ export const RegisterIncident = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label>Buscar estudiante por nombre o código</Label>
-            <Select onValueChange={handleSearchSelect} value={searchInput}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccione un estudiante..." />
-              </SelectTrigger>
-              <SelectContent>
-                {mockStudents.map((student) => (
-                  <SelectItem key={student.id} value={student.id}>
-                    {student.fullName} - {student.grade} {student.section} ({student.barcode})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Buscar estudiante por nombre</Label>
+            <div className="relative">
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Escriba el nombre del estudiante..."
+                disabled={loading}
+              />
+              {searching && (
+                <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+              )}
+              {searchResults.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                  {searchResults.map((student) => (
+                    <div
+                      key={student.id}
+                      onClick={() => handleSearchSelect(student.id.toString())}
+                      className="px-4 py-2 hover:bg-accent cursor-pointer"
+                    >
+                      <p className="font-medium">{student.fullName}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {student.grade} {student.section} • {student.barcode}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -160,14 +262,14 @@ export const RegisterIncident = () => {
                 <div className="space-y-4">
                   <div>
                     <Label className="text-muted-foreground mb-2 block">Nivel de Reincidencia</Label>
-                    <ReincidenceBadge level={selectedStudent.reincidenceLevel} className="text-lg px-4 py-2" />
+                    <ReincidenceBadge level={selectedStudent.reincidenceLevel || 0} className="text-lg px-4 py-2" />
                     <p className="text-sm text-muted-foreground mt-2">
-                      {getReincidenceLevelDescription(selectedStudent.reincidenceLevel)}
+                      {getReincidenceLevelDescription(selectedStudent.reincidenceLevel || 0)}
                     </p>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">Faltas últimos 60 días</Label>
-                    <p className="text-2xl font-bold">{selectedStudent.faultsLast60Days}</p>
+                    <p className="text-2xl font-bold">{selectedStudent.faultsLast60Days || 0}</p>
                   </div>
                 </div>
               </div>
@@ -175,7 +277,7 @@ export const RegisterIncident = () => {
           </Card>
 
           {/* Reincidence Alert */}
-          {showReincidenceAlert && selectedStudent.reincidenceLevel >= 2 && (
+          {showReincidenceAlert && selectedStudent.reincidenceLevel && selectedStudent.reincidenceLevel >= 2 && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>¡Alerta de Reincidencia!</AlertTitle>
@@ -189,8 +291,10 @@ export const RegisterIncident = () => {
                 onClick={() => setShowReincidenceAlert(false)}
                 className="mt-2"
               >
-                <X className="w-4 h-4 mr-2" />
-                Cerrar
+                <span className="flex items-center">
+                  <X className="w-4 h-4 mr-2" />
+                  Cerrar
+                </span>
               </Button>
             </Alert>
           )}
@@ -203,18 +307,18 @@ export const RegisterIncident = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Seleccionar falta</Label>
-                <Select value={selectedFault} onValueChange={setSelectedFault}>
+                <Select value={selectedFault} onValueChange={setSelectedFault} disabled={loading}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione el tipo de falta..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(groupedFaults).map(([category, faults]) => (
+                    {Object.entries(groupedFaults).map(([category, faultList]) => (
                       <div key={category}>
                         <div className="px-2 py-1.5 text-sm font-semibold text-muted-foreground">
                           {category}
                         </div>
-                        {faults.map((fault) => (
-                          <SelectItem key={fault.id} value={fault.id}>
+                        {faultList.map((fault) => (
+                          <SelectItem key={fault.id} value={fault.id.toString()}>
                             {fault.name}
                           </SelectItem>
                         ))}
@@ -225,14 +329,14 @@ export const RegisterIncident = () => {
               </div>
 
               {selectedFault && (() => {
-                const fault = mockFaultTypes.find(f => f.id === selectedFault);
+                const fault = faults.find(f => f.id.toString() === selectedFault);
                 return fault && (
                   <div className="bg-muted p-4 rounded-lg space-y-2">
                     <div className="flex items-center gap-2">
                       <SeverityBadge severity={fault.severity} />
-                      <span className="text-sm font-mono text-muted-foreground">{fault.code}</span>
+                      <span className="text-sm text-muted-foreground">Categoría: {fault.category}</span>
                     </div>
-                    <p className="text-sm">{fault.description}</p>
+                    <p className="text-sm">{fault.description || 'Sin descripción'}</p>
                     <p className="text-sm font-semibold">Puntos: {fault.points}</p>
                   </div>
                 );
@@ -246,6 +350,7 @@ export const RegisterIncident = () => {
                   placeholder="Describa los detalles de la incidencia..."
                   rows={4}
                   maxLength={500}
+                  disabled={loading}
                 />
                 <p className="text-xs text-muted-foreground text-right">
                   {observations.length}/500 caracteres
@@ -263,9 +368,18 @@ export const RegisterIncident = () => {
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleSave} className="flex-1">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Incidencia
+                <Button onClick={handleSave} className="flex-1" disabled={loading}>
+                  {loading ? (
+                    <span className="flex items-center">
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      <Save className="w-4 h-4 mr-2" />
+                      Guardar Incidencia
+                    </span>
+                  )}
                 </Button>
                 <Button 
                   variant="outline" 
@@ -275,9 +389,12 @@ export const RegisterIncident = () => {
                     setObservations('');
                     setShowReincidenceAlert(false);
                   }}
+                  disabled={loading}
                 >
-                  <X className="w-4 h-4 mr-2" />
-                  Cancelar
+                  <span className="flex items-center">
+                    <X className="w-4 h-4 mr-2" />
+                    Cancelar
+                  </span>
                 </Button>
               </div>
             </CardContent>

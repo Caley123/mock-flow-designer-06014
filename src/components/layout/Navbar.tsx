@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { 
   LayoutDashboard, 
@@ -7,13 +7,24 @@ import {
   BookOpen, 
   BarChart3,
   LogOut,
-  Menu
+  Menu,
+  User
 } from 'lucide-react';
 import { useState } from 'react';
+import { authService } from '@/lib/services';
+import { toast } from 'sonner';
 
 export const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const user = authService.getCurrentUser();
+
+  const handleLogout = async () => {
+    await authService.logout();
+    toast.success('Sesión cerrada');
+    navigate('/login');
+  };
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -57,10 +68,21 @@ export const Navbar = () => {
                 </Link>
               );
             })}
-            <Button variant="ghost" size="sm" className="text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent ml-4">
-              <LogOut className="w-4 h-4 mr-2" />
-              Salir
-            </Button>
+            <div className="flex items-center gap-2 ml-4">
+              <div className="text-sm text-sidebar-foreground hidden lg:block">
+                <div className="font-medium">{user?.fullName}</div>
+                <div className="text-xs text-muted-foreground">{user?.role}</div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                onClick={handleLogout}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Salir
+              </Button>
+            </div>
           </div>
 
           <div className="md:hidden">
@@ -93,10 +115,21 @@ export const Navbar = () => {
                   </Link>
                 );
               })}
-              <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground">
-                <LogOut className="w-4 h-4 mr-2" />
-                Salir
-              </Button>
+              <div className="px-2 py-2 border-t border-sidebar-border">
+                <div className="text-sm text-sidebar-foreground mb-2">
+                  <div className="font-medium">{user?.fullName}</div>
+                  <div className="text-xs text-muted-foreground">{user?.role}</div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="w-full justify-start text-sidebar-foreground"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Salir
+                </Button>
+              </div>
             </div>
           </div>
         )}
