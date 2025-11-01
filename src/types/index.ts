@@ -5,6 +5,8 @@ export type ReincidenceLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
 export type FaultCategory = 'Conducta' | 'Uniforme' | 'Académica' | 'Puntualidad';
 
+export type FaultSeverity = 'Leve' | 'Grave';
+
 export type EstadoEvidencia = 'Sin evidencia' | 'Con evidencia';
 
 export type EstadoIncidencia = 'Activa' | 'Anulada' | 'En revisión';
@@ -121,7 +123,7 @@ export interface FaultType {
   name: string;
   description: string | null;
   category: FaultCategory;
-  severity: 'Leve' | 'Grave';
+  severity: FaultSeverity;
   points: number;
   active: boolean;
   ordenVisualizacion?: number;
