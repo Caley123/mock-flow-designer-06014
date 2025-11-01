@@ -13,6 +13,7 @@ import { IncidentsList } from "./pages/IncidentsList";
 import { StudentsList } from "./pages/StudentsList";
 import { FaultsCatalog } from "./pages/FaultsCatalog";
 import { Reports } from "./pages/Reports";
+import { TutorScanner } from "./pages/TutorScanner";
 import NotFound from "./pages/NotFound";
 import { authService } from "./lib/services";
 
@@ -34,7 +35,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   return children as React.ReactElement;
 };
 
-// Componente para manejar la ruta raíz - redirige al login si no está autenticado
+// Componente para manejar la ruta raíz - redirige según el rol
 const RootRoute = () => {
   const user = authService.getCurrentUser();
   
@@ -43,7 +44,12 @@ const RootRoute = () => {
     return <Navigate to="/login" replace />;
   }
   
-  // Si hay usuario, mostrar el dashboard protegido
+  // Si es tutor, redirigir a la página de escaneo
+  if (user.role === 'Tutor') {
+    return <Navigate to="/tutor-scanner" replace />;
+  }
+  
+  // Para otros roles, mostrar el dashboard
   return (
     <ProtectedRoute>
       <Layout><Dashboard /></Layout>
@@ -77,9 +83,17 @@ const App = () => (
             element={<RootRoute />}
           />
           <Route 
+            path="/tutor-scanner" 
+            element={
+              <ProtectedRoute requiredRole={['Tutor']}>
+                <TutorScanner />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
             path="/register" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
                 <Layout><RegisterIncident /></Layout>
               </ProtectedRoute>
             } 
@@ -87,7 +101,7 @@ const App = () => (
           <Route 
             path="/incidents" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
                 <Layout><IncidentsList /></Layout>
               </ProtectedRoute>
             } 
@@ -95,7 +109,7 @@ const App = () => (
           <Route 
             path="/students" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
                 <Layout><StudentsList /></Layout>
               </ProtectedRoute>
             } 
@@ -103,7 +117,7 @@ const App = () => (
           <Route 
             path="/faults" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole={['Director', 'Admin']}>
                 <Layout><FaultsCatalog /></Layout>
               </ProtectedRoute>
             } 
@@ -111,7 +125,7 @@ const App = () => (
           <Route 
             path="/reports" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole={['Director', 'Admin']}>
                 <Layout><Reports /></Layout>
               </ProtectedRoute>
             } 

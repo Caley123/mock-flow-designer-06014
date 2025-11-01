@@ -26,14 +26,25 @@ export const Navbar = () => {
     navigate('/login');
   };
 
-  const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/register', label: 'Registrar', icon: FileText },
-    { path: '/incidents', label: 'Incidencias', icon: FileText },
-    { path: '/students', label: 'Estudiantes', icon: Users },
-    { path: '/faults', label: 'Catálogo', icon: BookOpen },
-    { path: '/reports', label: 'Reportes', icon: BarChart3 },
-  ];
+  const getNavItems = () => {
+    // Tutores no tienen acceso al navbar (usan su propia interfaz)
+    if (user?.role === 'Tutor') {
+      return [];
+    }
+
+    const allItems = [
+      { path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['Supervisor', 'Director', 'Admin'] },
+      { path: '/register', label: 'Registrar', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
+      { path: '/incidents', label: 'Incidencias', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
+      { path: '/students', label: 'Estudiantes', icon: Users, roles: ['Supervisor', 'Director', 'Admin'] },
+      { path: '/faults', label: 'Catálogo', icon: BookOpen, roles: ['Director', 'Admin'] },
+      { path: '/reports', label: 'Reportes', icon: BarChart3, roles: ['Director', 'Admin'] },
+    ];
+
+    return allItems.filter(item => item.roles.includes(user?.role || ''));
+  };
+
+  const navItems = getNavItems();
 
   const isActive = (path: string) => location.pathname === path;
 
