@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Scan, Clock, AlertCircle, CheckCircle, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
-import { studentsService, faultsService, incidentsService, authService } from '@/lib/services';
+import { studentsService, faultsService, incidentsService, authService, arrivalService } from '@/lib/services';
 import { Student, FaultType } from '@/types';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -77,17 +77,35 @@ export const TutorScanner = () => {
 
       setStudent(foundStudent);
       
-      // Registrar hora de llegada (esto se implementará con una función de Supabase)
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      // Registrar hora de llegada en la base de datos
+      const currentUser = authService.getCurrentUser();
+      const { record, error: arrivalError } = await arrivalService.createArrivalRecord(
+        foundStudent.id,
+        currentUser?.id
+      );
+
+      if (arrivalError) {
+        console.error('Error al registrar llegada:', arrivalError);
+        toast.error('Error al registrar la llegada');
+        setBarcode('');
+        setScanning(false);
+        return;
+      }
+
+      // Mostrar mensaje de éxito con el estado calculado
+      const statusColor = record?.status === 'A tiempo' ? 'text-green-600' : 'text-orange-600';
+      const statusBg = record?.status === 'A tiempo' ? 'bg-green-50' : 'bg-orange-50';
       
       toast.success(
         <div>
           <p className="font-bold">{foundStudent.fullName}</p>
-          <p className="text-sm">Hora de llegada: {timeStr}</p>
-          <p className="text-sm">{foundStudent.grade} - {foundStudent.section}</p>
+          <p className="text-sm">Hora de llegada: {record?.arrivalTime}</p>
+          <p className={`text-sm font-semibold ${statusColor}`}>
+            Estado: {record?.status}
+          </p>
+          <p className="text-sm text-muted-foreground">{foundStudent.grade} - {foundStudent.section}</p>
         </div>,
-        { duration: 5000 }
+        { duration: 5000, className: statusBg }
       );
 
       // Limpiar el código de barras después de 3 segundos

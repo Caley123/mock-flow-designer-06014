@@ -8,7 +8,8 @@ import {
   BarChart3,
   LogOut,
   Menu,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 import { useState } from 'react';
 import { authService } from '@/lib/services';
@@ -39,6 +40,7 @@ export const Navbar = () => {
       { path: '/students', label: 'Estudiantes', icon: Users, roles: ['Supervisor', 'Director', 'Admin'] },
       { path: '/faults', label: 'Catálogo', icon: BookOpen, roles: ['Director', 'Admin'] },
       { path: '/reports', label: 'Reportes', icon: BarChart3, roles: ['Director', 'Admin'] },
+      { path: '/audit', label: 'Auditoría', icon: Shield, roles: ['Admin'] },
     ];
 
     return allItems.filter(item => item.roles.includes(user?.role || ''));

@@ -8,3 +8,5 @@ export { incidentsService } from './incidentsService';
 export { evidenceService } from './evidenceService';
 export { commentsService } from './commentsService';
 export { dashboardService } from './dashboardService';
+export { arrivalService } from './arrivalService';
+export { auditService } from './auditService';

@@ -189,3 +189,53 @@ export interface DashboardStats {
     count: number;
   }>;
 }
+
+// Nuevas tablas del sistema
+export interface ConfiguracionSistemaDB {
+  id_config: number;
+  clave: string;
+  valor: string;
+  descripcion: string | null;
+  fecha_actualizacion: string;
+}
+
+export interface RegistroLlegadaDB {
+  id_registro: number;
+  id_estudiante: number;
+  fecha: string;
+  hora_llegada: string;
+  estado: 'A tiempo' | 'Tarde';
+  registrado_por: number | null;
+  fecha_creacion: string;
+}
+
+export interface AuditoriaLogDB {
+  id_log: number;
+  tabla_afectada: string;
+  operacion: 'INSERT' | 'UPDATE' | 'DELETE';
+  datos_anteriores: any;
+  datos_nuevos: any;
+  fecha_hora: string;
+}
+
+// Tipos para el frontend
+export interface ArrivalRecord {
+  id: number;
+  studentId: number;
+  student?: Student;
+  date: string;
+  arrivalTime: string;
+  status: 'A tiempo' | 'Tarde';
+  registeredBy: number | null;
+  registeredByUser?: User;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: number;
+  table: string;
+  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  previousData: any;
+  newData: any;
+  timestamp: string;
+}

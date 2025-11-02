@@ -14,6 +14,7 @@ import { StudentsList } from "./pages/StudentsList";
 import { FaultsCatalog } from "./pages/FaultsCatalog";
 import { Reports } from "./pages/Reports";
 import { TutorScanner } from "./pages/TutorScanner";
+import { AuditLogs } from "./pages/AuditLogs";
 import NotFound from "./pages/NotFound";
 import { authService } from "./lib/services";
 
@@ -127,6 +128,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole={['Director', 'Admin']}>
                 <Layout><Reports /></Layout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/audit" 
+            element={
+              <ProtectedRoute requiredRole={['Admin']}>
+                <Layout><AuditLogs /></Layout>
               </ProtectedRoute>
             } 
           />
