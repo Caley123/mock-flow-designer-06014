@@ -10,3 +10,4 @@ export { commentsService } from './commentsService';
 export { dashboardService } from './dashboardService';
 export { arrivalService } from './arrivalService';
 export { auditService } from './auditService';
+export { configService } from './configService';

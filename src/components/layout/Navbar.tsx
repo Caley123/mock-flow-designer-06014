@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   User,
-  Shield
+  Shield,
+  Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { authService } from '@/lib/services';
@@ -41,6 +42,7 @@ export const Navbar = () => {
       { path: '/faults', label: 'Catálogo', icon: BookOpen, roles: ['Director', 'Admin'] },
       { path: '/reports', label: 'Reportes', icon: BarChart3, roles: ['Director', 'Admin'] },
       { path: '/audit', label: 'Auditoría', icon: Shield, roles: ['Admin'] },
+      { path: '/system-config', label: 'Configuración', icon: Settings, roles: ['Admin'] },
     ];
 
     return allItems.filter(item => item.roles.includes(user?.role || ''));

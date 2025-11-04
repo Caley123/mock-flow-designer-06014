@@ -239,3 +239,11 @@ export interface AuditLog {
   newData: any;
   timestamp: string;
 }
+
+export interface SystemConfig {
+  id: number;
+  key: string;
+  value: string;
+  description?: string;
+  updatedAt: string;
+}
