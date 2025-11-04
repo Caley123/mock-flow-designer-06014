@@ -15,6 +15,7 @@ function mapAuditLog(log: AuditoriaLogDB): AuditLog {
     operation: log.operacion,
     previousData: log.datos_anteriores,
     newData: log.datos_nuevos,
+    userId: log.usuario_id,
     timestamp: log.fecha_hora,
   };
 }

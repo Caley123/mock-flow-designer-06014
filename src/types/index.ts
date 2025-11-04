@@ -215,6 +215,7 @@ export interface AuditoriaLogDB {
   operacion: 'INSERT' | 'UPDATE' | 'DELETE';
   datos_anteriores: any;
   datos_nuevos: any;
+  usuario_id?: number;
   fecha_hora: string;
 }
 
@@ -237,6 +238,7 @@ export interface AuditLog {
   operation: 'INSERT' | 'UPDATE' | 'DELETE';
   previousData: any;
   newData: any;
+  userId?: number;
   timestamp: string;
 }
 
