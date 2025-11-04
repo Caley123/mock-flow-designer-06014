@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student } from '@/types';
+import { configService } from './configService';
 
 /**
  * Servicio para gestionar registros de llegada
@@ -41,6 +42,28 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
 }
 
 /**
+ * Obtiene la hora límite de llegada desde configuracion_sistema
+ * Devuelve un string en formato HH:MM (24h). Valor por defecto: '08:00'
+ */
+async function getArrivalLimitTime(): Promise<string> {
+  const { config } = await configService.getByKey('hora_limite_llegada');
+  const raw = config?.value?.trim() || '08:00';
+  // Normalizar a HH:MM
+  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return '08:00';
+  const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
+  const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function getNowHHMM(): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/**
  * Registrar una llegada de estudiante
  */
 export async function createArrivalRecord(
@@ -55,6 +78,13 @@ export async function createArrivalRecord(
     if (registeredBy) {
       insertData.registrado_por = registeredBy;
     }
+
+    // Calcular estado en base a hora_limite_llegada de configuracion_sistema
+    const [limitHHMM, nowHHMM] = await Promise.all([
+      getArrivalLimitTime(),
+      Promise.resolve(getNowHHMM()),
+    ]);
+    insertData.estado = nowHHMM <= limitHHMM ? 'A tiempo' : 'Tarde';
 
     const { data, error } = await supabase
       .from('registros_llegada')
