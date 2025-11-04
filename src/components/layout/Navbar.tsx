@@ -10,7 +10,8 @@ import {
   Menu,
   User,
   Shield,
-  Settings
+  Settings,
+  Clock
 } from 'lucide-react';
 import { useState } from 'react';
 import { authService } from '@/lib/services';
@@ -39,6 +40,7 @@ export const Navbar = () => {
       { path: '/register', label: 'Registrar', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
       { path: '/incidents', label: 'Incidencias', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
       { path: '/students', label: 'Estudiantes', icon: Users, roles: ['Supervisor', 'Director', 'Admin'] },
+      { path: '/arrival-control', label: 'Llegadas', icon: Clock, roles: ['Supervisor', 'Director', 'Admin'] },
       { path: '/faults', label: 'Catálogo', icon: BookOpen, roles: ['Director', 'Admin'] },
       { path: '/reports', label: 'Reportes', icon: BarChart3, roles: ['Director', 'Admin'] },
       { path: '/audit', label: 'Auditoría', icon: Shield, roles: ['Admin'] },

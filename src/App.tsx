@@ -16,6 +16,7 @@ import { Reports } from "./pages/Reports";
 import { TutorScanner } from "./pages/TutorScanner";
 import { AuditLogs } from "./pages/AuditLogs";
 import { SystemConfig } from "./pages/SystemConfig";
+import { ArrivalControl } from "./pages/ArrivalControl";
 import NotFound from "./pages/NotFound";
 import { authService } from "./lib/services";
 
@@ -145,6 +146,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole={['Admin']}>
                 <Layout><SystemConfig /></Layout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/arrival-control" 
+            element={
+              <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
+                <Layout><ArrivalControl /></Layout>
               </ProtectedRoute>
             } 
           />
