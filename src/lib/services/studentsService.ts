@@ -34,7 +34,7 @@ export const studentsService = {
         grade: data.grado,
         section: data.seccion,
         barcode: data.codigo_barras,
-        photo: data.foto_perfil,
+        profilePhoto: data.foto_perfil,
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
         faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
         active: data.activo,
@@ -69,7 +69,7 @@ export const studentsService = {
         grade: est.grado,
         section: est.seccion,
         barcode: est.codigo_barras,
-        photo: est.foto_perfil,
+        profilePhoto: est.foto_perfil,
         active: est.activo,
       }));
 
@@ -149,7 +149,7 @@ export const studentsService = {
           grade: est.grado,
           section: est.seccion,
           barcode: est.codigo_barras,
-          photo: est.foto_perfil,
+          profilePhoto: est.foto_perfil,
           active: est.activo,
           reincidenceLevel: nivelData.nivel_actual as any,
           faultsLast60Days: nivelData.total_faltas_60_dias,
@@ -191,7 +191,7 @@ export const studentsService = {
         grade: data.grado,
         section: data.seccion,
         barcode: data.codigo_barras,
-        photo: data.foto_perfil,
+        profilePhoto: data.foto_perfil,
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
         faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
         active: data.activo,
@@ -231,7 +231,7 @@ export const studentsService = {
         grade: data.grado,
         section: data.seccion,
         barcode: data.codigo_barras,
-        photo: data.foto_perfil,
+        profilePhoto: data.foto_perfil,
         active: data.activo,
       };
 

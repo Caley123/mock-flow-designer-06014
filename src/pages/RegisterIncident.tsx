@@ -26,6 +26,8 @@ export const RegisterIncident = () => {
   const [faults, setFaults] = useState<FaultType[]>([]);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
 
   // Cargar faltas al montar el componente
   useEffect(() => {
@@ -97,6 +99,42 @@ export const RegisterIncident = () => {
     setSearchResults([]);
   };
 
+  const handleEvidenceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    
+    if (evidenceFiles.length + files.length > 3) {
+      toast.error('Máximo 3 fotos permitidas');
+      return;
+    }
+
+    const validFiles = files.filter(file => {
+      if (!file.type.match(/^image\/(jpeg|png)$/)) {
+        toast.error(`${file.name}: Solo se permiten archivos JPG o PNG`);
+        return false;
+      }
+      if (file.size > 5242880) {
+        toast.error(`${file.name}: El archivo no puede superar los 5MB`);
+        return false;
+      }
+      return true;
+    });
+
+    setEvidenceFiles(prev => [...prev, ...validFiles]);
+
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEvidencePreviews(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeEvidence = (index: number) => {
+    setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
+    setEvidencePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSave = async () => {
     if (!selectedStudent || !selectedFault) {
       toast.error('Por favor complete todos los campos requeridos');
@@ -112,6 +150,7 @@ export const RegisterIncident = () => {
     setLoading(true);
 
     try {
+      // 1. Crear la incidencia
       const { incident, error } = await incidentsService.create({
         id_estudiante: selectedStudent.id,
         id_falta: parseInt(selectedFault),
@@ -119,15 +158,35 @@ export const RegisterIncident = () => {
         observaciones: observations.trim() || null,
       });
 
-      if (error) {
-        toast.error(error);
+      if (error || !incident) {
+        toast.error(error || 'Error al registrar incidencia');
         setLoading(false);
         return;
       }
 
-      toast.success('Incidencia registrada correctamente', {
-        description: `ID: ${incident?.id}`,
-      });
+      // 2. Subir evidencias fotográficas si existen
+      if (evidenceFiles.length > 0) {
+        const uploadPromises = evidenceFiles.map(file =>
+          evidenceService.upload(incident.id, file, currentUser.id)
+        );
+        
+        const results = await Promise.all(uploadPromises);
+        const errors = results.filter(r => r.error);
+        
+        if (errors.length > 0) {
+          toast.warning('Incidencia registrada pero algunas fotos no se subieron', {
+            description: `${errors.length} de ${evidenceFiles.length} fotos fallaron`,
+          });
+        } else {
+          toast.success('Incidencia y evidencias registradas correctamente', {
+            description: `ID: ${incident.id} - ${evidenceFiles.length} foto(s) subida(s)`,
+          });
+        }
+      } else {
+        toast.success('Incidencia registrada correctamente', {
+          description: `ID: ${incident.id}`,
+        });
+      }
 
       // Reset form
       setSelectedStudent(null);
@@ -136,6 +195,8 @@ export const RegisterIncident = () => {
       setShowReincidenceAlert(false);
       setSearchInput('');
       setSearchResults([]);
+      setEvidenceFiles([]);
+      setEvidencePreviews([]);
     } catch (error: any) {
       toast.error('Error al registrar incidencia');
       console.error(error);
@@ -359,11 +420,47 @@ export const RegisterIncident = () => {
 
               <div className="space-y-2">
                 <Label>Evidencia Fotográfica (Opcional)</Label>
-                <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    Haga clic o arrastre hasta 3 fotos (JPG/PNG, máx. 5MB)
-                  </p>
+                <div className="space-y-4">
+                  <label className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer block">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png"
+                      onChange={handleEvidenceChange}
+                      className="hidden"
+                      disabled={loading || evidenceFiles.length >= 3}
+                    />
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Haga clic para seleccionar hasta 3 fotos (JPG/PNG, máx. 5MB)
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {evidenceFiles.length} de 3 fotos seleccionadas
+                    </p>
+                  </label>
+
+                  {evidencePreviews.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4">
+                      {evidencePreviews.map((preview, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={preview}
+                            alt={`Evidencia ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border"
+                          />
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => removeEvidence(index)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

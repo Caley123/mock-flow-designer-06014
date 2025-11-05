@@ -275,7 +275,7 @@ export const incidentsService = {
         grade: estudiante.grado,
         section: estudiante.seccion,
         barcode: estudiante.codigo_barras,
-        photo: estudiante.foto_perfil,
+        profilePhoto: estudiante.foto_perfil,
         active: estudiante.activo,
       } : undefined,
       faultTypeId: data.id_falta,

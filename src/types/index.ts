@@ -112,7 +112,7 @@ export interface Student {
   grade: string;
   section: string;
   barcode: string;
-  photo?: string | null;
+  profilePhoto?: string | null;
   reincidenceLevel?: ReincidenceLevel;
   faultsLast60Days?: number;
   active: boolean;

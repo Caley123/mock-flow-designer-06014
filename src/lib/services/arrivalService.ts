@@ -22,7 +22,7 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
       grade: record.estudiante.grado,
       section: record.estudiante.seccion,
       barcode: record.estudiante.codigo_barras,
-      photo: record.estudiante.foto_perfil,
+      profilePhoto: record.estudiante.foto_perfil,
       active: record.estudiante.activo,
     } : undefined,
     date: record.fecha,
