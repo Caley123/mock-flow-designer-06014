@@ -8,101 +8,103 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* Paleta Institucional - Vino Tinto y Dorado */
+    --background: 0 0% 100%;           /* Blanco puro */
+    --foreground: 210 10% 10%;         /* Gris oscuro/Negro para texto */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 100%;                 /* Tarjetas blancas */
+    --card-foreground: 210 10% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 210 10% 10%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 345 75% 30%;            /* Vino Tinto - Color institucional principal */
+    --primary-foreground: 0 0% 100%;   /* Blanco sobre vino tinto */
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 345 75% 30%;          /* Mismo vino tinto para consistencia */
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 210 10% 60%;              /* Gris medio */
+    --muted-foreground: 210 10% 25%;   /* Gris oscuro */
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 42 70% 48%;              /* Dorado/Ocre - Acento institucional */
+    --accent-foreground: 210 10% 10%;  /* Negro sobre dorado */
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 80% 50%;          /* Rojo fuerte para errores */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 60%;
+    --border: 210 15% 90%;             /* Borde claro */
+    --input: 210 15% 90%;
+    --ring: 345 75% 30%;               /* Ring en vino tinto */
 
-    --success: 142 76% 36%;
+    --success: 160 75% 42%;            /* Verde esmeralda */
     --success-foreground: 0 0% 100%;
 
-    --warning: 45 93% 47%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 38 95% 55%;             /* Naranja/Amarillo */
+    --warning-foreground: 210 10% 10%;
 
-    --danger: 0 84% 60%;
+    --danger: 0 80% 50%;               /* Rojo fuerte */
     --danger-foreground: 0 0% 100%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 15%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 47% 15%;
-    --sidebar-ring: 217 91% 60%;
+    /* Sidebar en vino tinto institucional */
+    --sidebar-background: 345 75% 30%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 42 70% 48%;     /* Dorado para acentos */
+    --sidebar-primary-foreground: 210 10% 10%;
+    --sidebar-accent: 345 80% 20%;     /* Vino tinto más oscuro */
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 345 70% 40%;
+    --sidebar-ring: 42 70% 48%;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+    --background: 210 10% 10%;         /* Gris oscuro */
+    --foreground: 0 0% 100%;           /* Blanco */
 
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
+    --card: 210 10% 15%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222 47% 13%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 210 10% 15%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 217 91% 60%;
+    --primary: 345 70% 45%;            /* Vino tinto más claro en dark mode */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 33% 18%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 345 70% 45%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 210 10% 25%;
+    --muted-foreground: 210 10% 60%;
 
-    --accent: 217 33% 18%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 42 75% 60%;              /* Dorado más claro en dark mode */
+    --accent-foreground: 210 10% 10%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 217 91% 60%;
+    --border: 210 10% 25%;
+    --input: 210 10% 25%;
+    --ring: 345 70% 45%;
 
-    --success: 142 76% 36%;
+    --success: 160 70% 50%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 45 93% 47%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 38 90% 60%;
+    --warning-foreground: 210 10% 10%;
 
-    --danger: 0 84% 60%;
+    --danger: 0 75% 55%;
     --danger-foreground: 0 0% 100%;
 
-    --sidebar-background: 222 47% 9%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 15%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 15%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-background: 345 80% 20%;  /* Vino tinto oscuro */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 42 75% 60%;      /* Dorado */
+    --sidebar-primary-foreground: 210 10% 10%;
+    --sidebar-accent: 345 75% 30%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 345 70% 30%;
+    --sidebar-ring: 42 75% 60%;
   }
 }
 
