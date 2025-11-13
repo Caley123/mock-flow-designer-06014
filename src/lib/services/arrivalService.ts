@@ -57,9 +57,10 @@ async function getArrivalLimitTime(): Promise<string> {
 }
 
 function getNowHHMM(): string {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
+  // Usar la hora actual en la zona horaria de Lima
+  const now = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
+  const [time] = now.split(' ')[1].split(':');
+  const [hh, mm] = time.split(':');
   return `${hh}:${mm}`;
 }
 
@@ -71,8 +72,31 @@ export async function createArrivalRecord(
   registeredBy?: number
 ): Promise<{ record: ArrivalRecord | null; error: string | null }> {
   try {
+    // Obtener la fecha y hora actual en la zona horaria de Lima
+    const now = new Date();
+    
+    // Formatear la fecha de manera directa usando toISOString y ajustando la zona horaria
+    const year = now.toLocaleString('es-PE', { timeZone: 'America/Lima', year: 'numeric' });
+    const month = now.toLocaleString('es-PE', { timeZone: 'America/Lima', month: '2-digit' });
+    const day = now.toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit' });
+    const hours = now.toLocaleString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', hour12: false });
+    const minutes = now.toLocaleString('es-PE', { timeZone: 'America/Lima', minute: '2-digit' });
+    
+    // Asegurarse de que los valores de un solo dígito tengan un 0 al inicio
+    const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const formattedTime = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+    
+    console.log('Fecha y hora procesadas:', {
+      formattedDate,
+      formattedTime,
+      timeZone: 'America/Lima'
+    });
+
     const insertData: any = {
       id_estudiante: studentId,
+      fecha: formattedDate,
+      hora_llegada: formattedTime,
+      fecha_creacion: new Date().toISOString() // Guardar en UTC
     };
 
     if (registeredBy) {
@@ -80,11 +104,8 @@ export async function createArrivalRecord(
     }
 
     // Calcular estado en base a hora_limite_llegada de configuracion_sistema
-    const [limitHHMM, nowHHMM] = await Promise.all([
-      getArrivalLimitTime(),
-      Promise.resolve(getNowHHMM()),
-    ]);
-    insertData.estado = nowHHMM <= limitHHMM ? 'A tiempo' : 'Tarde';
+    const limitHHMM = await getArrivalLimitTime();
+    insertData.estado = formattedTime <= limitHHMM ? 'A tiempo' : 'Tarde';
 
     const { data, error } = await supabase
       .from('registros_llegada')
@@ -129,7 +150,31 @@ export async function getArrivals(filters?: {
       .order('hora_llegada', { ascending: false });
 
     if (filters?.date) {
-      query = query.eq('fecha', filters.date);
+      try {
+        // Intentar parsear la fecha en diferentes formatos
+        let formattedDate = filters.date;
+        
+        // Si la fecha viene en formato YYYY-MM-DD, usarla directamente
+        if (/^\d{4}-\d{2}-\d{2}$/.test(filters.date)) {
+          formattedDate = filters.date;
+        } 
+        // Si viene en formato DD/MM/YYYY, convertir a YYYY-MM-DD
+        else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(filters.date)) {
+          const [dd, mm, yyyy] = filters.date.split('/');
+          formattedDate = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+        }
+        // Si es una fecha ISO (de toISOString())
+        else if (filters.date.includes('T')) {
+          formattedDate = filters.date.split('T')[0];
+        }
+        
+        console.log('Filtrando por fecha:', { original: filters.date, formatted: formattedDate });
+        query = query.eq('fecha', formattedDate);
+      } catch (error) {
+        console.error('Error al formatear la fecha:', error);
+        // Si hay un error, intentar usar la fecha directamente
+        query = query.eq('fecha', filters.date);
+      }
     }
 
     if (filters?.studentId) {
@@ -151,7 +196,14 @@ export async function getArrivals(filters?: {
       return { records: [], error: error.message };
     }
 
-    const records = (data || []).map(mapArrivalRecord);
+    // Mapear los datos y formatear la hora correctamente
+    const records = (data || []).map(record => {
+      // Si la hora viene en formato HH:MM:SS, tomar solo HH:MM
+      if (record.hora_llegada && record.hora_llegada.length > 5) {
+        record.hora_llegada = record.hora_llegada.substring(0, 5);
+      }
+      return mapArrivalRecord(record);
+    });
     return { records, error: null };
   } catch (error: any) {
     console.error('Error al obtener registros de llegada:', error);
@@ -171,7 +223,15 @@ export async function getTodayStats(): Promise<{
   error: string | null;
 }> {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Obtener la fecha actual en la zona horaria de Lima
+    const todayLima = new Date().toLocaleString('es-PE', { 
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const [dd, mm, yyyy] = todayLima.split('/');
+    const today = `${yyyy}-${mm}-${dd}`;
 
     const { data, error } = await supabase
       .from('registros_llegada')

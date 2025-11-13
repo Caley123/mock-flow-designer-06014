@@ -15,7 +15,13 @@ export const evidenceService = {
   ): Promise<{ evidence: IncidentEvidence | null; error: string | null }> {
     try {
       // Validar tipo de archivo
-      if (!file.type.match(/^image\/(jpeg|png)$/)) {
+      // Normalizar MIME: algunos navegadores pueden reportar 'image/jpg'
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const normalizedMime = file.type === 'image/jpg' || (ext === 'jpg' && file.type === '')
+        ? 'image/jpeg'
+        : file.type;
+
+      if (!normalizedMime.match(/^image\/(jpeg|png)$/)) {
         return { evidence: null, error: 'Solo se permiten archivos JPG o PNG' };
       }
 
@@ -27,7 +33,7 @@ export const evidenceService = {
       // Generar nombre único
       const fileExt = file.name.split('.').pop();
       const fileName = `${incidentId}_${Date.now()}.${fileExt}`;
-      const filePath = `evidencias/${incidentId}/${fileName}`;
+      const filePath = `${incidentId}/${fileName}`;
 
       // Subir archivo a Supabase Storage
       // Nota: Necesitas crear un bucket llamado 'evidencias' en Supabase
@@ -36,6 +42,7 @@ export const evidenceService = {
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
+          contentType: normalizedMime,
         });
 
       if (uploadError) {
@@ -48,36 +55,39 @@ export const evidenceService = {
         .from('evidencias')
         .getPublicUrl(filePath);
 
-      // Registrar en base de datos
-      const { data, error } = await supabase
-        .from('evidencias_fotograficas')
-        .insert({
-          id_incidencia: incidentId,
-          ruta_archivo: filePath,
-          nombre_original: file.name,
-          nombre_archivo: fileName,
-          tamano_bytes: file.size,
-          tipo_mime: file.type,
-          id_usuario_subida: userId,
-          fecha_subida: new Date().toISOString(),
-          marca_agua_aplicada: false,
-        })
-        .select()
-        .single();
+      // Registrar en base de datos usando función almacenada
+      const { data, error } = await supabase.rpc('insertar_evidencia', {
+        p_id_incidencia: incidentId,
+        p_ruta_archivo: filePath,
+        p_nombre_original: file.name,
+        p_nombre_archivo: fileName,
+        p_tamano_bytes: file.size,
+        p_tipo_mime: normalizedMime,
+        p_id_usuario_subida: userId
+      });
 
-      if (error) {
+      console.log('Respuesta de insertar_evidencia:', { data, error });
+
+      if (error || !data) {
         // Si falla, eliminar el archivo subido
         await supabase.storage.from('evidencias').remove([filePath]);
-        return { evidence: null, error: error.message };
+        return { 
+          evidence: null, 
+          error: error?.message || 'No se pudo registrar la evidencia en la base de datos' 
+        };
       }
 
+      // La función devuelve un JSON con los datos insertados
+      const evidenceData = data;
+      console.log('Datos de evidencia procesados:', evidenceData);
+
       const evidence: IncidentEvidence = {
-        id: data.id_evidencia,
-        incidentId: data.id_incidencia,
-        filename: data.nombre_original,
+        id: evidenceData.id_evidencia,
+        incidentId: evidenceData.id_incidencia,
+        filename: evidenceData.nombre_original,
         url: urlData.publicUrl,
-        uploadedBy: data.id_usuario_subida,
-        uploadedAt: data.fecha_subida,
+        uploadedBy: evidenceData.id_usuario_subida,
+        uploadedAt: evidenceData.fecha_subida,
       };
 
       return { evidence, error: null };

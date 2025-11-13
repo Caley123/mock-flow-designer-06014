@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Reemplazado Select de Radix por <select> nativo para evitar errores de reconciliación
 import { Student, FaultType } from '@/types';
 import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2 } from 'lucide-react';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
@@ -205,13 +205,15 @@ export const RegisterIncident = () => {
     }
   };
 
-  const groupedFaults = faults.reduce((acc, fault) => {
-    if (!acc[fault.category]) {
-      acc[fault.category] = [];
-    }
-    acc[fault.category].push(fault);
-    return acc;
-  }, {} as Record<string, FaultType[]>);
+  const groupedFaults = useMemo(() => {
+    return faults.reduce((acc, fault) => {
+      if (!acc[fault.category]) {
+        acc[fault.category] = [];
+      }
+      acc[fault.category].push(fault);
+      return acc;
+    }, {} as Record<string, FaultType[]>);
+  }, [faults]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -368,25 +370,25 @@ export const RegisterIncident = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Seleccionar falta</Label>
-                <Select value={selectedFault} onValueChange={setSelectedFault} disabled={loading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione el tipo de falta..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(groupedFaults).map(([category, faultList]) => (
-                      <div key={category}>
-                        <div className="px-2 py-1.5 text-sm font-semibold text-muted-foreground">
-                          {category}
-                        </div>
-                        {faultList.map((fault) => (
-                          <SelectItem key={fault.id} value={fault.id.toString()}>
-                            {fault.name}
-                          </SelectItem>
-                        ))}
-                      </div>
+                {faults.length > 0 ? (
+                  <select
+                    className="w-full h-10 rounded-md border bg-background px-3 py-2 text-sm"
+                    value={selectedFault}
+                    onChange={(e) => setSelectedFault(e.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="" disabled>
+                      Seleccione el tipo de falta...
+                    </option>
+                    {faults.map((fault) => (
+                      <option key={fault.id} value={fault.id.toString()}>
+                        {fault.name}
+                      </option>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </select>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Cargando faltas…</div>
+                )}
               </div>
 
               {selectedFault && (() => {

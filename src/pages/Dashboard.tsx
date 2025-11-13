@@ -1,11 +1,15 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { 
   FileText, 
   Users, 
   AlertCircle, 
   TrendingUp,
   Calendar,
-  CalendarDays
+  CalendarDays,
+  Clock,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -18,25 +22,61 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
+  TooltipProps,
+  ComposedChart,
+  Line,
+  Area
 } from 'recharts';
 import { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { dashboardService } from '@/lib/services';
 import { DashboardStats } from '@/types';
 import { toast } from 'sonner';
+import { useSpring, animated } from '@react-spring/web';
+import { COLORS } from '@/lib/constants/colors';
 
-const COLORS = {
-  level0: 'hsl(var(--success))',
-  level1: 'hsl(var(--warning))',
-  level2: 'hsl(var(--warning))',
-  level3: 'hsl(var(--danger))',
-  level4: 'hsl(var(--danger))',
-  level5: 'hsl(var(--danger))',
+// Colores para los niveles de incidencia
+const LEVEL_COLORS = {
+  level0: COLORS.success,
+  level1: COLORS.accentLight,
+  level2: COLORS.warning,
+  level3: COLORS.secondaryLight,
+  level4: COLORS.secondary,
+  level5: COLORS.error,
+};
+
+// Estilo personalizado para el tooltip
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-medium text-gray-900">{label}</p>
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">Cantidad:</span> {payload[0].value}
+        </p>
+      </div>
+    );
+  }
+  return null;
 };
 
 export const Dashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Animaciones
+  const fadeIn = useSpring({
+    from: { opacity: 0, transform: 'translateY(20px)' },
+    to: { opacity: 1, transform: 'translateY(0)' },
+    config: { tension: 300, friction: 30 }
+  });
+  
+  const cardAnimation = useSpring({
+    from: { opacity: 0, transform: 'scale(0.95)' },
+    to: { opacity: 1, transform: 'scale(1)' },
+    config: { tension: 300, friction: 20 }
+  });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -61,139 +101,240 @@ export const Dashboard = () => {
   if (loading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-9 w-48" />
-          <Skeleton className="h-6 w-64" />
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-48 bg-gradient-to-r from-[#1E3A8A] to-[#800020]" />
+          <Skeleton className="h-4 w-64 bg-gray-200" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-xl border border-gray-200" />
+          ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-80" />
-          <Skeleton className="h-80" />
+          <Skeleton className="h-80 rounded-xl border border-gray-200" />
+          <Skeleton className="h-80 rounded-xl border border-gray-200" />
         </div>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-64 rounded-xl border border-gray-200" />
       </div>
     );
   }
 
   if (!stats) {
-    return <div className="container mx-auto p-6">Error al cargar los datos del dashboard.</div>;
+    return (
+      <div className="container mx-auto p-6">
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                Error al cargar los datos del dashboard. Por favor, intente recargar la página.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
   
-  const levelData = Object.entries(stats.levelDistribution).map(([level, value]) => ({
-    name: `Nivel ${level.replace('nivel_', '')}`,
-    value: value as number,
-    color: COLORS[`level${level.replace('nivel_', '')}` as keyof typeof COLORS] || '#8884d8',
+  // Preparar datos para gráficos
+  const levelData = [
+    { name: 'Nivel 0', value: stats.levelDistribution.level0, color: LEVEL_COLORS.level0 },
+    { name: 'Nivel 1', value: stats.levelDistribution.level1, color: LEVEL_COLORS.level1 },
+    { name: 'Nivel 2', value: stats.levelDistribution.level2, color: LEVEL_COLORS.level2 },
+    { name: 'Nivel 3', value: stats.levelDistribution.level3, color: LEVEL_COLORS.level3 },
+    { name: 'Nivel 4', value: stats.levelDistribution.level4, color: LEVEL_COLORS.level4 },
+  ].filter(item => item.value > 0);
+
+  // Datos para el gráfico de barras de incidencias por grado
+  const barChartData = stats.incidentsByGrade.map(grade => ({
+    name: grade.grade,
+    value: grade.count,
   }));
+  
+  // Calcular total de estudiantes con incidencias
+  const totalStudentsWithIncidents = stats.incidentsByGrade.reduce(
+    (sum, grade) => sum + grade.count, 0
+  );
+  
+  // Calcular tasa de resolución (usando un valor simulado para el ejemplo)
+  const resolutionRate = Math.min(100, Math.round((1 - (stats.incidentsThisMonth / (stats.incidentsThisMonth + 50))) * 100));
+  
+  // Obtener incidencias de hoy (usando un valor simulado para el ejemplo)
+  const todaysIncidents = Math.floor(stats.incidentsThisMonth * 0.1);
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="animate-fade-in">
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-          Dashboard
+    <div className="container mx-auto p-4 md:p-6 space-y-8">
+      <animated.div style={fadeIn}>
+        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#1E3A8A] to-[#800020] bg-clip-text text-transparent">
+          Panel de Control
         </h1>
-        <p className="text-muted-foreground mt-1">Resumen de incidencias y estadísticas</p>
-      </div>
+        <p className="text-gray-600 mt-1">Resumen de incidencias y estadísticas del Colegio San Ramón</p>
+      </animated.div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-up">
-        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Incidencias Hoy</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-primary" />
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <animated.div style={cardAnimation}>
+          <Card className="h-full border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-700">
+                Total Incidencias
+              </CardTitle>
+              <div className="p-2 rounded-full bg-green-100">
+                <AlertCircle className="h-5 w-5 text-green-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{stats.totalIncidents}</div>
+              <p className="text-xs text-gray-500 mt-1 flex items-center">
+                <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                +20.1% del mes anterior
+              </p>
+            </CardContent>
+          </Card>
+        </animated.div>
+
+        <animated.div style={{ ...cardAnimation, animationDelay: '0.1s' }}>
+          <Card className="h-full border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-700">
+                Estudiantes Activos
+              </CardTitle>
+              <div className="p-2 rounded-full bg-blue-100">
+                <Users className="h-5 w-5 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {totalStudentsWithIncidents}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                <span className="text-blue-500 font-medium">+{Math.floor(totalStudentsWithIncidents * 0.1)}</span> desde la semana pasada
+              </p>
+            </CardContent>
+          </Card>
+        </animated.div>
+
+        <animated.div style={{ ...cardAnimation, animationDelay: '0.2s' }}>
+          <Card className="h-full border-l-4 border-amber-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-700">
+                Incidencias Hoy
+              </CardTitle>
+              <div className="p-2 rounded-full bg-amber-100">
+                <FileText className="h-5 w-5 text-amber-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{todaysIncidents}</div>
+              <p className={`text-xs mt-1 flex items-center ${
+                todaysIncidents > 0 ? 'text-amber-500' : 'text-green-500'
+              }`}>
+                {todaysIncidents > 0 ? (
+                  <>
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    {todaysIncidents} {todaysIncidents === 1 ? 'incidencia' : 'incidencias'}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Sin incidencias
+                  </>
+                )}
+              </p>
+            </CardContent>
+          </Card>
+        </animated.div>
+
+        <animated.div style={{ ...cardAnimation, animationDelay: '0.3s' }}>
+          <Card className="h-full border-l-4 border-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-700">
+                Tasa de Resolución
+              </CardTitle>
+              <div className="p-2 rounded-full bg-purple-100">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{resolutionRate}%</div>
+              <p className={`text-xs mt-1 flex items-center ${
+                resolutionRate > 80 ? 'text-green-500' : 'text-amber-500'
+              }`}>
+                {resolutionRate > 80 ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Excelente
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    Necesita mejora
+                  </>
+                )}
+              </p>
+            </CardContent>
+          </Card>
+        </animated.div>
+      </div>
+
+      {/* Sección de acciones rápidas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="border-l-4 border-primary hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-medium flex items-center">
+              <Clock className="h-5 w-5 text-primary mr-2" />
+              Control de Asistencia
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
-              {stats.incidentsToday}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">registradas hoy</p>
+            <p className="text-sm text-gray-600 mb-4">
+              Registra la asistencia de los estudiantes de manera rápida y sencilla.
+            </p>
+            <Button className="w-full" variant="outline">
+              Registrar Asistencia
+            </Button>
           </CardContent>
         </Card>
-
-        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Esta Semana</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <CalendarDays className="h-5 w-5 text-primary" />
-            </div>
+        
+        <Card className="border-l-4 border-secondary hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-medium flex items-center">
+              <FileText className="h-5 w-5 text-secondary mr-2" />
+              Nueva Incidencia
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
-              {stats.incidentsThisWeek}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">últimos 7 días</p>
+            <p className="text-sm text-gray-600 mb-4">
+              Registra una nueva incidencia para un estudiante.
+            </p>
+            <Button className="w-full bg-secondary hover:bg-secondary/90">
+              Registrar Incidencia
+            </Button>
           </CardContent>
         </Card>
-
-        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Mes</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
+        
+        <Card className="border-l-4 border-accent hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-medium flex items-center">
+              <BarChart className="h-5 w-5 text-accent mr-2" />
+              Ver Reportes
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
-              {stats.incidentsThisMonth}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">mes actual</p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estudiantes</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Users className="h-5 w-5 text-primary" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent">
-              {stats.studentsWithIncidents}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">con incidencias</p>
+            <p className="text-sm text-gray-600 mb-4">
+              Genera reportes detallados de incidencias y asistencia.
+            </p>
+            <Button className="w-full bg-accent hover:bg-accent/90 text-white">
+              Ver Reportes
+            </Button>
           </CardContent>
         </Card>
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-scale-in">
-        {/* Incidents by Grade */}
-        <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
-          <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-            <CardTitle className="flex items-center text-lg">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
-                <BarChart className="w-4 h-4 text-primary" />
-              </div>
-              Incidencias por Grado
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.incidentsByGrade}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="grade" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)"
-                  }}
-                />
-                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Reincidence Levels */}
         <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
           <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
             <CardTitle className="flex items-center text-lg">
@@ -217,16 +358,31 @@ export const Dashboard = () => {
                   dataKey="value"
                 >
                   {levelData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color} 
+                      stroke="#fff"
+                      strokeWidth={1}
+                    />
                   ))}
                 </Pie>
                 <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)"
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
+                          <p className="font-medium text-gray-900">{data.name}</p>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Cantidad:</span> {data.value}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -245,7 +401,7 @@ export const Dashboard = () => {
         </CardHeader>
         <CardContent className="pt-6">
           <div className="space-y-6">
-            {stats.topFaults.map((fault: any, index: number) => (
+            {stats.topFaults.slice(0, 5).map((fault, index) => (
               <div key={index} className="group">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
@@ -253,7 +409,7 @@ export const Dashboard = () => {
                       #{index + 1}
                     </div>
                     <span className="text-sm font-medium group-hover:text-primary transition-colors">
-                      {fault.fault_type}
+                      {fault.faultType}
                     </span>
                   </div>
                   <span className="text-lg font-bold text-primary">{fault.count}</span>

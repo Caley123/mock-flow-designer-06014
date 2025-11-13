@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSpring, animated } from '@react-spring/web';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Scan, Clock, AlertCircle, CheckCircle, LogOut } from 'lucide-react';
+import { Barcode, Clock, AlertCircle, CheckCircle, LogOut, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { studentsService, faultsService, incidentsService, authService, arrivalService } from '@/lib/services';
 import { Student, FaultType } from '@/types';
@@ -36,6 +37,8 @@ export const TutorScanner = () => {
   const [selectedFault, setSelectedFault] = useState<string>('');
   const [observations, setObservations] = useState('');
   const [registering, setRegistering] = useState(false);
+  const [showStudentProfile, setShowStudentProfile] = useState(false);
+  const [arrivalRecord, setArrivalRecord] = useState<any>(null);
 
   const user = authService.getCurrentUser();
 
@@ -64,6 +67,7 @@ export const TutorScanner = () => {
 
     setScanning(true);
     setStudent(null);
+    setShowStudentProfile(false);
 
     try {
       const { student: foundStudent, error } = await studentsService.getByBarcode(barcode);
@@ -75,8 +79,6 @@ export const TutorScanner = () => {
         return;
       }
 
-      setStudent(foundStudent);
-      
       // Registrar hora de llegada en la base de datos
       const currentUser = authService.getCurrentUser();
       const { record, error: arrivalError } = await arrivalService.createArrivalRecord(
@@ -92,27 +94,16 @@ export const TutorScanner = () => {
         return;
       }
 
-      // Mostrar mensaje de éxito con el estado calculado
-      const statusColor = record?.status === 'A tiempo' ? 'text-green-600' : 'text-orange-600';
-      const statusBg = record?.status === 'A tiempo' ? 'bg-green-50' : 'bg-orange-50';
+      // Actualizar el estado con el estudiante y su registro de llegada
+      setStudent(foundStudent);
+      setArrivalRecord(record);
+      setShowStudentProfile(true);
       
-      toast.success(
-        <div>
-          <p className="font-bold">{foundStudent.fullName}</p>
-          <p className="text-sm">Hora de llegada: {record?.arrivalTime}</p>
-          <p className={`text-sm font-semibold ${statusColor}`}>
-            Estado: {record?.status}
-          </p>
-          <p className="text-sm text-muted-foreground">{foundStudent.grade} - {foundStudent.section}</p>
-        </div>,
-        { duration: 5000, className: statusBg }
-      );
-
-      // Limpiar el código de barras después de 3 segundos
-      setTimeout(() => {
-        setBarcode('');
-        setStudent(null);
-      }, 3000);
+      // Enfocar automáticamente el campo de código de barras para el siguiente escaneo
+      const barcodeInput = document.getElementById('barcode-input') as HTMLInputElement;
+      if (barcodeInput) {
+        barcodeInput.focus();
+      }
 
     } catch (error: any) {
       console.error('Error al escanear:', error);
@@ -170,92 +161,259 @@ export const TutorScanner = () => {
     }
   };
 
+  // Cerrar el perfil del estudiante
+  const closeStudentProfile = () => {
+    setShowStudentProfile(false);
+    setStudent(null);
+    setBarcode('');
+  };
+
+  // Efecto para limpiar el código de barras cuando se cierra el perfil
+  useEffect(() => {
+    if (!showStudentProfile) {
+      setBarcode('');
+    }
+  }, [showStudentProfile]);
+
+  // Animaciones con react-spring
+  const cardAnimation = useSpring({
+    opacity: showStudentProfile ? 1 : 0,
+    transform: showStudentProfile ? 'translateY(0)' : 'translateY(20px)',
+    config: { tension: 300, friction: 30 }
+  });
+
+  const buttonHover = useSpring({
+    scale: 1,
+    from: { scale: 0.98 },
+    config: { tension: 300, friction: 10 }
+  });
+
+  // Paleta de colores del Colegio San Ramón
+  const colors = {
+    guinda: '#800020',
+    azulMarino: '#1E3A8A',
+    dorado: '#D4AF37',
+    blanco: '#FFFFFF',
+    grisClaro: '#F3F4F6',
+    guindaClaro: '#A00030',
+    naranja: '#F59E0B',
+    naranjaClaro: '#FEF3C7'
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 to-background">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-sidebar border-b border-sidebar-border">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-sidebar-foreground">Control de Asistencia</h1>
-            <p className="text-sm text-muted-foreground">{user?.fullName} - {user?.role}</p>
+      <div className="bg-[#1E3A8A] shadow-md">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="bg-white p-2 rounded-lg shadow-sm">
+              <Barcode className="w-6 h-6 text-[#800020]" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">Control de Asistencia</h1>
+              <p className="text-sm text-blue-100">Colegio San Ramón</p>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-sidebar-foreground hover:bg-sidebar-accent"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Salir
-          </Button>
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-white">{user?.fullName}</span>
+            <Button
+              size="sm"
+              onClick={handleLogout}
+              className="bg-[#800020] hover:bg-[#A00030] text-white hover:text-white border border-[#D4AF37] hover:border-[#D4AF37] transition-colors duration-200"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Salir
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
         {/* Scanner Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Scan className="w-6 h-6" />
-              Escanear Carnet
+        <Card className="mb-6 border-2 border-[#1E3A8A] shadow-lg overflow-hidden">
+          <CardHeader className="bg-[#1E3A8A] text-white p-4">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Barcode className="w-6 h-6 text-[#D4AF37]" />
+              Escanear Código de Barras
             </CardTitle>
-            <CardDescription>
-              Escanee o ingrese el código de barras del estudiante
+            <CardDescription className="text-blue-100">
+              Escanee el código de barras del estudiante para registrar su asistencia
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <form onSubmit={handleScan} className="space-y-4">
-              <div className="relative">
+              <div className="space-y-2">
+                <Label htmlFor="barcode-input">Código de Barras</Label>
                 <Input
+                  id="barcode-input"
                   type="text"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Código de barras del estudiante"
-                  className="text-lg h-14 pr-12"
+                  placeholder="Escanee o ingrese el código de barras"
+                  autoComplete="off"
                   autoFocus
                   disabled={scanning}
+                  className="text-lg font-mono tracking-wider"
                 />
-                <Scan className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-muted-foreground" />
               </div>
-              <Button
-                type="submit"
-                className="w-full h-12 text-lg"
-                disabled={scanning || !barcode.trim()}
-              >
-                {scanning ? 'Procesando...' : 'Registrar Llegada'}
-              </Button>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setBarcode('');
+                    setStudent(null);
+                    setShowStudentProfile(false);
+                  }}
+                  disabled={scanning}
+                >
+                  Limpiar
+                </Button>
+                <animated.div style={buttonHover}>
+                  <Button 
+                    type="submit" 
+                    disabled={!barcode.trim() || scanning}
+                    className={`gap-2 transition-all duration-200 ${
+                      scanning 
+                        ? 'bg-[#1E3A8A]' 
+                        : 'bg-[#800020] hover:bg-[#A00030] hover:shadow-md'
+                    } text-white border border-[#D4AF37] hover:border-[#D4AF37]`}
+                  >
+                    {scanning ? (
+                      <>
+                        <Clock className="w-4 h-4 animate-spin text-[#D4AF37]" />
+                        <span>Procesando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Barcode className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Registrar</span>
+                      </>
+                    )}
+                  </Button>
+                </animated.div>
+              </div>
             </form>
-
-            {student && (
-              <div className="mt-6 p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400 mt-1" />
-                  <div className="flex-1">
-                    <p className="font-bold text-lg">{student.fullName}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline">{student.grade} - {student.section}</Badge>
-                      <Badge variant="outline">
-                        <Clock className="w-3 h-3 mr-1" />
-                        {new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
+        {/* Perfil del Estudiante */}
+        {showStudentProfile && student && (
+          <animated.div style={cardAnimation}>
+            <Card className="relative mb-6 border-2 border-[#800020] shadow-lg overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#800020] to-[#1E3A8A]"></div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-3 right-3 h-8 w-8 rounded-full text-gray-500 hover:bg-gray-100"
+                onClick={() => setShowStudentProfile(false)}
+              >
+                <X className="h-5 w-5" />
+                <span className="sr-only">Cerrar</span>
+              </Button>
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    {student.profilePhoto ? (
+                      <img
+                        src={student.profilePhoto}
+                        alt={student.fullName}
+                        className="w-16 h-16 rounded-full object-cover border-2 border-primary"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary">
+                        <User className="w-8 h-8 text-primary" />
+                      </div>
+                    )}
+                    <Badge 
+                      variant={arrivalRecord?.status === 'A tiempo' ? 'default' : 'secondary'}
+                      className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 whitespace-nowrap"
+                    >
+                      {arrivalRecord?.status || 'Pendiente'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <CardTitle className="text-2xl font-bold text-[#1E3A8A]">
+                      {student.fullName}
+                    </CardTitle>
+                    <CardDescription className="text-base text-gray-600 mt-1">
+                      {student.grade}° {student.section}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2 pb-6">
+                <div className="grid gap-6">
+                  <div className="flex items-start gap-6">
+                    <div className="h-20 w-20 rounded-full border-2 border-[#D4AF37] p-0.5">
+                      {student.profilePhoto ? (
+                        <img
+                          src={student.profilePhoto}
+                          alt={student.fullName}
+                          className="h-full w-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full rounded-full bg-gradient-to-br from-[#1E3A8A] to-[#800020] flex items-center justify-center">
+                          <User className="h-8 w-8 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1">
+                      <div className="bg-[#F3F4F6] p-4 rounded-lg">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm font-medium text-gray-500">Código</p>
+                            <p className="font-mono text-sm">{student.barcode || '--'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-500">Hora de llegada</p>
+                            <p className="font-medium">{arrivalRecord?.arrivalTime || '--:--'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <animated.div 
+                      style={{
+                        transform: buttonHover.scale.to(scale => `scale(${scale})`),
+                        display: 'inline-block'
+                      }}
+                      onMouseEnter={() => buttonHover.scale.start(1.05)}
+                      onMouseLeave={() => buttonHover.scale.start(1)}
+                    >
+                      <Button
+                        onClick={() => setShowIncidentDialog(true)}
+                        className="gap-2 bg-[#800020] hover:bg-[#A00030] text-white border border-[#D4AF37] hover:border-[#D4AF37] transition-all duration-200 shadow-sm"
+                      >
+                      <AlertCircle className="h-4 w-4 text-[#D4AF37]" />
+                      Registrar Incidencia
+                      </Button>
+                    </animated.div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </animated.div>
+        )}
+
         {/* Register Fault Button */}
-        {student && (
-          <Card className="border-orange-200 dark:border-orange-800">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
-                <AlertCircle className="w-6 h-6" />
+        <animated.div style={{
+          opacity: showStudentProfile ? 1 : 0,
+          transform: showStudentProfile ? 'translateY(0)' : 'translateY(10px)',
+          transition: 'all 0.3s ease-out'
+        }}>
+          {student && showStudentProfile && (
+            <Card className="border-2 border-[#F59E0B] bg-[#FEF3C7] mt-4 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-orange-800">
+                <AlertCircle className="w-6 h-6 text-orange-600" />
                 ¿Detectó alguna falta?
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-orange-700">
                 Si el estudiante presenta alguna falta, puede registrarla aquí
               </CardDescription>
             </CardHeader>
@@ -268,8 +426,9 @@ export const TutorScanner = () => {
                 Registrar Incidencia
               </Button>
             </CardContent>
-          </Card>
-        )}
+            </Card>
+          )}
+        </animated.div>
 
         {/* Instructions */}
         <Card>

@@ -1,8 +1,15 @@
 import type { Config } from "tailwindcss";
+import { COLORS } from "./src/lib/constants/colors";
+import animate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
   prefix: "",
   theme: {
     container: {
@@ -14,60 +21,103 @@ export default {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // Colores base
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: COLORS.primary,
+          light: COLORS.primaryLight,
+          dark: COLORS.primaryDark,
+          foreground: COLORS.textOnPrimary,
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: COLORS.secondary,
+          light: COLORS.secondaryLight,
+          dark: COLORS.secondaryDark,
+          foreground: COLORS.textOnSecondary,
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: COLORS.accent,
+          light: COLORS.accentLight,
+          dark: COLORS.accentDark,
+          foreground: COLORS.textOnAccent,
         },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
+        
+        // Estados y utilidades
         success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
+          DEFAULT: COLORS.success,
+          foreground: COLORS.white,
         },
         warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
+          DEFAULT: COLORS.warning,
+          foreground: COLORS.textPrimary,
+        },
+        error: {
+          DEFAULT: COLORS.error,
+          foreground: COLORS.white,
+        },
+        info: {
+          DEFAULT: COLORS.info,
+          foreground: COLORS.white,
+        },
+        
+        // Capas y fondos
+        background: COLORS.background,
+        foreground: COLORS.textPrimary,
+        card: {
+          DEFAULT: COLORS.paper,
+          foreground: COLORS.textPrimary,
+        },
+        
+        // Componentes
+        input: {
+          DEFAULT: COLORS.white,
+          border: COLORS.borderMedium,
+          ring: COLORS.primary,
+          foreground: COLORS.textPrimary,
+        },
+        
+        // Barra lateral
+        sidebar: {
+          DEFAULT: COLORS.primary,
+          foreground: COLORS.textOnPrimary,
+          primary: COLORS.primary,
+          'primary-foreground': COLORS.textOnPrimary,
+          accent: COLORS.accent,
+          'accent-foreground': COLORS.textOnAccent,
+          border: 'rgba(255, 255, 255, 0.1)',
+          ring: 'rgba(255, 255, 255, 0.2)',
+        },
+        
+        // Bordes y divisiones
+        border: COLORS.borderLight,
+        ring: COLORS.primary,
+        
+        // Estados interactivos
+        hover: {
+          primary: COLORS.primaryDark,
+          secondary: COLORS.secondaryDark,
+          accent: COLORS.accentLight,
+        },
+        
+        // Textos
+        muted: {
+          DEFAULT: COLORS.textTertiary,
+          foreground: COLORS.textSecondary,
+        },
+        
+        // Superficies
+        popover: {
+          DEFAULT: COLORS.white,
+          foreground: COLORS.textPrimary,
+        },
+        
+        // Alias para compatibilidad
+        destructive: {
+          DEFAULT: COLORS.error,
+          foreground: COLORS.white,
         },
         danger: {
-          DEFAULT: "hsl(var(--danger))",
-          foreground: "hsl(var(--danger-foreground))",
-        },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
+          DEFAULT: COLORS.error,
+          foreground: COLORS.white,
         },
       },
       borderRadius: {
@@ -143,5 +193,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [animate],
 } satisfies Config;

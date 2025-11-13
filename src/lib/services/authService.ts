@@ -16,7 +16,7 @@ export const authService = {
         .select('*')
         .eq('username', username)
         .eq('activo', true)
-        .single();
+        .maybeSingle();
 
       if (usuarioError || !usuarioData) {
         return { user: null, error: 'Usuario o contraseña incorrectos' };

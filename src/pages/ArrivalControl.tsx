@@ -37,16 +37,33 @@ export const ArrivalControl = () => {
 
   const loadArrivals = async () => {
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
-    const { records: arrivals, error } = await arrivalService.getArrivals({ date: today });
+    try {
+      // Obtener la fecha actual en la zona horaria de Lima
+      const nowLima = new Date().toLocaleString('es-PE', { 
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const [dd, mm, yyyy] = nowLima.split('/');
+      const today = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+      
+      console.log('Cargando llegadas para la fecha:', today);
+      const { records: arrivals, error } = await arrivalService.getArrivals({ date: today });
 
-    if (error) {
-      toast.error('Error al cargar llegadas');
-      console.error(error);
-    } else {
-      setRecords(arrivals);
+      if (error) {
+        toast.error('Error al cargar llegadas');
+        console.error('Error en getArrivals:', error);
+      } else {
+        console.log('Llegadas cargadas:', arrivals);
+        setRecords(arrivals);
+      }
+    } catch (error) {
+      console.error('Error en loadArrivals:', error);
+      toast.error('Error al procesar las llegadas');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadStats = async () => {
