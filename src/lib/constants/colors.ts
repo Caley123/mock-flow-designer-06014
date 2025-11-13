@@ -1,62 +1,66 @@
 export const COLORS = {
-  // Colores principales
-  primary: '#1E3A8A',    // Azul marino
-  secondary: '#800020',  // Guinda
-  accent: '#D4AF37',     // Dorado
+  // Colores principales - Paleta Institucional
+  primary: 'hsl(345, 75%, 30%)',      // Vino Tinto/Borgoña - Color de marca principal
+  secondary: 'hsl(345, 75%, 30%)',    // Mismo vino tinto para consistencia
+  accent: 'hsl(42, 70%, 48%)',        // Dorado/Ocre - Acento institucional
   
-  // Variantes
-  primaryLight: '#3B82F6',
-  primaryDark: '#1E40AF',
-  secondaryLight: '#A00030',
-  secondaryDark: '#600015',
-  accentLight: '#FCD34D',
-  accentDark: '#B7791F',
+  // Variantes del primario (Vino Tinto)
+  primaryLight: 'hsl(345, 70%, 45%)',
+  primaryDark: 'hsl(345, 80%, 20%)',
+  secondaryLight: 'hsl(345, 70%, 45%)',
+  secondaryDark: 'hsl(345, 80%, 20%)',
   
-  // Neutrales
-  white: '#FFFFFF',
-  lightGray: '#F3F4F6',
-  mediumGray: '#9CA3AF',
-  darkGray: '#4B5563',
-  black: '#111827',
+  // Variantes del acento (Dorado)
+  accentLight: 'hsl(42, 75%, 60%)',
+  accentDark: 'hsl(42, 65%, 35%)',
   
-  // Estados
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  // Neutrales - Blanco y grises
+  white: 'hsl(0, 0%, 100%)',
+  lightGray: 'hsl(210, 15%, 96%)',
+  mediumGray: 'hsl(210, 10%, 60%)',
+  darkGray: 'hsl(210, 10%, 25%)',
+  black: 'hsl(210, 10%, 10%)',
+  cream: 'hsl(40, 20%, 97%)',         // Fondo suave alternativo
   
-  // Fondo
-  background: '#F9FAFB',
-  paper: '#FFFFFF',
+  // Estados del sistema
+  success: 'hsl(160, 75%, 42%)',      // Verde esmeralda
+  warning: 'hsl(38, 95%, 55%)',       // Naranja/Amarillo
+  error: 'hsl(0, 80%, 50%)',          // Rojo fuerte
+  info: 'hsl(210, 80%, 55%)',         // Azul informativo
+  
+  // Fondos
+  background: 'hsl(0, 0%, 100%)',     // Blanco puro
+  backgroundAlt: 'hsl(40, 20%, 97%)', // Crema suave para alternar
+  paper: 'hsl(0, 0%, 100%)',
   
   // Texto
-  textPrimary: '#111827',
-  textSecondary: '#4B5563',
-  textTertiary: '#9CA3AF',
-  textOnPrimary: '#FFFFFF',
-  textOnSecondary: '#FFFFFF',
-  textOnAccent: '#1F2937',
+  textPrimary: 'hsl(210, 10%, 10%)',      // Gris oscuro/Negro
+  textSecondary: 'hsl(210, 10%, 25%)',    // Gris oscuro
+  textTertiary: 'hsl(210, 10%, 60%)',     // Gris medio
+  textOnPrimary: 'hsl(0, 0%, 100%)',      // Blanco sobre vino tinto
+  textOnSecondary: 'hsl(0, 0%, 100%)',    // Blanco sobre vino tinto
+  textOnAccent: 'hsl(210, 10%, 10%)',     // Negro sobre dorado
   
   // Bordes
-  borderLight: '#E5E7EB',
-  borderMedium: '#D1D5DB',
-  borderDark: '#9CA3AF',
+  borderLight: 'hsl(210, 15%, 90%)',
+  borderMedium: 'hsl(210, 15%, 80%)',
+  borderDark: 'hsl(210, 10%, 60%)',
   
-  // Sombra
+  // Sombras
   shadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
   shadowMd: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
   shadowLg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
   
-  // Gradientes
-  gradientPrimary: 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%)',
-  gradientSecondary: 'linear-gradient(135deg, #800020 0%, #A00030 100%)',
-  gradientAccent: 'linear-gradient(135deg, #D4AF37 0%, #FCD34D 100%)',
+  // Gradientes institucionales
+  gradientPrimary: 'linear-gradient(135deg, hsl(345, 75%, 30%) 0%, hsl(345, 80%, 20%) 100%)',
+  gradientSecondary: 'linear-gradient(135deg, hsl(345, 75%, 30%) 0%, hsl(345, 70%, 45%) 100%)',
+  gradientAccent: 'linear-gradient(135deg, hsl(42, 65%, 35%) 0%, hsl(42, 75%, 60%) 100%)',
   
   // Transparencias
   overlay: 'rgba(0, 0, 0, 0.5)',
-  primary10: 'rgba(30, 58, 138, 0.1)',
-  secondary10: 'rgba(128, 0, 32, 0.1)',
-  accent10: 'rgba(212, 175, 55, 0.1)'
+  primary10: 'hsla(345, 75%, 30%, 0.1)',
+  secondary10: 'hsla(345, 75%, 30%, 0.1)',
+  accent10: 'hsla(42, 70%, 48%, 0.1)'
 } as const;
 
 export const THEME = {
