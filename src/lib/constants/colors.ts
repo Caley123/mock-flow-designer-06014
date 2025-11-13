@@ -14,13 +14,19 @@ export const COLORS = {
   accentLight: 'hsl(42, 75%, 60%)',
   accentDark: 'hsl(42, 65%, 35%)',
   
-  // Neutrales - Blanco y grises
+  // Neutrales - Blanco y grises (expandidos para más variedad)
   white: 'hsl(0, 0%, 100%)',
+  offWhite: 'hsl(40, 25%, 98%)',      // Casi blanco con toque cálido
   lightGray: 'hsl(210, 15%, 96%)',
   mediumGray: 'hsl(210, 10%, 60%)',
   darkGray: 'hsl(210, 10%, 25%)',
   black: 'hsl(210, 10%, 10%)',
-  cream: 'hsl(40, 20%, 97%)',         // Fondo suave alternativo
+  
+  // Tonos cálidos complementarios (inspirados en la imagen)
+  cream: 'hsl(40, 30%, 95%)',         // Crema suave para fondos
+  beige: 'hsl(38, 25%, 88%)',         // Beige cálido
+  warmGray: 'hsl(35, 15%, 85%)',      // Gris cálido
+  sand: 'hsl(40, 35%, 92%)',          // Arena clara
   
   // Estados del sistema
   success: 'hsl(160, 75%, 42%)',      // Verde esmeralda
@@ -28,10 +34,12 @@ export const COLORS = {
   error: 'hsl(0, 80%, 50%)',          // Rojo fuerte
   info: 'hsl(210, 80%, 55%)',         // Azul informativo
   
-  // Fondos
+  // Fondos (expandidos para más variedad visual)
   background: 'hsl(0, 0%, 100%)',     // Blanco puro
-  backgroundAlt: 'hsl(40, 20%, 97%)', // Crema suave para alternar
+  backgroundAlt: 'hsl(40, 30%, 95%)', // Crema para alternar
+  backgroundWarm: 'hsl(38, 25%, 88%)', // Fondo beige cálido
   paper: 'hsl(0, 0%, 100%)',
+  paperAlt: 'hsl(40, 25%, 98%)',      // Papel con toque cálido
   
   // Texto
   textPrimary: 'hsl(210, 10%, 10%)',      // Gris oscuro/Negro
@@ -51,10 +59,12 @@ export const COLORS = {
   shadowMd: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
   shadowLg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
   
-  // Gradientes institucionales
+  // Gradientes institucionales (expandidos)
   gradientPrimary: 'linear-gradient(135deg, hsl(345, 75%, 30%) 0%, hsl(345, 80%, 20%) 100%)',
   gradientSecondary: 'linear-gradient(135deg, hsl(345, 75%, 30%) 0%, hsl(345, 70%, 45%) 100%)',
   gradientAccent: 'linear-gradient(135deg, hsl(42, 65%, 35%) 0%, hsl(42, 75%, 60%) 100%)',
+  gradientWarm: 'linear-gradient(135deg, hsl(40, 30%, 95%) 0%, hsl(38, 25%, 88%) 100%)',
+  gradientHero: 'linear-gradient(135deg, hsl(345, 75%, 30%) 0%, hsl(345, 80%, 20%) 50%, hsl(42, 65%, 35%) 100%)',
   
   // Transparencias
   overlay: 'rgba(0, 0, 0, 0.5)',

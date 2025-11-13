@@ -167,28 +167,30 @@ export const Dashboard = () => {
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-8">
       <animated.div style={fadeIn}>
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#1E3A8A] to-[#800020] bg-clip-text text-transparent">
-          Panel de Control
-        </h1>
-        <p className="text-gray-600 mt-1">Resumen de incidencias y estadísticas del Colegio San Ramón</p>
+        <div className="bg-gradient-to-r from-cream via-sand to-beige p-6 rounded-2xl border-2 border-accent/30 shadow-xl">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary via-primary-dark to-accent bg-clip-text text-transparent drop-shadow-sm">
+            Panel de Control
+          </h1>
+          <p className="text-foreground/70 mt-2 font-medium text-lg">Resumen de incidencias y estadísticas del Colegio San Ramón • 60 años</p>
+        </div>
       </animated.div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <animated.div style={cardAnimation}>
-          <Card className="h-full border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">
+          <Card className="h-full border-l-4 border-success shadow-xl hover:shadow-2xl transition-all hover:scale-105 bg-gradient-to-br from-white to-cream">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-br from-success/10 via-success/5 to-transparent">
+              <CardTitle className="text-sm font-bold text-foreground">
                 Total Incidencias
               </CardTitle>
-              <div className="p-2 rounded-full bg-green-100">
-                <AlertCircle className="h-5 w-5 text-green-600" />
+              <div className="p-2 rounded-full bg-success/10">
+                <AlertCircle className="h-6 w-6 text-success" />
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{stats.totalIncidents}</div>
-              <p className="text-xs text-gray-500 mt-1 flex items-center">
-                <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+            <CardContent className="pt-3">
+              <div className="text-3xl font-bold text-success">{stats.totalIncidents}</div>
+              <p className="text-xs text-muted mt-1 flex items-center">
+                <TrendingUp className="h-3 w-3 text-success mr-1" />
                 +20.1% del mes anterior
               </p>
             </CardContent>
@@ -196,21 +198,21 @@ export const Dashboard = () => {
         </animated.div>
 
         <animated.div style={{ ...cardAnimation, animationDelay: '0.1s' }}>
-          <Card className="h-full border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">
+          <Card className="h-full border-l-4 border-primary shadow-xl hover:shadow-2xl transition-all hover:scale-105 bg-gradient-to-br from-white to-sand">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+              <CardTitle className="text-sm font-bold text-foreground">
                 Estudiantes Activos
               </CardTitle>
-              <div className="p-2 rounded-full bg-blue-100">
-                <Users className="h-5 w-5 text-blue-600" />
+              <div className="p-2 rounded-full bg-primary/10">
+                <Users className="h-6 w-6 text-primary" />
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
+            <CardContent className="pt-3">
+              <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
                 {totalStudentsWithIncidents}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                <span className="text-blue-500 font-medium">+{Math.floor(totalStudentsWithIncidents * 0.1)}</span> desde la semana pasada
+              <p className="text-xs text-muted mt-1">
+                <span className="text-primary font-medium">+{Math.floor(totalStudentsWithIncidents * 0.1)}</span> desde la semana pasada
               </p>
             </CardContent>
           </Card>
