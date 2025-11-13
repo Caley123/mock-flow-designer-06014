@@ -8,11 +8,14 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Paleta Institucional - Vino Tinto y Dorado */
+    /* Paleta Institucional - Vino Tinto y Dorado (Expandida) */
     --background: 0 0% 100%;           /* Blanco puro */
+    --background-alt: 40 30% 95%;      /* Crema suave para secciones alternas */
+    --background-warm: 38 25% 88%;     /* Beige cálido para destacados */
     --foreground: 210 10% 10%;         /* Gris oscuro/Negro para texto */
 
     --card: 0 0% 100%;                 /* Tarjetas blancas */
+    --card-alt: 40 25% 98%;            /* Tarjetas con toque cálido */
     --card-foreground: 210 10% 10%;
 
     --popover: 0 0% 100%;

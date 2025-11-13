@@ -59,13 +59,24 @@ export default {
           foreground: COLORS.white,
         },
         
-        // Capas y fondos
-        background: COLORS.background,
+        // Capas y fondos (expandidos)
+        background: {
+          DEFAULT: COLORS.background,
+          alt: COLORS.backgroundAlt,
+          warm: COLORS.backgroundWarm,
+        },
         foreground: COLORS.textPrimary,
         card: {
           DEFAULT: COLORS.paper,
+          alt: COLORS.paperAlt,
           foreground: COLORS.textPrimary,
         },
+        
+        // Tonos complementarios
+        cream: COLORS.cream,
+        beige: COLORS.beige,
+        sand: COLORS.sand,
+        'warm-gray': COLORS.warmGray,
         
         // Componentes
         input: {

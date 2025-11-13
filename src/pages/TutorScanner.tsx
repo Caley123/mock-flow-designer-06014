@@ -201,25 +201,31 @@ export const TutorScanner = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gradient-to-br from-cream via-sand to-beige relative overflow-hidden">
+      {/* Elementos decorativos de fondo */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute top-20 left-20 w-96 h-96 bg-primary rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-accent rounded-full blur-3xl"></div>
+      </div>
+      
       {/* Header */}
-      <div className="bg-[#1E3A8A] shadow-md">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-primary via-primary-dark to-primary shadow-2xl border-b-4 border-accent relative z-10">
+        <div className="max-w-4xl mx-auto px-6 py-5 flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="bg-white p-2 rounded-lg shadow-sm">
-              <Barcode className="w-6 h-6 text-[#800020]" />
+            <div className="bg-gradient-to-br from-white to-cream p-3 rounded-xl shadow-xl border-2 border-accent/40">
+              <Barcode className="w-7 h-7 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Control de Asistencia</h1>
-              <p className="text-sm text-blue-100">Colegio San Ramón</p>
+              <h1 className="text-2xl font-bold text-white drop-shadow-lg">Control de Asistencia</h1>
+              <p className="text-sm text-accent-light font-medium">Colegio San Ramón • 60 años</p>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-white">{user?.fullName}</span>
+            <span className="text-sm text-white bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 font-medium">{user?.fullName}</span>
             <Button
               size="sm"
               onClick={handleLogout}
-              className="bg-[#800020] hover:bg-[#A00030] text-white hover:text-white border border-[#D4AF37] hover:border-[#D4AF37] transition-colors duration-200"
+              className="bg-accent hover:bg-accent-dark text-foreground hover:text-white border-2 border-accent-dark hover:border-accent-light transition-all duration-300 font-bold shadow-lg"
             >
               <LogOut className="w-4 h-4 mr-2" />
               Salir
@@ -229,22 +235,29 @@ export const TutorScanner = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="max-w-4xl mx-auto p-6 space-y-6 relative z-10">
         {/* Scanner Card */}
-        <Card className="mb-6 border-2 border-[#1E3A8A] shadow-lg overflow-hidden">
-          <CardHeader className="bg-[#1E3A8A] text-white p-4">
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Barcode className="w-6 h-6 text-[#D4AF37]" />
+        <Card className="mb-6 border-2 border-accent shadow-2xl overflow-hidden bg-white/95 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-br from-primary via-primary-dark to-primary text-white p-6 relative overflow-hidden">
+            {/* Patrón decorativo */}
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-0 right-0 w-24 h-24 border-4 border-accent rounded-full -translate-y-12 translate-x-12"></div>
+            </div>
+            
+            <CardTitle className="flex items-center gap-3 text-white relative">
+              <div className="bg-accent/20 p-2 rounded-full border-2 border-accent/40">
+                <Barcode className="w-6 h-6 text-accent-light" />
+              </div>
               Escanear Código de Barras
             </CardTitle>
-            <CardDescription className="text-blue-100">
+            <CardDescription className="text-accent-light font-medium">
               Escanee el código de barras del estudiante para registrar su asistencia
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleScan} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="barcode-input">Código de Barras</Label>
+          <CardContent className="p-6 bg-gradient-to-b from-white to-cream/20">
+            <form onSubmit={handleScan} className="space-y-5">
+              <div className="space-y-3">
+                <Label htmlFor="barcode-input" className="text-base font-bold text-foreground">Código de Barras</Label>
                 <Input
                   id="barcode-input"
                   type="text"
@@ -254,10 +267,10 @@ export const TutorScanner = () => {
                   autoComplete="off"
                   autoFocus
                   disabled={scanning}
-                  className="text-lg font-mono tracking-wider"
+                  className="text-lg font-mono tracking-wider h-14 border-2 border-warm-gray focus:border-primary focus:ring-4 focus:ring-primary/20 bg-white shadow-sm"
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -267,32 +280,27 @@ export const TutorScanner = () => {
                     setShowStudentProfile(false);
                   }}
                   disabled={scanning}
+                  className="border-2 border-warm-gray hover:bg-warm-gray/50"
                 >
                   Limpiar
                 </Button>
-                <animated.div style={buttonHover}>
-                  <Button 
-                    type="submit" 
-                    disabled={!barcode.trim() || scanning}
-                    className={`gap-2 transition-all duration-200 ${
-                      scanning 
-                        ? 'bg-[#1E3A8A]' 
-                        : 'bg-[#800020] hover:bg-[#A00030] hover:shadow-md'
-                    } text-white border border-[#D4AF37] hover:border-[#D4AF37]`}
-                  >
-                    {scanning ? (
-                      <>
-                        <Clock className="w-4 h-4 animate-spin text-[#D4AF37]" />
-                        <span>Procesando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Barcode className="w-4 h-4 text-[#D4AF37]" />
-                        <span>Registrar</span>
-                      </>
-                    )}
-                  </Button>
-                </animated.div>
+                <Button
+                  type="submit"
+                  disabled={scanning || !barcode}
+                  className="bg-gradient-to-r from-primary via-primary-dark to-primary hover:from-primary-dark hover:to-primary text-white font-bold px-8 shadow-lg hover:shadow-2xl transition-all border-2 border-accent/30"
+                >
+                  {scanning ? (
+                    <>
+                      <Clock className="w-5 h-5 mr-2 animate-spin" />
+                      Escaneando...
+                    </>
+                  ) : (
+                    <>
+                      <Barcode className="w-5 h-5 mr-2" />
+                      Escanear
+                    </>
+                  )}
+                </Button>
               </div>
             </form>
           </CardContent>
@@ -301,18 +309,18 @@ export const TutorScanner = () => {
         {/* Perfil del Estudiante */}
         {showStudentProfile && student && (
           <animated.div style={cardAnimation}>
-            <Card className="relative mb-6 border-2 border-[#800020] shadow-lg overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#800020] to-[#1E3A8A]"></div>
+            <Card className="relative mb-6 border-2 border-primary shadow-2xl overflow-hidden bg-gradient-to-br from-white to-cream/30">
+              <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-primary via-accent to-primary-dark"></div>
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-3 right-3 h-8 w-8 rounded-full text-gray-500 hover:bg-gray-100"
+                className="absolute top-4 right-4 h-10 w-10 rounded-full text-muted hover:bg-warm-gray/50 border-2 border-transparent hover:border-accent"
                 onClick={() => setShowStudentProfile(false)}
               >
-                <X className="h-5 w-5" />
+                <X className="h-6 w-6" />
                 <span className="sr-only">Cerrar</span>
               </Button>
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 pt-6">
                 <div className="flex items-center gap-4">
                   <div className="relative">
                     {student.profilePhoto ? (
