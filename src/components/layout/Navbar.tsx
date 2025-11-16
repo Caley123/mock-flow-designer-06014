@@ -11,11 +11,20 @@ import {
   User,
   Shield,
   Settings,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { useState } from 'react';
 import { authService } from '@/lib/services';
 import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 export const Navbar = () => {
   const location = useLocation();
@@ -29,22 +38,72 @@ export const Navbar = () => {
     navigate('/login');
   };
 
-  const getNavItems = () => {
+  interface NavItem {
+    path: string;
+    label: string;
+    icon: any;
+    roles: string[];
+    subItems?: { path: string; label: string }[];
+  }
+
+  const getNavItems = (): NavItem[] => {
     // Tutores no tienen acceso al navbar (usan su propia interfaz)
     if (user?.role === 'Tutor') {
       return [];
     }
 
-    const allItems = [
-      { path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['Supervisor', 'Director', 'Admin'] },
-      { path: '/register', label: 'Registrar', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
-      { path: '/incidents', label: 'Incidencias', icon: FileText, roles: ['Supervisor', 'Director', 'Admin'] },
-      { path: '/students', label: 'Estudiantes', icon: Users, roles: ['Supervisor', 'Director', 'Admin'] },
-      { path: '/arrival-control', label: 'Llegadas', icon: Clock, roles: ['Supervisor', 'Director', 'Admin'] },
-      { path: '/faults', label: 'Catálogo', icon: BookOpen, roles: ['Director', 'Admin'] },
-      { path: '/reports', label: 'Reportes', icon: BarChart3, roles: ['Director', 'Admin'] },
-      { path: '/audit', label: 'Auditoría', icon: Shield, roles: ['Admin'] },
-      { path: '/system-config', label: 'Configuración', icon: Settings, roles: ['Admin'] },
+    const allItems: NavItem[] = [
+      {
+        path: '/',
+        label: 'Inicio',
+        icon: LayoutDashboard,
+        roles: ['Supervisor', 'Director', 'Admin'],
+      },
+      {
+        path: '/arrival-control',
+        label: 'Asistencia',
+        icon: Clock,
+        roles: ['Supervisor', 'Director', 'Admin'],
+      },
+      {
+        path: '/incidents',
+        label: 'Incidencias',
+        icon: FileText,
+        roles: ['Supervisor', 'Director', 'Admin'],
+        subItems: [
+          { path: '/incidents', label: 'Lista de Incidencias' },
+          { path: '/register', label: 'Registrar Incidencia' },
+        ],
+      },
+      {
+        path: '/students',
+        label: 'Estudiantes',
+        icon: Users,
+        roles: ['Supervisor', 'Director', 'Admin'],
+      },
+      {
+        path: '/faults',
+        label: 'Catálogos',
+        icon: BookOpen,
+        roles: ['Director', 'Admin'],
+        subItems: [{ path: '/faults', label: 'Catálogo de Faltas' }],
+      },
+      {
+        path: '/reports',
+        label: 'Reportes',
+        icon: BarChart3,
+        roles: ['Director', 'Admin'],
+      },
+      {
+        path: '/system-config',
+        label: 'Administración',
+        icon: Settings,
+        roles: ['Admin'],
+        subItems: [
+          { path: '/audit', label: 'Auditoría' },
+          { path: '/system-config', label: 'Configuración' },
+        ],
+      },
     ];
 
     return allItems.filter(item => item.roles.includes(user?.role || ''));
@@ -78,18 +137,67 @@ export const Navbar = () => {
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.path);
+                const hasSubItems = item.subItems && item.subItems.length > 0;
+
+                if (hasSubItems) {
+                  return (
+                    <DropdownMenu key={item.path}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant={active ? 'default' : 'ghost'}
+                          size="sm"
+                          className={cn(
+                            'relative overflow-hidden transition-all duration-300 group',
+                            active 
+                              ? 'shadow-md' 
+                              : 'text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80',
+                            'data-[state=open]:bg-sidebar-accent/80'
+                          )}
+                        >
+                          <Icon className="w-4 h-4 mr-2" />
+                          <span className="relative z-10">{item.label}</span>
+                          <ChevronDown className="ml-1 h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                          {active && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-foreground/50" />
+                          )}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent 
+                        className="w-56 bg-sidebar border-sidebar-border shadow-lg"
+                        align="start"
+                        sideOffset={5}
+                      >
+                        {item.subItems?.map((subItem) => (
+                          <DropdownMenuItem 
+                            key={subItem.path} 
+                            asChild
+                            className={cn(
+                              'cursor-pointer focus:bg-sidebar-accent/80 focus:text-sidebar-foreground',
+                              isActive(subItem.path) && 'bg-sidebar-accent/50'
+                            )}
+                          >
+                            <Link to={subItem.path}>
+                              <ChevronRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                              {subItem.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  );
+                }
+
                 return (
                   <Link key={item.path} to={item.path}>
                     <Button
                       variant={active ? 'default' : 'ghost'}
                       size="sm"
-                      className={`
-                        relative overflow-hidden transition-all duration-300
-                        ${active 
+                      className={cn(
+                        'relative overflow-hidden transition-all duration-300',
+                        active 
                           ? 'shadow-md' 
                           : 'text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80'
-                        }
-                      `}
+                      )}
                     >
                       <Icon className="w-4 h-4 mr-2" />
                       <span className="relative z-10">{item.label}</span>
@@ -137,59 +245,77 @@ export const Navbar = () => {
             </Button>
           </div>
         </div>
+      </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden pb-4 animate-fade-in">
-            <div className="flex flex-col space-y-2 pt-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.path);
+      {mobileMenuOpen && (
+        <div className="md:hidden pb-4 animate-fade-in">
+          <div className="flex flex-col space-y-1 pt-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const hasSubItems = item.subItems && item.subItems.length > 0;
+
+              if (hasSubItems) {
                 return (
-                  <Link key={item.path} to={item.path} onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={active ? 'default' : 'ghost'}
-                      size="sm"
-                      className={`
-                        w-full justify-start transition-all duration-300
-                        ${active 
-                          ? 'shadow-md' 
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/80'
-                        }
-                      `}
-                    >
-                      <Icon className="w-4 h-4 mr-3" />
+                  <div key={item.path} className="space-y-1">
+                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground/80 uppercase tracking-wider flex items-center gap-2">
+                      <Icon className="w-4 h-4" />
                       {item.label}
-                    </Button>
-                  </Link>
+                    </div>
+                    <div className="ml-4 space-y-1 border-l border-sidebar-border/50 pl-2">
+                      {item.subItems?.map((subItem) => (
+                        <Link key={subItem.path} to={subItem.path}>
+                          <Button
+                            variant={isActive(subItem.path) ? 'default' : 'ghost'}
+                            className={`w-full justify-start ${isActive(subItem.path) ? 'bg-sidebar-accent/80' : ''} pl-4`}
+                          >
+                            <ChevronRight className="w-4 h-4 mr-2" />
+                            {subItem.label}
+                          </Button>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
                 );
-              })}
-              
-              {/* Mobile User Section */}
-              <div className="px-3 py-4 mt-2 border-t border-sidebar-border/50 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                    <User className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="text-sm text-sidebar-foreground">
-                    <div className="font-medium">{user?.fullName}</div>
-                    <div className="text-xs text-muted-foreground">{user?.role}</div>
-                  </div>
+              }
+
+              const active = isActive(item.path);
+              return (
+                <Link key={item.path} to={item.path}>
+                  <Button
+                    variant={active ? 'default' : 'ghost'}
+                    className={`w-full justify-start ${active ? 'bg-sidebar-accent/80' : ''}`}
+                  >
+                    <Icon className="w-4 h-4 mr-2" />
+                    {item.label}
+                  </Button>
+                </Link>
+              );
+            })}
+
+            {/* Mobile User Section */}
+            <div className="px-3 py-4 mt-2 border-t border-sidebar-border/50 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <User className="w-5 h-5 text-primary" />
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-300"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="w-4 h-4 mr-3" />
-                  Cerrar Sesión
-                </Button>
+                <div className="text-sm text-sidebar-foreground">
+                  <div className="font-medium">{user?.fullName}</div>
+                  <div className="text-xs text-muted-foreground">{user?.role}</div>
+                </div>
               </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-300"
+                onClick={handleLogout}
+              >
+                <LogOut className="w-4 h-4 mr-3" />
+                Cerrar Sesión
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </nav>
   );
 };

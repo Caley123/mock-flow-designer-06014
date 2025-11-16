@@ -135,17 +135,17 @@ export const Login = () => {
                 disabled={loading}
                 className="w-full bg-gradient-to-r from-primary via-primary-dark to-primary hover:from-primary-dark hover:to-primary text-white font-bold py-4 transition-all duration-300 shadow-lg hover:shadow-2xl hover:scale-[1.02] border-2 border-accent/20"
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Iniciando sesión...
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="mr-2 h-5 w-5" />
-                    Iniciar Sesión
-                  </>
-                )}
+                <span className="flex items-center justify-center">
+                  <Loader2
+                    className={`mr-2 h-5 w-5 animate-spin transition-opacity ${loading ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                  <LogIn
+                    className={`mr-2 h-5 w-5 transition-opacity ${loading ? 'opacity-0' : 'opacity-100'}`}
+                  />
+                  <span className="ml-1">
+                    {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+                  </span>
+                </span>
               </Button>
               
               <div className="pt-4 border-t border-warm-gray/30">

@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Clock, Search, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord } from '@/types';
 import { toast } from 'sonner';
@@ -158,7 +158,10 @@ export const ArrivalControl = () => {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span>Cargando registros de llegada...</span>
+            </div>
           ) : filteredRecords.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No hay registros para mostrar
