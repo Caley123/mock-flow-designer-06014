@@ -33,6 +33,14 @@ export const Reports = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const headerAnimation = useSpring({
+    from: { opacity: 0, transform: 'translateY(-20px)' },
+    to: { opacity: 1, transform: 'translateY(0px)' },
+    config: { tension: 200, friction: 20 }
+  });
+
+  const AnimatedDiv = animated.div;
+
   useEffect(() => {
     loadStats();
   }, []);
@@ -102,14 +110,6 @@ export const Reports = () => {
       </div>
     );
   }
-
-  const headerAnimation = useSpring({
-    from: { opacity: 0, transform: 'translateY(-20px)' },
-    to: { opacity: 1, transform: 'translateY(0px)' },
-    config: { tension: 200, friction: 20 }
-  });
-
-  const AnimatedDiv = animated.div;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cream via-white to-beige/30">
