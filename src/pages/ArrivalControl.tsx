@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { arrivalService } from '@/lib/services';
-import type { ArrivalRecord } from '@/types';
+import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 
 export const ArrivalControl = () => {
@@ -29,6 +29,7 @@ export const ArrivalControl = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'A tiempo' | 'Tarde'>('all');
   const [stats, setStats] = useState<{ total: number; onTime: number; late: number } | null>(null);
+  const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
 
   useEffect(() => {
     loadArrivals();
@@ -74,11 +75,14 @@ export const ArrivalControl = () => {
   };
 
   const filteredRecords = records.filter((record) => {
-    const matchesSearch = record.student?.fullName
+    const studentName = record.student?.fullName ?? '';
+    const matchesSearch = studentName
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || record.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesLevel =
+      levelFilter === 'all' || record.student?.level === levelFilter;
+    return matchesSearch && matchesStatus && matchesLevel;
   });
 
   return (
@@ -125,7 +129,7 @@ export const ArrivalControl = () => {
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-4">
+        <CardContent className="flex flex-col gap-4 md:flex-row">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -135,6 +139,16 @@ export const ArrivalControl = () => {
               className="pl-10"
             />
           </div>
+          <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>
+            <SelectTrigger className="w-full md:w-[200px]">
+              <SelectValue placeholder="Nivel educativo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los niveles</SelectItem>
+              <SelectItem value="Primaria">Primaria</SelectItem>
+              <SelectItem value="Secundaria">Secundaria</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Estado" />
@@ -171,7 +185,7 @@ export const ArrivalControl = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Estudiante</TableHead>
-                  <TableHead>Grado/Sección</TableHead>
+                  <TableHead>Nivel / Grado</TableHead>
                   <TableHead>Hora de Llegada</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Registrado por</TableHead>
@@ -184,7 +198,12 @@ export const ArrivalControl = () => {
                       {record.student?.fullName}
                     </TableCell>
                     <TableCell>
-                      {record.student?.grade} - {record.student?.section}
+                      <div className="flex flex-col text-sm">
+                        <span className="font-semibold">{record.student?.level}</span>
+                        <span className="text-muted-foreground">
+                          {record.student?.grade} - {record.student?.section}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

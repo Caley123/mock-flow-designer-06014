@@ -346,7 +346,7 @@ export const TutorScanner = () => {
                       {student.fullName}
                     </CardTitle>
                     <CardDescription className="text-base text-gray-600 mt-1">
-                      {student.grade}° {student.section}
+                      {student.level} • {student.grade} {student.section}
                     </CardDescription>
                   </div>
                 </div>

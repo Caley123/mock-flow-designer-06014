@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { DashboardStats } from '@/types';
+import { DashboardStats, EducationalLevel } from '@/types';
 
 /**
  * Servicio de dashboard y reportes
@@ -64,20 +64,28 @@ export const dashboardService = {
         .from('incidencias')
         .select(`
           nivel_reincidencia,
-          estudiantes:id_estudiante (grado)
+          estudiantes:id_estudiante (grado, nivel_educativo)
         `)
         .eq('estado', 'Activa');
 
-      const incidentsByGrade: { grade: string; count: number }[] = [];
+      const incidentsByGrade: { level: EducationalLevel; grade: string; label: string; count: number }[] = [];
       if (incidenciasConGrado) {
-        const gradoCounts: Record<string, number> = {};
+        const gradoCounts: Record<string, { level: EducationalLevel; grade: string; count: number }> = {};
         incidenciasConGrado.forEach((inc: any) => {
           const grado = inc.estudiantes?.grado || 'Sin grado';
-          gradoCounts[grado] = (gradoCounts[grado] || 0) + 1;
+          const nivel = (inc.estudiantes?.nivel_educativo || 'Secundaria') as EducationalLevel;
+          const key = `${nivel}-${grado}`;
+          if (!gradoCounts[key]) {
+            gradoCounts[key] = { level: nivel, grade: grado, count: 0 };
+          }
+          gradoCounts[key].count += 1;
         });
 
         incidentsByGrade.push(
-          ...Object.entries(gradoCounts).map(([grade, count]) => ({ grade, count }))
+          ...Object.values(gradoCounts).map((entry) => ({
+            ...entry,
+            label: `${entry.level} • ${entry.grade}`,
+          }))
         );
       }
 

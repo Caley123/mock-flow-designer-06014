@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { Student, EstudianteDB } from '@/types';
+import { Student, EstudianteDB, EducationalLevel } from '@/types';
 
 /**
  * Servicio de estudiantes
@@ -33,6 +33,7 @@ export const studentsService = {
         fullName: data.nombre_completo,
         grade: data.grado,
         section: data.seccion,
+        level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
         profilePhoto: data.foto_perfil,
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
@@ -68,6 +69,7 @@ export const studentsService = {
         fullName: est.nombre_completo,
         grade: est.grado,
         section: est.seccion,
+        level: est.nivel_educativo as EducationalLevel,
         barcode: est.codigo_barras,
         profilePhoto: est.foto_perfil,
         active: est.activo,
@@ -86,6 +88,7 @@ export const studentsService = {
   async getAll(filters?: {
     grade?: string;
     section?: string;
+    level?: EducationalLevel;
     active?: boolean;
     search?: string;
   }): Promise<{ students: Student[]; error: string | null }> {
@@ -100,6 +103,10 @@ export const studentsService = {
 
       if (filters?.section) {
         query = query.eq('seccion', filters.section);
+      }
+
+      if (filters?.level) {
+        query = query.eq('nivel_educativo', filters.level);
       }
 
       if (filters?.active !== undefined) {
@@ -148,6 +155,7 @@ export const studentsService = {
           fullName: est.nombre_completo,
           grade: est.grado,
           section: est.seccion,
+          level: est.nivel_educativo as EducationalLevel,
           barcode: est.codigo_barras,
           profilePhoto: est.foto_perfil,
           active: est.activo,
@@ -190,6 +198,7 @@ export const studentsService = {
         fullName: data.nombre_completo,
         grade: data.grado,
         section: data.seccion,
+        level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
         profilePhoto: data.foto_perfil,
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
@@ -212,6 +221,7 @@ export const studentsService = {
     nombre_completo: string;
     grado: string;
     seccion: string;
+    nivel_educativo: EducationalLevel;
     foto_perfil?: string;
   }): Promise<{ student: Student | null; error: string | null }> {
     try {
@@ -230,6 +240,7 @@ export const studentsService = {
         fullName: data.nombre_completo,
         grade: data.grado,
         section: data.seccion,
+        level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
         profilePhoto: data.foto_perfil,
         active: data.activo,
@@ -251,6 +262,7 @@ export const studentsService = {
       nombre_completo: string;
       grado: string;
       seccion: string;
+      nivel_educativo: EducationalLevel;
       foto_perfil: string;
       activo: boolean;
     }>

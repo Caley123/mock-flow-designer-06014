@@ -1,5 +1,6 @@
 // Tipos que coinciden con el esquema de la base de datos
 export type UserRole = 'Supervisor' | 'Tutor' | 'Director' | 'Admin';
+export type EducationalLevel = 'Primaria' | 'Secundaria';
 
 export type ReincidenceLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -10,6 +11,7 @@ export type FaultSeverity = 'Leve' | 'Grave';
 export type EstadoEvidencia = 'Sin evidencia' | 'Con evidencia';
 
 export type EstadoIncidencia = 'Activa' | 'Anulada' | 'En revisión';
+export type AttendanceStatus = 'A_tiempo' | 'Tarde' | 'Justificada' | 'Injustificada' | 'Sin_registro';
 
 // Tipos de la base de datos (DB)
 export interface UsuarioDB {
@@ -34,6 +36,7 @@ export interface EstudianteDB {
   nombre_completo: string;
   grado: string;
   seccion: string;
+  nivel_educativo: EducationalLevel;
   foto_perfil: string | null;
   activo: boolean;
   fecha_creacion: string;
@@ -111,6 +114,7 @@ export interface Student {
   fullName: string;
   grade: string;
   section: string;
+  level: EducationalLevel;
   barcode: string;
   profilePhoto?: string | null;
   reincidenceLevel?: ReincidenceLevel;
@@ -185,7 +189,9 @@ export interface DashboardStats {
     count: number;
   }>;
   incidentsByGrade: Array<{
+    level: EducationalLevel;
     grade: string;
+    label: string;
     count: number;
   }>;
 }
@@ -230,6 +236,23 @@ export interface ArrivalRecord {
   registeredBy: number | null;
   registeredByUser?: User;
   createdAt: string;
+}
+
+export interface MonthlyAttendanceDay {
+  day: number;
+  status: AttendanceStatus;
+  arrivalTime?: string;
+}
+
+export interface MonthlyAttendanceRow {
+  student: Student;
+  days: MonthlyAttendanceDay[];
+  totals: {
+    onTime: number;
+    late: number;
+    justified: number;
+    unjustified: number;
+  };
 }
 
 export interface AuditLog {

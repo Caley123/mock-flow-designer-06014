@@ -13,6 +13,7 @@ import { IncidentsList } from "./pages/IncidentsList";
 import { StudentsList } from "./pages/StudentsList";
 import { FaultsCatalog } from "./pages/FaultsCatalog";
 import { Reports } from "./pages/Reports";
+import { AttendanceReport } from "./pages/AttendanceReport";
 import { TutorScanner } from "./pages/TutorScanner";
 import { AuditLogs } from "./pages/AuditLogs";
 import { SystemConfig } from "./pages/SystemConfig";
@@ -66,12 +67,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+        <BrowserRouter>
           <Routes>
           <Route 
             path="/login" 
@@ -132,6 +128,14 @@ const App = () => (
                 <Layout><Reports /></Layout>
               </ProtectedRoute>
             } 
+          />
+          <Route
+            path="/attendance-report"
+            element={
+              <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
+                <Layout><AttendanceReport /></Layout>
+              </ProtectedRoute>
+            }
           />
           <Route 
             path="/audit" 

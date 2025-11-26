@@ -148,9 +148,9 @@ export const Dashboard = () => {
   ].filter(item => item.value > 0);
 
   // Datos para el gráfico de barras de incidencias por grado
-  const barChartData = stats.incidentsByGrade.map(grade => ({
-    name: grade.grade,
-    value: grade.count,
+  const barChartData = stats.incidentsByGrade.map(entry => ({
+    name: entry.label,
+    value: entry.count,
   }));
   
   // Calcular total de estudiantes con incidencias

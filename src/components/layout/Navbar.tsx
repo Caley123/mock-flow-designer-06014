@@ -15,7 +15,7 @@ import {
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import {
@@ -31,6 +31,10 @@ export const Navbar = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const user = authService.getCurrentUser();
+  const handleNavigation = useCallback((path: string) => {
+    navigate(path);
+    setMobileMenuOpen(false);
+  }, [navigate, setMobileMenuOpen]);
 
   const handleLogout = async () => {
     await authService.logout();
@@ -92,7 +96,11 @@ export const Navbar = () => {
         path: '/reports',
         label: 'Reportes',
         icon: BarChart3,
-        roles: ['Director', 'Admin'],
+        roles: ['Supervisor', 'Director', 'Admin'],
+        subItems: [
+          { path: '/reports', label: 'Reportes de Incidencias' },
+          { path: '/attendance-report', label: 'Reporte de Asistencias' },
+        ],
       },
       {
         path: '/system-config',
@@ -136,7 +144,7 @@ export const Navbar = () => {
             <div className="flex items-center space-x-1 mr-4">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(item.path);
+                const active = isActive(item.path) || item.subItems?.some(sub => isActive(sub.path));
                 const hasSubItems = item.subItems && item.subItems.length > 0;
 
                 if (hasSubItems) {
@@ -169,17 +177,15 @@ export const Navbar = () => {
                       >
                         {item.subItems?.map((subItem) => (
                           <DropdownMenuItem 
-                            key={subItem.path} 
-                            asChild
+                            key={subItem.path}
+                            onSelect={() => handleNavigation(subItem.path)}
                             className={cn(
                               'cursor-pointer focus:bg-sidebar-accent/80 focus:text-sidebar-foreground',
                               isActive(subItem.path) && 'bg-sidebar-accent/50'
                             )}
                           >
-                            <Link to={subItem.path}>
-                              <ChevronRight className="mr-2 h-4 w-4 text-muted-foreground" />
-                              {subItem.label}
-                            </Link>
+                            <ChevronRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                            {subItem.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -263,32 +269,32 @@ export const Navbar = () => {
                     </div>
                     <div className="ml-4 space-y-1 border-l border-sidebar-border/50 pl-2">
                       {item.subItems?.map((subItem) => (
-                        <Link key={subItem.path} to={subItem.path}>
-                          <Button
-                            variant={isActive(subItem.path) ? 'default' : 'ghost'}
-                            className={`w-full justify-start ${isActive(subItem.path) ? 'bg-sidebar-accent/80' : ''} pl-4`}
-                          >
-                            <ChevronRight className="w-4 h-4 mr-2" />
-                            {subItem.label}
-                          </Button>
-                        </Link>
+                        <Button
+                          key={subItem.path}
+                          variant={isActive(subItem.path) ? 'default' : 'ghost'}
+                          className={`w-full justify-start ${isActive(subItem.path) ? 'bg-sidebar-accent/80' : ''} pl-4`}
+                          onClick={() => handleNavigation(subItem.path)}
+                        >
+                          <ChevronRight className="w-4 h-4 mr-2" />
+                          {subItem.label}
+                        </Button>
                       ))}
                     </div>
                   </div>
                 );
               }
 
-              const active = isActive(item.path);
+              const active = isActive(item.path) || item.subItems?.some(sub => isActive(sub.path));
               return (
-                <Link key={item.path} to={item.path}>
-                  <Button
-                    variant={active ? 'default' : 'ghost'}
-                    className={`w-full justify-start ${active ? 'bg-sidebar-accent/80' : ''}`}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {item.label}
-                  </Button>
-                </Link>
+                <Button
+                  key={item.path}
+                  variant={active ? 'default' : 'ghost'}
+                  className={`w-full justify-start ${active ? 'bg-sidebar-accent/80' : ''}`}
+                  onClick={() => handleNavigation(item.path)}
+                >
+                  <Icon className="w-4 h-4 mr-2" />
+                  {item.label}
+                </Button>
               );
             })}
 

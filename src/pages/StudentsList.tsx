@@ -44,8 +44,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { studentsService } from '@/lib/services';
-import { Student } from '@/types';
+import { Student, EducationalLevel } from '@/types';
 import { supabase } from '@/lib/supabaseClient';
+
+const EDUCATIONAL_LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
 
 const studentFormSchema = z.object({
   codigo_barras: z.string()
@@ -56,12 +58,16 @@ const studentFormSchema = z.object({
     .max(150, 'Máximo 150 caracteres'),
   grado: z.string().min(1, 'El grado es requerido'),
   seccion: z.string().min(1, 'La sección es requerida'),
+  nivel_educativo: z.enum(['Primaria', 'Secundaria'], {
+    required_error: 'El nivel educativo es requerido',
+  }),
 });
 
 type StudentFormValues = z.infer<typeof studentFormSchema>;
 
 export const StudentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [students, setStudents] = useState<Student[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -75,6 +81,7 @@ export const StudentsList = () => {
   // Estados temporales para Select dentro del Dialog
   const [tempGrado, setTempGrado] = useState<string>('');
   const [tempSeccion, setTempSeccion] = useState<string>('');
+  const [tempNivel, setTempNivel] = useState<EducationalLevel | ''>('');
 
   const form = useForm<StudentFormValues>({
     resolver: zodResolver(studentFormSchema),
@@ -82,7 +89,8 @@ export const StudentsList = () => {
       codigo_barras: '',
       nombre_completo: '',
       grado: '',
-      seccion: '',
+    seccion: '',
+    nivel_educativo: 'Secundaria',
     },
   });
 
@@ -94,9 +102,11 @@ export const StudentsList = () => {
         nombre_completo: '',
         grado: '',
         seccion: '',
+        nivel_educativo: 'Secundaria',
       });
       setTempGrado('');
       setTempSeccion('');
+      setTempNivel('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
@@ -105,10 +115,17 @@ export const StudentsList = () => {
     loadStudents();
   }, []);
 
+  useEffect(() => {
+    loadStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levelFilter]);
+
   const loadStudents = async () => {
     setLoading(true);
+    const levelValue = levelFilter === 'all' ? undefined : levelFilter;
     const { students: studentsList, error } = await studentsService.getAll({
       search: searchTerm || undefined,
+      level: levelValue,
       active: true,
     });
     if (error) {
@@ -205,6 +222,7 @@ export const StudentsList = () => {
       nombre_completo: data.nombre_completo,
       grado: data.grado,
       seccion: data.seccion,
+      nivel_educativo: data.nivel_educativo as EducationalLevel,
       foto_perfil: photoUrl,
     });
     
@@ -216,6 +234,7 @@ export const StudentsList = () => {
       form.reset();
       setPhotoFile(null);
       setPhotoPreview('');
+      setTempNivel('');
       loadStudents();
     }
     setLoading(false);
@@ -233,9 +252,11 @@ export const StudentsList = () => {
       nombre_completo: student.fullName,
       grado: student.grade,
       seccion: student.section,
+      nivel_educativo: student.level,
     });
     setTempGrado(student.grade);
     setTempSeccion(student.section);
+    setTempNivel(student.level);
     setPhotoPreview(student.profilePhoto || '');
     setEditDialogOpen(true);
   };
@@ -257,6 +278,7 @@ export const StudentsList = () => {
       nombre_completo: data.nombre_completo,
       grado: data.grado,
       seccion: data.seccion,
+      nivel_educativo: data.nivel_educativo as EducationalLevel,
       foto_perfil: photoUrl,
     });
     
@@ -269,6 +291,7 @@ export const StudentsList = () => {
       form.reset();
       setPhotoFile(null);
       setPhotoPreview('');
+      setTempNivel('');
       loadStudents();
     }
     setLoading(false);
@@ -345,6 +368,36 @@ export const StudentsList = () => {
                         <FormControl>
                           <Input placeholder="Juan Pérez García" {...field} />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="nivel_educativo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nivel Educativo</FormLabel>
+                        <Select
+                          value={tempNivel || undefined}
+                          onValueChange={(value) => {
+                            setTempNivel(value as EducationalLevel);
+                            field.onChange(value);
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar nivel" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {EDUCATIONAL_LEVELS.map((level) => (
+                              <SelectItem key={level} value={level}>
+                                {level}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -486,8 +539,10 @@ export const StudentsList = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-muted-foreground">Grado</Label>
-                      <p className="text-lg font-semibold">{selectedStudent.grade}</p>
+                      <Label className="text-muted-foreground">Nivel / Grado</Label>
+                      <p className="text-lg font-semibold">
+                        {selectedStudent.level} • {selectedStudent.grade}
+                      </p>
                     </div>
                     <div>
                       <Label className="text-muted-foreground">Sección</Label>
@@ -553,6 +608,36 @@ export const StudentsList = () => {
                         <FormControl>
                           <Input placeholder="Juan Pérez García" {...field} />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="nivel_educativo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nivel Educativo</FormLabel>
+                        <Select
+                          value={tempNivel || undefined}
+                          onValueChange={(value) => {
+                            setTempNivel(value as EducationalLevel);
+                            field.onChange(value);
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar nivel" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {EDUCATIONAL_LEVELS.map((level) => (
+                              <SelectItem key={level} value={level}>
+                                {level}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -674,17 +759,39 @@ export const StudentsList = () => {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search & Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por nombre, código de barras o grado..."
-              className="pl-10"
-            />
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por nombre, código de barras o grado..."
+                className="pl-10"
+              />
+            </div>
+            <Select
+              value={levelFilter}
+              onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
+            >
+              <SelectTrigger className="md:w-[200px]">
+                <SelectValue placeholder="Nivel educativo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los niveles</SelectItem>
+                {EDUCATIONAL_LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={loadStudents} className="md:w-auto">
+              <Download className="w-4 h-4 mr-2" />
+              Actualizar
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -739,10 +846,10 @@ export const StudentsList = () => {
                 <TableRow>
                   <TableHead>Código</TableHead>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Grado</TableHead>
+                  <TableHead>Nivel / Grado</TableHead>
                   <TableHead>Sección</TableHead>
                   <TableHead>Faltas (60d)</TableHead>
-                  <TableHead>Nivel</TableHead>
+                  <TableHead>Nivel Reincidencia</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -755,12 +862,27 @@ export const StudentsList = () => {
                       <div className="flex items-center gap-3">
                         <Avatar>
                           <AvatarImage src={student.profilePhoto} alt={student.fullName} />
-                          <AvatarFallback>{student.fullName.charAt(0)}</AvatarFallback>
+                          <AvatarFallback>
+                            {student.fullName
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </AvatarFallback>
                         </Avatar>
-                        <p className="font-medium">{student.fullName}</p>
+                        <div>
+                          <p className="font-medium">{student.fullName}</p>
+                          <p className="text-xs text-muted-foreground">{student.barcode}</p>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell>{student.grade}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col text-sm">
+                        <span className="font-semibold">{student.level}</span>
+                        <span className="text-muted-foreground">{student.grade}</span>
+                      </div>
+                    </TableCell>
                     <TableCell>{student.section}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{student.faultsLast60Days || 0}</Badge>

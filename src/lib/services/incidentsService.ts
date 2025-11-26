@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { Incident, IncidenciaDB, EstadoIncidencia } from '@/types';
+import { Incident, EstadoIncidencia, EducationalLevel } from '@/types';
 
 /**
  * Servicio de incidencias
@@ -57,6 +57,7 @@ export const incidentsService = {
             nombre_completo,
             grado,
             seccion,
+            nivel_educativo,
             foto_perfil,
             activo
           ),
@@ -104,6 +105,7 @@ export const incidentsService = {
     fechaHasta?: string;
     grado?: string;
     seccion?: string;
+    nivelEducativo?: EducationalLevel;
     nivelReincidencia?: number;
     limit?: number;
     offset?: number;
@@ -119,6 +121,7 @@ export const incidentsService = {
             nombre_completo,
             grado,
             seccion,
+            nivel_educativo,
             foto_perfil,
             activo
           ),
@@ -185,6 +188,10 @@ export const incidentsService = {
 
       if (filters?.seccion) {
         incidents = incidents.filter(inc => inc.student?.section === filters.seccion);
+      }
+
+      if (filters?.nivelEducativo) {
+        incidents = incidents.filter(inc => inc.student?.level === filters.nivelEducativo);
       }
 
       return { incidents, total: count || 0, error: null };
@@ -274,6 +281,7 @@ export const incidentsService = {
         fullName: estudiante.nombre_completo,
         grade: estudiante.grado,
         section: estudiante.seccion,
+        level: (estudiante.nivel_educativo || 'Secundaria') as EducationalLevel,
         barcode: estudiante.codigo_barras,
         profilePhoto: estudiante.foto_perfil,
         active: estudiante.activo,

@@ -10,6 +10,13 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Search, Filter, Eye, Edit, FileX, Camera, Download, Loader2 } from 'lucide-react';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
@@ -18,7 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { incidentsService } from '@/lib/services';
-import { Incident } from '@/types';
+import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 
 export const IncidentsList = () => {
@@ -26,6 +33,7 @@ export const IncidentsList = () => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
+  const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
 
   useEffect(() => {
     loadIncidents();
@@ -33,7 +41,9 @@ export const IncidentsList = () => {
 
   const loadIncidents = async () => {
     setLoading(true);
-    const { incidents: incidentsList, error } = await incidentsService.getAll();
+    const { incidents: incidentsList, error } = await incidentsService.getAll({
+      nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+    });
     if (error) {
       toast.error('Error al cargar incidencias');
       setIncidents([]);
@@ -48,6 +58,11 @@ export const IncidentsList = () => {
     incident.student?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     incident.faultType?.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  useEffect(() => {
+    loadIncidents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levelFilter]);
 
   if (loading) {
     return (
@@ -72,7 +87,7 @@ export const IncidentsList = () => {
       {/* Search and Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
@@ -82,7 +97,20 @@ export const IncidentsList = () => {
                 className="pl-10"
               />
             </div>
-            <Button variant="outline">
+            <Select
+              value={levelFilter}
+              onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
+            >
+              <SelectTrigger className="md:w-[220px]">
+                <SelectValue placeholder="Nivel educativo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los niveles</SelectItem>
+                <SelectItem value="Primaria">Primaria</SelectItem>
+                <SelectItem value="Secundaria">Secundaria</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="md:w-auto">
               <span className="flex items-center">
                 <Filter className="w-4 h-4 mr-2" />
                 Filtros Avanzados
@@ -124,7 +152,7 @@ export const IncidentsList = () => {
                       <div>
                         <p className="font-medium">{incident.student?.fullName || 'N/A'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {incident.student?.grade} {incident.student?.section}
+                          {incident.student?.level} • {incident.student?.grade} {incident.student?.section}
                         </p>
                       </div>
                     </TableCell>
@@ -199,7 +227,7 @@ export const IncidentsList = () => {
                                     <CardContent className="pt-4">
                                       <p className="font-semibold text-lg">{selectedIncident.student?.fullName || 'N/A'}</p>
                                       <p className="text-muted-foreground">
-                                        {selectedIncident.student?.grade} {selectedIncident.student?.section} • 
+                                        {selectedIncident.student?.level} • {selectedIncident.student?.grade} {selectedIncident.student?.section} • 
                                         Código: {selectedIncident.student?.barcode}
                                       </p>
                                     </CardContent>

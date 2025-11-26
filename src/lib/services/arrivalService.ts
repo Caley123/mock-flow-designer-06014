@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import type { ArrivalRecord, RegistroLlegadaDB, Student } from '@/types';
+import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
 
 /**
@@ -21,6 +21,7 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
       fullName: record.estudiante.nombre_completo,
       grade: record.estudiante.grado,
       section: record.estudiante.seccion,
+      level: (record.estudiante.nivel_educativo || 'Secundaria') as EducationalLevel,
       barcode: record.estudiante.codigo_barras,
       profilePhoto: record.estudiante.foto_perfil,
       active: record.estudiante.activo,
@@ -212,6 +213,146 @@ export async function getArrivals(filters?: {
 }
 
 /**
+ * Obtener reporte mensual de asistencia
+ */
+export async function getMonthlyAttendance(filters: {
+  month: number; // 1-12
+  year: number;
+  level?: EducationalLevel;
+  grade?: string;
+  section?: string;
+}): Promise<{ rows: MonthlyAttendanceRow[]; daysInMonth: number; error: string | null }> {
+  try {
+    const startDate = new Date(Date.UTC(filters.year, filters.month - 1, 1));
+    const endDate = new Date(Date.UTC(filters.year, filters.month, 0));
+    const daysInMonth = endDate.getUTCDate();
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+
+    // Obtener estudiantes del filtro
+    let studentsQuery = supabase
+      .from('estudiantes')
+      .select('*')
+      .eq('activo', true);
+
+    if (filters.level) {
+      studentsQuery = studentsQuery.eq('nivel_educativo', filters.level);
+    }
+    if (filters.grade) {
+      studentsQuery = studentsQuery.eq('grado', filters.grade);
+    }
+    if (filters.section) {
+      studentsQuery = studentsQuery.eq('seccion', filters.section);
+    }
+
+    const { data: studentsData, error: studentsError } = await studentsQuery.order('nombre_completo', { ascending: true });
+
+    if (studentsError) {
+      console.error('Error al obtener estudiantes para reporte mensual:', studentsError);
+      return { rows: [], daysInMonth, error: studentsError.message };
+    }
+
+    const studentIds = (studentsData || []).map((st) => st.id_estudiante);
+    if (studentIds.length === 0) {
+      return { rows: [], daysInMonth, error: null };
+    }
+
+    const { data: arrivalsData, error: arrivalsError } = await supabase
+      .from('registros_llegada')
+      .select(`
+        *,
+        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(*)
+      `)
+      .in('id_estudiante', studentIds)
+      .gte('fecha', startStr)
+      .lte('fecha', endStr);
+
+    if (arrivalsError) {
+      console.error('Error al obtener registros mensuales de llegada:', arrivalsError);
+      return { rows: [], daysInMonth, error: arrivalsError.message };
+    }
+
+    const recordsMap = new Map<number, Map<number, ArrivalRecord>>();
+    (arrivalsData || []).forEach((record) => {
+      const mapped = mapArrivalRecord(record);
+      const dateObj = new Date(mapped.date);
+      const day = dateObj.getUTCDate();
+      if (!recordsMap.has(mapped.studentId)) {
+        recordsMap.set(mapped.studentId, new Map());
+      }
+      recordsMap.get(mapped.studentId)!.set(day, mapped);
+    });
+
+    const convertStatus = (status?: string): AttendanceStatus => {
+      if (!status) return 'Sin_registro';
+      if (status === 'A tiempo') return 'A_tiempo';
+      if (status === 'Tarde') return 'Tarde';
+      if (status === 'Justificada') return 'Justificada';
+      if (status === 'Injustificada') return 'Injustificada';
+      return 'Sin_registro';
+    };
+
+    const rows: MonthlyAttendanceRow[] = (studentsData || []).map((student) => {
+      const dayStatusMap = recordsMap.get(student.id_estudiante) || new Map();
+      let onTime = 0;
+      let late = 0;
+      let justified = 0;
+      let unjustified = 0;
+
+      const days = Array.from({ length: daysInMonth }, (_, idx) => {
+        const day = idx + 1;
+        const record = dayStatusMap.get(day);
+        const status = convertStatus(record?.status);
+        switch (status) {
+          case 'A_tiempo':
+            onTime += 1;
+            break;
+          case 'Tarde':
+            late += 1;
+            break;
+          case 'Justificada':
+            justified += 1;
+            break;
+          case 'Injustificada':
+            unjustified += 1;
+            break;
+        }
+        return {
+          day,
+          status,
+          arrivalTime: record?.arrivalTime,
+        };
+      });
+
+      return {
+        student: {
+          id: student.id_estudiante,
+          fullName: student.nombre_completo,
+          grade: student.grado,
+          section: student.seccion,
+          level: student.nivel_educativo,
+          barcode: student.codigo_barras,
+          profilePhoto: student.foto_perfil,
+          active: student.activo,
+        },
+        days,
+        totals: {
+          onTime,
+          late,
+          justified,
+          unjustified,
+        },
+      };
+    });
+
+    return { rows, daysInMonth, error: null };
+  } catch (error: any) {
+    console.error('Error en getMonthlyAttendance:', error);
+    return { rows: [], daysInMonth: 0, error: error.message || 'Error al generar reporte mensual' };
+  }
+}
+
+/**
  * Obtener estadísticas de llegadas del día
  */
 export async function getTodayStats(): Promise<{
@@ -259,5 +400,6 @@ export async function getTodayStats(): Promise<{
 export const arrivalService = {
   createArrivalRecord,
   getArrivals,
+  getMonthlyAttendance,
   getTodayStats,
 };
