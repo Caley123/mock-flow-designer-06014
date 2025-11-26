@@ -684,60 +684,6 @@ export const Reports = () => {
               </div>
             </CardContent>
           </Card>
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-burgundy/10 via-cream/50 to-white border-l-4 border-l-primary shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-primary to-burgundy text-transparent bg-clip-text">{stats.totalIncidents}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Total Incidencias</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-burgundy text-white flex items-center justify-center shadow-md">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-gold/10 via-beige/50 to-white border-l-4 border-l-gold shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-gold to-accent text-transparent bg-clip-text">{stats.studentsWithIncidents}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Estudiantes Involucrados</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gold to-accent text-white flex items-center justify-center shadow-md">
-                  <Users className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-accent/10 via-cream/50 to-white border-l-4 border-l-accent shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-accent to-gold text-transparent bg-clip-text">{stats.averageReincidenceLevel.toFixed(1)}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Nivel Promedio</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-gold text-white flex items-center justify-center shadow-md">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-danger/10 via-beige/50 to-white border-l-4 border-l-danger shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-danger to-rose-700 text-transparent bg-clip-text">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Casos Críticos</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-danger to-rose-700 text-white flex items-center justify-center shadow-md">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Charts y detalle */}
