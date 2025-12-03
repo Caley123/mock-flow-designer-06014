@@ -1,8 +1,19 @@
 // Tipos que coinciden con el esquema de la base de datos
-export type UserRole = 'Supervisor' | 'Tutor' | 'Director' | 'Admin';
+export type UserRole = 'Supervisor' | 'Tutor' | 'Director' | 'Admin' | 'Padre';
 export type EducationalLevel = 'Primaria' | 'Secundaria';
 
 export type ReincidenceLevel = 0 | 1 | 2 | 3 | 4 | 5;
+
+// Tipos para bimestres
+export type Bimestre = 1 | 2 | 3 | 4;
+
+export interface BimestreInfo {
+  numero: Bimestre;
+  inicio: Date;
+  fin: Date;
+  añoEscolar: number;
+  label: string;
+}
 
 export type FaultCategory = 'Conducta' | 'Uniforme' | 'Académica' | 'Puntualidad';
 
@@ -10,7 +21,7 @@ export type FaultSeverity = 'Leve' | 'Grave';
 
 export type EstadoEvidencia = 'Sin evidencia' | 'Con evidencia';
 
-export type EstadoIncidencia = 'Activa' | 'Anulada' | 'En revisión';
+export type EstadoIncidencia = 'Activa' | 'Anulada' | 'En revisión' | 'Justificada';
 export type AttendanceStatus = 'A_tiempo' | 'Tarde' | 'Justificada' | 'Injustificada' | 'Sin_registro';
 
 // Tipos de la base de datos (DB)
@@ -41,6 +52,12 @@ export interface EstudianteDB {
   activo: boolean;
   fecha_creacion: string;
   fecha_actualizacion: string;
+  // Campos de contacto familiar (nuevos)
+  telefono_contacto?: string | null;
+  email_contacto?: string | null;
+  nombre_responsable?: string | null;
+  parentesco_responsable?: string | null;
+  telefono_emergencia?: string | null;
 }
 
 export interface CatalogoFaltaDB {
@@ -120,6 +137,12 @@ export interface Student {
   reincidenceLevel?: ReincidenceLevel;
   faultsLast60Days?: number;
   active: boolean;
+  // Campos de contacto familiar
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  responsibleName?: string | null;
+  responsibleRelationship?: string | null;
+  emergencyPhone?: string | null;
 }
 
 export interface FaultType {
@@ -213,15 +236,24 @@ export interface RegistroLlegadaDB {
   estado: 'A tiempo' | 'Tarde';
   registrado_por: number | null;
   fecha_creacion: string;
+  // Campos para control de salidas (nuevos)
+  hora_salida?: string | null;
+  registrado_salida_por?: number | null;
+  fecha_salida?: string | null;
+  tipo_salida?: 'Normal' | 'Autorizada' | 'Sin registro' | null;
 }
 
 export interface AuditoriaLogDB {
   id_log: number;
+  id_usuario?: number | null;
   tabla_afectada: string;
-  operacion: 'INSERT' | 'UPDATE' | 'DELETE';
+  id_registro: number;
+  accion: 'INSERT' | 'UPDATE' | 'DELETE';
   datos_anteriores: any;
   datos_nuevos: any;
-  usuario_id?: number;
+  descripcion_accion?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
   fecha_hora: string;
 }
 
@@ -236,6 +268,10 @@ export interface ArrivalRecord {
   registeredBy: number | null;
   registeredByUser?: User;
   createdAt: string;
+  // Campos para control de salidas
+  departureTime?: string | null;
+  departureRegisteredBy?: number | null;
+  departureType?: 'Normal' | 'Autorizada' | 'Sin registro' | null;
 }
 
 export interface MonthlyAttendanceDay {
@@ -271,4 +307,50 @@ export interface SystemConfig {
   value: string;
   description?: string;
   updatedAt: string;
+}
+
+// Tipos para citas con padres
+export interface CitaPadreDB {
+  id_cita: number;
+  id_estudiante: number;
+  motivo: string;
+  fecha: string;
+  hora: string;
+  estado: 'Pendiente' | 'Confirmada' | 'Reprogramada' | 'Completada' | 'No asistió' | 'Cancelada';
+  asistencia: boolean | null;
+  llegada_tarde?: boolean | null;
+  hora_llegada_real?: string | null;
+  notas: string | null;
+  id_usuario_creador: number;
+  fecha_creacion: string;
+  fecha_actualizacion: string;
+}
+
+export interface ParentMeeting {
+  id: number;
+  studentId: number;
+  student?: Student;
+  motivo: string;
+  fecha: string;
+  hora: string;
+  estado: 'Pendiente' | 'Confirmada' | 'Reprogramada' | 'Completada' | 'No asistió' | 'Cancelada';
+  asistencia: boolean | null;
+  llegadaTarde?: boolean | null;
+  horaLlegadaReal?: string | null;
+  notas: string | null;
+  createdBy: number;
+  createdByUser?: User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Filtros extendidos para reportes
+export interface ReportFilters {
+  level?: EducationalLevel;
+  grade?: string;
+  section?: string;
+  bimestre?: Bimestre;
+  añoEscolar?: number;
+  startDate?: string;
+  endDate?: string;
 }

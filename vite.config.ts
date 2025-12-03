@@ -15,4 +15,27 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui-vendor': [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-select',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-tooltip'
+          ],
+          'chart-vendor': ['recharts'],
+          'utils-vendor': ['date-fns', 'zod', 'jspdf', 'exceljs'],
+          'spring-vendor': ['@react-spring/web'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+    sourcemap: mode === 'development',
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
+  },
 }));

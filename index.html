@@ -6,6 +6,14 @@
     <title>Sistema de Control de Incidencias Escolares</title>
     <meta name="description" content="Sistema integral para gestión de incidencias escolares con registro por código de barras, sistema de semáforo de reincidencia y reportes completos" />
     <meta name="author" content="Sistema Educativo" />
+    
+    <!-- Security Headers (Nota: X-Frame-Options y frame-ancestors deben configurarse en el servidor HTTP) -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
+    <!-- Content Security Policy - Ajustado para Vite y Supabase (sin frame-ancestors, debe ir en HTTP header) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co; base-uri 'self'; form-action 'self';" />
 
     <meta property="og:title" content="Sistema de Control de Incidencias Escolares" />
     <meta property="og:description" content="Gestión profesional de incidencias y disciplina escolar" />

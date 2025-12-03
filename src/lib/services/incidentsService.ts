@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { Incident, EstadoIncidencia, EducationalLevel } from '@/types';
+import { Incident, EducationalLevel, EstadoIncidencia } from '@/types';
 
 /**
  * Servicio de incidencias
@@ -10,45 +10,20 @@ export const incidentsService = {
    * El nivel de reincidencia se calcula automáticamente por el trigger de la base de datos
    */
   async create(incident: {
-    id_estudiante: number;
-    id_falta: number;
-    id_usuario_registro: number;
-    observaciones?: string;
+    studentId: number;
+    faultTypeId: number;
+    registeredBy: number;
+    observations?: string;
   }): Promise<{ incident: Incident | null; error: string | null }> {
     try {
-      // Crear la incidencia directamente
-      // El trigger de auditoría usará el id_usuario_registro del registro insertado
       const { data, error } = await supabase
         .from('incidencias')
         .insert({
-          id_estudiante: incident.id_estudiante,
-          id_falta: incident.id_falta,
-          id_usuario_registro: incident.id_usuario_registro,
-          observaciones: incident.observaciones || null,
-          estado: 'Activa',
+          id_estudiante: incident.studentId,
+          id_falta: incident.faultTypeId,
+          id_usuario_registro: incident.registeredBy,
+          observaciones: incident.observations || null,
         })
-        .select()
-        .single();
-
-      if (error) {
-        return { incident: null, error: error.message };
-      }
-
-      // Obtener la incidencia con relaciones
-      return await this.getById(data.id_incidencia);
-    } catch (error: any) {
-      console.error('Error en create:', error);
-      return { incident: null, error: error.message || 'Error al crear incidencia' };
-    }
-  },
-
-  /**
-   * Obtener incidencia por ID con todas las relaciones
-   */
-  async getById(id: number): Promise<{ incident: Incident | null; error: string | null }> {
-    try {
-      const { data, error } = await supabase
-        .from('incidencias')
         .select(`
           *,
           estudiantes:id_estudiante (
@@ -79,19 +54,17 @@ export const incidentsService = {
             activo
           )
         `)
-        .eq('id_incidencia', id)
         .single();
 
-      if (error || !data) {
-        return { incident: null, error: 'Incidencia no encontrada' };
+      if (error) {
+        console.error('Error al crear incidencia:', error);
+        return { incident: null, error: error.message };
       }
 
-      const incident: Incident = this.mapDBToIncident(data as any);
-
-      return { incident, error: null };
+      return { incident: this.mapDBToIncident(data), error: null };
     } catch (error: any) {
-      console.error('Error en getById:', error);
-      return { incident: null, error: error.message || 'Error al obtener incidencia' };
+      console.error('Error en create:', error);
+      return { incident: null, error: error.message || 'Error al crear incidencia' };
     }
   },
 
@@ -107,10 +80,23 @@ export const incidentsService = {
     seccion?: string;
     nivelEducativo?: EducationalLevel;
     nivelReincidencia?: number;
+    bimestre?: number; // 1-4
+    añoEscolar?: number;
     limit?: number;
     offset?: number;
   }): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
     try {
+      // Si se especifica bimestre, calcular fechas automáticamente
+      let fechaDesde = filters?.fechaDesde;
+      let fechaHasta = filters?.fechaHasta;
+      
+      if (filters?.bimestre && filters?.añoEscolar) {
+        const { getBimestreDates } = await import('@/lib/utils/bimestreUtils');
+        const { inicio, fin } = getBimestreDates(filters.bimestre as 1 | 2 | 3 | 4, filters.añoEscolar);
+        fechaDesde = inicio.toISOString();
+        fechaHasta = fin.toISOString();
+      }
+
       let query = supabase
         .from('incidencias')
         .select(`
@@ -152,17 +138,32 @@ export const incidentsService = {
         query = query.eq('estado', filters.estado);
       }
 
-      if (filters?.fechaDesde) {
-        query = query.gte('fecha_hora_registro', filters.fechaDesde);
+      if (fechaDesde) {
+        query = query.gte('fecha_hora_registro', fechaDesde);
       }
 
-      if (filters?.fechaHasta) {
-        query = query.lte('fecha_hora_registro', filters.fechaHasta);
+      if (fechaHasta) {
+        query = query.lte('fecha_hora_registro', fechaHasta);
+      }
+
+      if (filters?.grado) {
+        query = query.eq('estudiantes.grado', filters.grado);
+      }
+
+      if (filters?.seccion) {
+        query = query.eq('estudiantes.seccion', filters.seccion);
+      }
+
+      if (filters?.nivelEducativo) {
+        query = query.eq('estudiantes.nivel_educativo', filters.nivelEducativo);
       }
 
       if (filters?.nivelReincidencia !== undefined) {
         query = query.eq('nivel_reincidencia', filters.nivelReincidencia);
       }
+
+      // Ordenar por fecha más reciente primero
+      query = query.order('fecha_hora_registro', { ascending: false });
 
       if (filters?.limit) {
         query = query.limit(filters.limit);
@@ -172,27 +173,14 @@ export const incidentsService = {
         query = query.range(filters.offset, filters.offset + (filters.limit || 10) - 1);
       }
 
-      const { data, error, count } = await query
-        .order('fecha_hora_registro', { ascending: false });
+      const { data, error, count } = await query;
 
       if (error) {
+        console.error('Error al obtener incidencias:', error);
         return { incidents: [], total: 0, error: error.message };
       }
 
-      // Filtrar por grado/sección si es necesario (después de obtener datos)
-      let incidents = (data || []).map((inc: any) => this.mapDBToIncident(inc));
-
-      if (filters?.grado) {
-        incidents = incidents.filter(inc => inc.student?.grade === filters.grado);
-      }
-
-      if (filters?.seccion) {
-        incidents = incidents.filter(inc => inc.student?.section === filters.seccion);
-      }
-
-      if (filters?.nivelEducativo) {
-        incidents = incidents.filter(inc => inc.student?.level === filters.nivelEducativo);
-      }
+      const incidents: Incident[] = (data || []).map((inc: any) => this.mapDBToIncident(inc));
 
       return { incidents, total: count || 0, error: null };
     } catch (error: any) {
@@ -233,29 +221,58 @@ export const incidentsService = {
   },
 
   /**
+   * Justificar incidencia
+   * Cambia el estado a "Justificada" y guarda el motivo
+   */
+  async justify(
+    id: number,
+    idUsuario: number,
+    motivo: string
+  ): Promise<{ success: boolean; error: string | null }> {
+    try {
+      if (motivo.length < 10) {
+        return { success: false, error: 'El motivo de justificación debe tener al menos 10 caracteres' };
+      }
+
+      // Actualizar la incidencia
+      const { error } = await supabase
+        .from('incidencias')
+        .update({
+          estado: 'Justificada',
+          motivo_anulacion: motivo, // Usamos el mismo campo para guardar el motivo
+          id_usuario_anulacion: idUsuario, // Usamos el mismo campo para guardar quién justificó
+          fecha_anulacion: new Date().toISOString(), // Usamos el mismo campo para guardar la fecha
+        })
+        .eq('id_incidencia', id)
+        .eq('estado', 'Activa'); // Solo permitir justificar incidencias activas
+
+      if (error) {
+        console.error('Error al justificar incidencia:', error);
+        return { success: false, error: error.message || 'Error al justificar incidencia' };
+      }
+
+      return { success: true, error: null };
+    } catch (error: any) {
+      console.error('Error en justify:', error);
+      return { success: false, error: error.message || 'Error al justificar incidencia' };
+    }
+  },
+
+  /**
    * Registrar impresión de incidencia
    */
   async registerPrint(id: number): Promise<{ success: boolean; error: string | null }> {
     try {
-      // Obtener el valor actual primero
-      const { data: currentData } = await supabase
-        .from('incidencias')
-        .select('veces_impreso')
-        .eq('id_incidencia', id)
-        .single();
-
-      const nuevasVeces = (currentData?.veces_impreso || 0) + 1;
-
       const { error } = await supabase
         .from('incidencias')
         .update({
-          veces_impreso: nuevasVeces,
+          veces_impreso: supabase.raw('veces_impreso + 1'),
           fecha_ultima_impresion: new Date().toISOString(),
         })
         .eq('id_incidencia', id);
 
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message || 'Error al registrar impresión' };
       }
 
       return { success: true, error: null };

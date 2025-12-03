@@ -50,11 +50,16 @@ export async function getByKey(key: string): Promise<{ config: SystemConfig | nu
       .from('configuracion_sistema')
       .select('*')
       .eq('clave', key)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error al obtener configuración:', error);
       return { config: null, error: error.message };
+    }
+
+    // Si no hay datos, retornar null sin error (configuración no existe)
+    if (!data) {
+      return { config: null, error: null };
     }
 
     return { config: mapSystemConfig(data), error: null };

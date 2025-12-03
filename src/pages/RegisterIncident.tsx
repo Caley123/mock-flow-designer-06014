@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,8 @@ import { getReincidenceLevelDescription, getSuggestedAction } from '@/lib/utils/
 import { toast } from 'sonner';
 import { studentsService, faultsService, incidentsService, evidenceService } from '@/lib/services';
 import { authService } from '@/lib/services';
+import { ErrorDialog } from '@/components/ui/error-dialog';
+import { useErrorDialog } from '@/hooks/useErrorDialog';
 
 export const RegisterIncident = () => {
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -28,11 +30,15 @@ export const RegisterIncident = () => {
   const [searching, setSearching] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
+  const { errorDialog, showError, closeError } = useErrorDialog();
+  const isMountedRef = useRef(true);
 
   // Cargar faltas al montar el componente
   useEffect(() => {
+    isMountedRef.current = true;
     const loadFaults = async () => {
       const { faults: faultList, error } = await faultsService.getAll(true);
+      if (!isMountedRef.current) return;
       if (error) {
         toast.error('Error al cargar catálogo de faltas');
       } else {
@@ -40,14 +46,20 @@ export const RegisterIncident = () => {
       }
     };
     loadFaults();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   // Búsqueda de estudiantes por nombre
   useEffect(() => {
     if (searchInput.length >= 2) {
       const searchStudents = async () => {
+        if (!isMountedRef.current) return;
         setSearching(true);
         const { students, error } = await studentsService.searchByName(searchInput, 10);
+        if (!isMountedRef.current) return;
         if (!error) {
           setSearchResults(students);
         }
@@ -57,46 +69,69 @@ export const RegisterIncident = () => {
       const timeoutId = setTimeout(searchStudents, 300);
       return () => clearTimeout(timeoutId);
     } else {
-      setSearchResults([]);
+      if (isMountedRef.current) {
+        setSearchResults([]);
+      }
     }
   }, [searchInput]);
 
   const handleBarcodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barcodeInput.trim()) return;
+    if (!barcodeInput.trim() || !isMountedRef.current) return;
 
     setLoading(true);
-    const { student, error } = await studentsService.getByBarcode(barcodeInput.trim());
-    
-    if (error || !student) {
-      toast.error('Código de barras no encontrado');
-      setBarcodeInput('');
-      setLoading(false);
-      return;
-    }
+    try {
+      const { student, error } = await studentsService.getByBarcode(barcodeInput.trim());
+      
+      if (!isMountedRef.current) return;
+      
+      if (error || !student) {
+        toast.error('Código de barras no encontrado');
+        setBarcodeInput('');
+        setLoading(false);
+        return;
+      }
 
-    setSelectedStudent(student);
-    if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
-      setShowReincidenceAlert(true);
+      setSelectedStudent(student);
+      if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
+        setShowReincidenceAlert(true);
+      }
+      toast.success(`Estudiante encontrado: ${student.fullName}`);
+      setBarcodeInput('');
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error en handleBarcodeSubmit:', error);
+      toast.error('Error al buscar estudiante');
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-    toast.success(`Estudiante encontrado: ${student.fullName}`);
-    setBarcodeInput('');
-    setLoading(false);
   };
 
   const handleSearchSelect = async (studentId: string) => {
-    const { student, error } = await studentsService.getById(parseInt(studentId));
-    if (error || !student) {
-      toast.error('Error al cargar estudiante');
-      return;
-    }
+    if (!isMountedRef.current) return;
     
-    setSelectedStudent(student);
-    if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
-      setShowReincidenceAlert(true);
+    try {
+      const { student, error } = await studentsService.getById(parseInt(studentId));
+      if (!isMountedRef.current) return;
+      
+      if (error || !student) {
+        toast.error('Error al cargar estudiante');
+        return;
+      }
+      
+      setSelectedStudent(student);
+      if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
+        setShowReincidenceAlert(true);
+      }
+      setSearchInput('');
+      setSearchResults([]);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error en handleSearchSelect:', error);
+      toast.error('Error al cargar estudiante');
     }
-    setSearchInput('');
-    setSearchResults([]);
   };
 
   const handleEvidenceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,7 +171,8 @@ export const RegisterIncident = () => {
   };
 
   const handleSave = async () => {
-    if (!selectedStudent || !selectedFault) {
+    if (!selectedStudent || !selectedFault || !isMountedRef.current) {
+      if (!isMountedRef.current) return;
       toast.error('Por favor complete todos los campos requeridos');
       return;
     }
@@ -158,8 +194,10 @@ export const RegisterIncident = () => {
         observaciones: observations.trim() || null,
       });
 
+      if (!isMountedRef.current) return;
+
       if (error || !incident) {
-        toast.error(error || 'Error al registrar incidencia');
+        showError(error || 'Error al registrar incidencia', 'Error al Registrar');
         setLoading(false);
         return;
       }
@@ -171,6 +209,9 @@ export const RegisterIncident = () => {
         );
         
         const results = await Promise.all(uploadPromises);
+        
+        if (!isMountedRef.current) return;
+        
         const errors = results.filter(r => r.error);
         
         if (errors.length > 0) {
@@ -198,10 +239,13 @@ export const RegisterIncident = () => {
       setEvidenceFiles([]);
       setEvidencePreviews([]);
     } catch (error: any) {
-      toast.error('Error al registrar incidencia');
+      if (!isMountedRef.current) return;
+      showError('Error al registrar incidencia. Por favor, intente nuevamente.', 'Error al Registrar');
       console.error(error);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -500,6 +544,16 @@ export const RegisterIncident = () => {
           </Card>
         </>
       )}
+
+      {/* Diálogo de error */}
+      <ErrorDialog
+        open={errorDialog.open}
+        onOpenChange={(open) => !open && closeError()}
+        title={errorDialog.title}
+        message={errorDialog.message}
+        buttonText="OK"
+        variant={errorDialog.variant}
+      />
     </div>
   );
 };

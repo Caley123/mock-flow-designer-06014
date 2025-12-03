@@ -39,28 +39,53 @@ export const TutorScanner = () => {
   const [registering, setRegistering] = useState(false);
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [arrivalRecord, setArrivalRecord] = useState<any>(null);
+  const isMountedRef = useRef(true);
 
   const user = authService.getCurrentUser();
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadFaults();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadFaults = async () => {
-    const { faults: faultsList } = await faultsService.getAll(true);
-    setFaults(faultsList);
+    if (!isMountedRef.current) return;
+    
+    try {
+      const { faults: faultsList } = await faultsService.getAll(true);
+      if (!isMountedRef.current) return;
+      setFaults(faultsList);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error loading faults:', error);
+    }
   };
 
-  const handleLogout = async () => {
-    await authService.logout();
-    toast.success('Sesión cerrada');
-    navigate('/login');
+  const handleLogout = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    
+    try {
+      await authService.logout();
+      toast.success('Sesión cerrada');
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      // Asegurar redirección incluso si hay error
+      navigate('/login', { replace: true });
+    }
   };
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!barcode.trim()) {
+    if (!barcode.trim() || !isMountedRef.current) {
+      if (!isMountedRef.current) return;
       toast.error('Ingrese un código de barras');
       return;
     }
@@ -71,6 +96,8 @@ export const TutorScanner = () => {
 
     try {
       const { student: foundStudent, error } = await studentsService.getByBarcode(barcode);
+
+      if (!isMountedRef.current) return;
 
       if (error || !foundStudent) {
         toast.error('Estudiante no encontrado');
@@ -85,6 +112,8 @@ export const TutorScanner = () => {
         foundStudent.id,
         currentUser?.id
       );
+
+      if (!isMountedRef.current) return;
 
       if (arrivalError) {
         console.error('Error al registrar llegada:', arrivalError);
@@ -106,10 +135,13 @@ export const TutorScanner = () => {
       }
 
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       console.error('Error al escanear:', error);
       toast.error('Error al procesar el escaneo');
     } finally {
-      setScanning(false);
+      if (isMountedRef.current) {
+        setScanning(false);
+      }
     }
   };
 
@@ -122,7 +154,8 @@ export const TutorScanner = () => {
   };
 
   const handleSubmitIncident = async () => {
-    if (!student || !selectedFault) {
+    if (!student || !selectedFault || !isMountedRef.current) {
+      if (!isMountedRef.current) return;
       toast.error('Debe seleccionar una falta');
       return;
     }
@@ -144,6 +177,8 @@ export const TutorScanner = () => {
         observaciones: observations.trim() || null,
       });
 
+      if (!isMountedRef.current) return;
+
       if (error) {
         toast.error(error);
       } else {
@@ -155,9 +190,12 @@ export const TutorScanner = () => {
         setBarcode('');
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
       toast.error('Error al registrar incidencia');
     } finally {
-      setRegistering(false);
+      if (isMountedRef.current) {
+        setRegistering(false);
+      }
     }
   };
 

@@ -10,9 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Download, TrendingUp, Users, AlertTriangle, Calendar, Loader2, Filter, BarChart3, FileDown, FileSpreadsheet } from 'lucide-react';
-// @ts-ignore - jspdf types may not be available
 import jsPDF from 'jspdf';
-// @ts-ignore - exceljs types may not be available
 import ExcelJS from 'exceljs';
 
 import {
@@ -32,13 +30,42 @@ import { DashboardStats, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getCurrentSchoolYear, getAllBimestres, formatBimestreLabel, type Bimestre } from '@/lib/utils/bimestreUtils';
 
 export const Reports = () => {
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<'all' | EducationalLevel>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'moderate' | 'critical'>('all');
+  const [bimestre, setBimestre] = useState<Bimestre | 'all'>('all');
+  const [añoEscolar, setAñoEscolar] = useState<number>(getCurrentSchoolYear());
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; incidents: number }[]>([]);
+  const [weeklyData, setWeeklyData] = useState<{ day: string; count: number }[]>([]);
+  const [comparisonByGrade, setComparisonByGrade] = useState<Array<{
+    grade: string;
+    level: EducationalLevel;
+    label: string;
+    totalIncidents: number;
+    studentsWithIncidents: number;
+    averageReincidence: number;
+    levelDistribution: {
+      level0: number;
+      level1: number;
+      level2: number;
+      level3: number;
+      level4: number;
+    };
+  }>>([]);
+  const [comparisonBySection, setComparisonBySection] = useState<Array<{
+    section: string;
+    grade: string;
+    level: EducationalLevel;
+    label: string;
+    totalIncidents: number;
+    studentsWithIncidents: number;
+    averageReincidence: number;
+  }>>([]);
 
   const headerAnimation = useSpring({
     from: { opacity: 0, transform: 'translateY(-20px)' },
@@ -50,16 +77,73 @@ export const Reports = () => {
 
   useEffect(() => {
     loadStats();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bimestre, añoEscolar, selectedLevel, selectedGrade]);
 
   const loadStats = async () => {
     setLoading(true);
-    const { stats: dashboardStats, error } = await dashboardService.getDashboardStats();
-    if (error) {
-      toast.error('Error al cargar estadísticas');
-    } else if (dashboardStats) {
-      setStats(dashboardStats);
+    const filters: any = {};
+    
+    if (bimestre !== 'all') {
+      filters.bimestre = bimestre;
+      filters.añoEscolar = añoEscolar;
     }
+    
+    // Cargar estadísticas, tendencia mensual, datos semanales y comparativos en paralelo
+    const [statsResult, trendResult, weeklyResult, gradeComparisonResult, sectionComparisonResult] = await Promise.all([
+      dashboardService.getDashboardStats(filters),
+      dashboardService.getMonthlyTrend(
+        añoEscolar,
+        selectedLevel === 'all' ? undefined : selectedLevel,
+        selectedGrade === 'all' ? undefined : selectedGrade
+      ),
+      dashboardService.getWeeklyData(
+        selectedLevel === 'all' ? undefined : selectedLevel,
+        selectedGrade === 'all' ? undefined : selectedGrade
+      ),
+      dashboardService.getComparisonByGrade({
+        level: selectedLevel === 'all' ? undefined : selectedLevel,
+        bimestre: bimestre !== 'all' ? bimestre : undefined,
+        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
+      }),
+      dashboardService.getComparisonBySection({
+        level: selectedLevel === 'all' ? undefined : selectedLevel,
+        grade: selectedGrade === 'all' ? undefined : selectedGrade,
+        bimestre: bimestre !== 'all' ? bimestre : undefined,
+        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
+      })
+    ]);
+    
+    if (statsResult.error) {
+      toast.error('Error al cargar estadísticas');
+    } else if (statsResult.stats) {
+      setStats(statsResult.stats);
+    }
+    
+    if (trendResult.error) {
+      console.error('Error al cargar tendencia mensual:', trendResult.error);
+    } else {
+      setMonthlyTrend(trendResult.monthlyTrend);
+    }
+    
+    if (weeklyResult.error) {
+      console.error('Error al cargar datos semanales:', weeklyResult.error);
+    } else {
+      setWeeklyData(weeklyResult.weeklyData);
+    }
+    
+    if (gradeComparisonResult.error) {
+      console.error('Error al cargar comparación por grado:', gradeComparisonResult.error);
+    } else {
+      setComparisonByGrade(gradeComparisonResult.comparison);
+    }
+    
+    if (sectionComparisonResult.error) {
+      console.error('Error al cargar comparación por sección:', sectionComparisonResult.error);
+    } else {
+      setComparisonBySection(sectionComparisonResult.comparison);
+    }
+    
     setLoading(false);
   };
 
@@ -76,6 +160,8 @@ export const Reports = () => {
       const { incidents: incidentsList } = await incidentsService.getAll({
         nivelEducativo: selectedLevel === 'all' ? undefined : selectedLevel,
         grado: selectedGrade === 'all' ? undefined : selectedGrade,
+        bimestre: bimestre !== 'all' ? bimestre : undefined,
+        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
       });
 
       // Cargar el logo
@@ -497,21 +583,7 @@ export const Reports = () => {
     }
   };
 
-  const monthlyTrend = [
-    { month: 'Jun', incidents: 142 },
-    { month: 'Jul', incidents: 168 },
-    { month: 'Ago', incidents: 195 },
-    { month: 'Sep', incidents: 223 },
-    { month: 'Oct', incidents: stats?.incidentsThisMonth || 0 },
-  ];
-
-  const weeklyData = [
-    { day: 'Lun', count: 8 },
-    { day: 'Mar', count: 12 },
-    { day: 'Mié', count: 15 },
-    { day: 'Jue', count: 10 },
-    { day: 'Vie', count: 13 },
-  ];
+  // monthlyTrend y weeklyData ahora vienen del estado, cargados desde la base de datos
 
   // Filter data by grade
   const filteredIncidentsByGrade = (stats?.incidentsByGrade || []).filter((item) => {
@@ -555,315 +627,312 @@ export const Reports = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cream via-white to-beige/30">
-      {/* Decorative Background Elements */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -left-32 w-80 h-80 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-1/4 w-64 h-64 bg-gold/5 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-4 md:p-6 space-y-6 w-full">
+      {/* Header */}
+      <AnimatedDiv style={headerAnimation}>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Reportes y Estadísticas</h1>
+            <p className="text-gray-600 mt-1">Visión general de las incidencias registradas en el sistema</p>
+          </div>
+        </div>
+      </AnimatedDiv>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <Select value={selectedLevel} onValueChange={(value) => setSelectedLevel(value as 'all' | EducationalLevel)}>
+          <SelectTrigger className="w-[170px] bg-white border-gray-300">
+            <SelectValue placeholder="Todos los niveles" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los niveles</SelectItem>
+            <SelectItem value="Primaria">Primaria</SelectItem>
+            <SelectItem value="Secundaria">Secundaria</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedGrade} onValueChange={setSelectedGrade}>
+          <SelectTrigger className="w-[170px] bg-white border-gray-300">
+            <SelectValue placeholder="Todos los grados" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los grados</SelectItem>
+            <SelectItem value="1ro">1ro</SelectItem>
+            <SelectItem value="2do">2do</SelectItem>
+            <SelectItem value="3ro">3ro</SelectItem>
+            <SelectItem value="4to">4to</SelectItem>
+            <SelectItem value="5to">5to</SelectItem>
+            <SelectItem value="6to">6to</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={severityFilter} onValueChange={(value: any) => setSeverityFilter(value)}>
+          <SelectTrigger className="w-[190px] bg-white border-gray-300">
+            <SelectValue placeholder="Enfoque" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los niveles</SelectItem>
+            <SelectItem value="moderate">Reincidencias moderadas</SelectItem>
+            <SelectItem value="critical">Casos críticos</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={String(añoEscolar)} onValueChange={(value) => setAñoEscolar(Number(value))}>
+          <SelectTrigger className="w-[140px] bg-white border-gray-300">
+            <SelectValue placeholder="Año escolar" />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 5 }, (_, i) => getCurrentSchoolYear() - 2 + i).map((year) => (
+              <SelectItem key={year} value={String(year)}>
+                {year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={bimestre === 'all' ? 'all' : String(bimestre)} onValueChange={(value) => setBimestre(value === 'all' ? 'all' : (Number(value) as Bimestre))}>
+          <SelectTrigger className="w-[200px] bg-white border-gray-300">
+            <SelectValue placeholder="Bimestre" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los bimestres</SelectItem>
+            {getAllBimestres(añoEscolar).map((b) => (
+              <SelectItem key={b.numero} value={String(b.numero)}>
+                {formatBimestreLabel(b)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={loadStats} variant="outline" className="bg-white border-gray-300">
+          <Calendar className="w-4 h-4 mr-2" />
+          Actualizar
+        </Button>
+        <Button onClick={exportToPDF} disabled={!stats} variant="outline" className="bg-white border-gray-300">
+          <FileDown className="w-4 h-4 mr-2" />
+          PDF
+        </Button>
+        <Button onClick={exportToExcel} disabled={!stats} variant="outline" className="bg-white border-gray-300">
+          <FileSpreadsheet className="w-4 h-4 mr-2" />
+          Excel
+        </Button>
       </div>
 
-      <div className="container mx-auto p-6 space-y-6 relative z-10">
-        <AnimatedDiv style={headerAnimation} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary via-burgundy to-primary-dark flex items-center justify-center shadow-lg">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-burgundy to-primary-dark text-transparent bg-clip-text">
-                  Reportes y Estadísticas
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Visión general de las incidencias registradas en el sistema
-                </p>
+                <p className="text-sm font-medium text-gray-600 mb-1">Total Incidencias</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalIncidents}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
               </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 items-center">
-            <Select value={selectedLevel} onValueChange={(value) => setSelectedLevel(value as 'all' | EducationalLevel)}>
-              <SelectTrigger className="w-[170px] bg-white/90 backdrop-blur-sm border-accent/30 shadow-sm hover:shadow-md transition-shadow">
-                <SelectValue placeholder="Todos los niveles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los niveles</SelectItem>
-                <SelectItem value="Primaria">Primaria</SelectItem>
-                <SelectItem value="Secundaria">Secundaria</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-              <SelectTrigger className="w-[170px] bg-white/90 backdrop-blur-sm border-accent/30 shadow-sm hover:shadow-md transition-shadow">
-                <SelectValue placeholder="Todos los grados" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los grados</SelectItem>
-                <SelectItem value="1ro">1ro</SelectItem>
-                <SelectItem value="2do">2do</SelectItem>
-                <SelectItem value="3ro">3ro</SelectItem>
-                <SelectItem value="4to">4to</SelectItem>
-                <SelectItem value="5to">5to</SelectItem>
-                <SelectItem value="6to">6to</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={severityFilter} onValueChange={(value: any) => setSeverityFilter(value)}>
-              <SelectTrigger className="w-[190px] bg-white/90 backdrop-blur-sm border-accent/30 shadow-sm hover:shadow-md transition-shadow">
-                <SelectValue placeholder="Enfoque" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los niveles</SelectItem>
-                <SelectItem value="moderate">Reincidencias moderadas</SelectItem>
-                <SelectItem value="critical">Casos críticos</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" className="bg-white/90 backdrop-blur-sm border-gold/40 text-foreground shadow-sm hover:shadow-md transition-all hover:border-gold/60">
-              <Calendar className="w-4 h-4 mr-2" />
-              Periodo actual
-            </Button>
-            <Button onClick={exportToPDF} disabled={!stats} variant="ghost" className="bg-white/90 backdrop-blur-sm border-accent/30 text-foreground shadow-sm hover:shadow-md transition-all">
-              <FileDown className="w-4 h-4 mr-2" />
-              Exportar PDF
-            </Button>
-            <Button onClick={exportToExcel} disabled={!stats} variant="ghost" className="bg-white/90 backdrop-blur-sm border-accent/30 text-foreground shadow-sm hover:shadow-md transition-all">
-              <FileSpreadsheet className="w-4 h-4 mr-2" />
-              Exportar Excel
-            </Button>
-          </div>
-        </AnimatedDiv>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Estudiantes Involucrados</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.studentsWithIncidents}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Users className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Nivel Promedio</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.averageReincidenceLevel.toFixed(1)}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Casos Críticos</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-burgundy/10 via-cream/50 to-white border-l-4 border-l-primary shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-primary to-burgundy text-transparent bg-clip-text">{stats.totalIncidents}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Total Incidencias</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-burgundy text-white flex items-center justify-center shadow-md">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-gold/10 via-beige/50 to-white border-l-4 border-l-gold shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-gold to-accent text-transparent bg-clip-text">{stats.studentsWithIncidents}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Estudiantes Involucrados</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gold to-accent text-white flex items-center justify-center shadow-md">
-                  <Users className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-accent/10 via-cream/50 to-white border-l-4 border-l-accent shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-accent to-gold text-transparent bg-clip-text">{stats.averageReincidenceLevel.toFixed(1)}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Nivel Promedio</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-gold text-white flex items-center justify-center shadow-md">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-danger/10 via-beige/50 to-white border-l-4 border-l-danger shadow-lg hover:shadow-xl transition-all">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-3xl font-bold bg-gradient-to-br from-danger to-rose-700 text-transparent bg-clip-text">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</div>
-                  <p className="text-sm text-warm-gray-600 font-medium mt-1">Casos Críticos</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-danger to-rose-700 text-white flex items-center justify-center shadow-md">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Charts y detalle */}
-        {/* Tendencia mensual a ancho completo */}
-        <Card className="bg-white/80 backdrop-blur-sm border-accent/20 shadow-lg">
-          <CardHeader className="border-b border-accent/10 bg-gradient-to-r from-cream/30 to-beige/20">
-            <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
-              <div className="w-2 h-8 bg-gradient-to-b from-primary to-burgundy rounded-full" />
-              Tendencia Mensual
-            </CardTitle>
-          </CardHeader>
+      {/* Charts y detalle */}
+      {/* Tendencia mensual a ancho completo */}
+      <Card className="bg-white border-0 shadow-sm">
+        <CardHeader className="border-b border-gray-200">
+          <CardTitle className="text-xl font-bold text-gray-900">Tendencia Mensual</CardTitle>
+        </CardHeader>
           <CardContent className="pt-6">
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={monthlyTrend}>
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={monthlyTrend}>
                 <defs>
                   <linearGradient id="colorIncidents" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="hsl(var(--burgundy))" stopOpacity={0.2}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#1e40af" stopOpacity={0.2}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--warm-gray-200))" />
-                <XAxis dataKey="month" stroke="hsl(var(--warm-gray-600))" />
-                <YAxis stroke="hsl(var(--warm-gray-600))" />
-                <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid hsl(var(--accent))', borderRadius: '8px' }} />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="incidents" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={3}
-                  name="Incidencias"
-                  dot={{ fill: 'hsl(var(--burgundy))', r: 5 }}
-                  activeDot={{ r: 7 }}
-                  fill="url(#colorIncidents)"
-                />
-              </LineChart>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" stroke="#6b7280" />
+                <YAxis stroke="#6b7280" />
+                <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px' }} />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="incidents" 
+                stroke="#3b82f6" 
+                strokeWidth={3}
+                name="Incidencias"
+                dot={{ fill: '#1e40af', r: 5 }}
+                activeDot={{ r: 7 }}
+                fill="url(#colorIncidents)"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Fila: Incidencias por día vs por grado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Incidencias por Día (Esta Semana)</CardTitle>
+          </CardHeader>
+            <CardContent className="pt-6">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={weeklyData}>
+                  <defs>
+                    <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={1}/>
+                      <stop offset="100%" stopColor="#d97706" stopOpacity={0.8}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="day" stroke="#6b7280" />
+                  <YAxis stroke="#6b7280" />
+                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px' }} />
+                  <Bar dataKey="count" fill="url(#colorBar)" name="Incidencias" radius={[8, 8, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Fila: Incidencias por día vs por grado */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="bg-white/80 backdrop-blur-sm border-gold/20 shadow-lg">
-            <CardHeader className="border-b border-gold/10 bg-gradient-to-r from-beige/30 to-cream/20">
-              <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
-                <div className="w-2 h-8 bg-gradient-to-b from-gold to-accent rounded-full" />
-                Incidencias por Día (Esta Semana)
-              </CardTitle>
-            </CardHeader>
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">
+              Incidencias por Nivel / Grado
+              {(selectedLevel !== 'all' || selectedGrade !== 'all') && (
+                <>
+                  {' '}
+                  - {selectedLevel !== 'all' ? selectedLevel : 'Todos'}{' '}
+                  {selectedGrade !== 'all' ? selectedGrade : ''}
+                </>
+              )}
+            </CardTitle>
+          </CardHeader>
             <CardContent className="pt-6">
+            {filteredIncidentsByGrade.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={weeklyData}>
-                  <defs>
-                    <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--gold))" stopOpacity={1}/>
-                      <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0.8}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--warm-gray-200))" />
-                  <XAxis dataKey="day" stroke="hsl(var(--warm-gray-600))" />
-                  <YAxis stroke="hsl(var(--warm-gray-600))" />
-                  <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid hsl(var(--gold))', borderRadius: '8px' }} />
-                  <Bar dataKey="count" fill="url(#colorBar)" name="Incidencias" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-burgundy/20 shadow-lg">
-            <CardHeader className="border-b border-burgundy/10 bg-gradient-to-r from-cream/30 to-beige/20">
-              <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
-                <div className="w-2 h-8 bg-gradient-to-b from-burgundy to-primary-dark rounded-full" />
-                Incidencias por Nivel / Grado
-                {(selectedLevel !== 'all' || selectedGrade !== 'all') && (
-                  <>
-                    {' '}
-                    - {selectedLevel !== 'all' ? selectedLevel : 'Todos'}{' '}
-                    {selectedGrade !== 'all' ? selectedGrade : ''}
-                  </>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {filteredIncidentsByGrade.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={filteredIncidentsByGrade} layout="vertical">
+                <BarChart data={filteredIncidentsByGrade} layout="vertical">
                     <defs>
                       <linearGradient id="colorGrade" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={1}/>
-                        <stop offset="100%" stopColor="hsl(var(--burgundy))" stopOpacity={0.8}/>
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/>
+                        <stop offset="100%" stopColor="#1e40af" stopOpacity={0.8}/>
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--warm-gray-200))" />
-                    <XAxis type="number" stroke="hsl(var(--warm-gray-600))" />
-                    <YAxis dataKey="label" type="category" width={180} stroke="hsl(var(--warm-gray-600))" />
-                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid hsl(var(--primary))', borderRadius: '8px' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" stroke="#6b7280" />
+                    <YAxis dataKey="label" type="category" width={180} stroke="#6b7280" />
+                    <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px' }} />
                     <Bar dataKey="count" fill="url(#colorGrade)" name="Incidencias" radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                   No hay datos para el filtro seleccionado
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* Fila: Distribución de niveles vs faltas más frecuentes */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="bg-white/80 backdrop-blur-sm border-accent/20 shadow-lg">
-            <CardHeader className="border-b border-accent/10 bg-gradient-to-r from-beige/30 to-cream/20">
-              <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
-                <div className="w-2 h-8 bg-gradient-to-b from-accent to-gold rounded-full" />
-                Distribución por Nivel de Reincidencia
-              </CardTitle>
-            </CardHeader>
+      {/* Fila: Distribución de niveles vs faltas más frecuentes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Distribución por Nivel de Reincidencia</CardTitle>
+          </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-5">
-                {filteredLevelItems.map((item, index) => (
-                  <div key={item.key} className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-warm-gray-700">{item.level}</span>
-                      <span className="text-sm font-bold bg-gradient-to-r from-primary to-burgundy text-transparent bg-clip-text">{item.count}</span>
-                    </div>
-                    <div className="w-full bg-warm-gray-100 rounded-full h-3 shadow-inner overflow-hidden">
-                      <div
-                        className="h-3 rounded-full transition-all duration-500 group-hover:shadow-lg"
-                        style={{
-                          width: `${stats.totalIncidents > 0 ? (item.count / stats.totalIncidents) * 100 : 0}%`,
-                          background:
-                            item.severity === 'low'
-                              ? 'linear-gradient(90deg, hsl(var(--success)), hsl(var(--success-dark)))'
-                              : item.severity === 'moderate'
-                              ? 'linear-gradient(90deg, hsl(var(--warning)), hsl(var(--accent)))'
-                              : 'linear-gradient(90deg, hsl(var(--danger)), hsl(var(--danger-dark)))'
-                        }}
-                      />
-                    </div>
+              {filteredLevelItems.map((item, index) => (
+                <div key={item.key} className="group">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-gray-700">{item.level}</span>
+                    <span className="text-sm font-bold text-gray-900">{item.count}</span>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-primary/20 shadow-lg">
-            <CardHeader className="border-b border-primary/10 bg-gradient-to-r from-cream/30 to-beige/20">
-              <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
-                <div className="w-2 h-8 bg-gradient-to-b from-primary to-primary-dark rounded-full" />
-                Faltas Más Frecuentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {stats.topFaults.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  No hay datos disponibles
+                  <div className="w-full bg-gray-100 rounded-full h-3 shadow-inner overflow-hidden">
+                    <div
+                      className="h-3 rounded-full transition-all duration-500 group-hover:shadow-lg"
+                      style={{
+                        width: `${stats.totalIncidents > 0 ? (item.count / stats.totalIncidents) * 100 : 0}%`,
+                        background:
+                          item.severity === 'low'
+                            ? 'linear-gradient(90deg, #10b981, #059669)'
+                            : item.severity === 'moderate'
+                            ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                            : 'linear-gradient(90deg, #ef4444, #dc2626)'
+                      }}
+                    />
+                  </div>
                 </div>
-              ) : (
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Faltas Más Frecuentes</CardTitle>
+          </CardHeader>
+            <CardContent className="pt-6">
+            {stats.topFaults.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No hay datos disponibles
+              </div>
+            ) : (
                 <div className="space-y-5">
                   {stats.topFaults.map((fault, index) => {
                     const colors = [
-                      'from-burgundy to-primary-dark',
-                      'from-primary to-burgundy',
-                      'from-gold to-accent',
-                      'from-accent to-gold',
-                      'from-primary-dark to-burgundy'
+                      'bg-blue-500',
+                      'bg-purple-500',
+                      'bg-amber-500',
+                      'bg-indigo-500',
+                      'bg-pink-500'
                     ];
                     return (
                       <div key={index} className="flex items-center gap-4 group">
-                        <div className={`flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br ${colors[index % colors.length]} text-white font-bold shadow-md group-hover:shadow-lg transition-all`}>
+                        <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${colors[index % colors.length]} text-white font-bold shadow-md group-hover:shadow-lg transition-all`}>
                           {index + 1}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-warm-gray-700">{fault.faultType}</span>
-                            <span className="font-bold text-sm bg-gradient-to-r from-primary to-burgundy text-transparent bg-clip-text">{fault.count} incidencias</span>
+                            <span className="font-semibold text-gray-700">{fault.faultType}</span>
+                            <span className="font-bold text-sm text-gray-900">{fault.count} incidencias</span>
                           </div>
-                          <div className="w-full bg-warm-gray-100 rounded-full h-3 shadow-inner overflow-hidden">
+                          <div className="w-full bg-gray-100 rounded-full h-3 shadow-inner overflow-hidden">
                             <div
-                              className={`bg-gradient-to-r ${colors[index % colors.length]} h-3 rounded-full transition-all duration-500 group-hover:shadow-lg`}
+                              className={`${colors[index % colors.length]} h-3 rounded-full transition-all duration-500 group-hover:shadow-lg`}
                               style={{ 
                                 width: `${stats.topFaults.length > 0 && stats.topFaults[0].count > 0 
                                   ? (fault.count / stats.topFaults[0].count) * 100 
@@ -872,19 +941,231 @@ export const Reports = () => {
                             />
                           </div>
                         </div>
-                        <div className="text-sm font-semibold text-warm-gray-500 min-w-[45px] text-right">
+                        <div className="text-sm font-semibold text-gray-500 min-w-[45px] text-right">
                           {stats.totalIncidents > 0 ? ((fault.count / stats.totalIncidents) * 100).toFixed(1) : 0}%
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              )}
+            )}
             </CardContent>
           </Card>
         </div>
 
-      </div>
+      {/* Cuadros Comparativos */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4 flex items-center gap-2">
+          <BarChart3 className="w-6 h-6" />
+          Comparativas por Grado y Sección
+        </h2>
+
+        {/* Comparativa por Grados */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Comparativa por Grados</CardTitle>
+          </CardHeader>
+            <CardContent className="pt-6">
+              {comparisonByGrade.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Gráfico de barras comparativo */}
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={comparisonByGrade}>
+                      <defs>
+                        <linearGradient id="colorGradeComparison" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9}/>
+                          <stop offset="100%" stopColor="#1e40af" stopOpacity={0.7}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis 
+                        dataKey="label" 
+                        stroke="#6b7280" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                      />
+                      <YAxis stroke="#6b7280" />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'white', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: '8px' 
+                        }}
+                        formatter={(value: any) => [value, 'Incidencias']}
+                      />
+                      <Legend />
+                      <Bar 
+                        dataKey="totalIncidents" 
+                        fill="url(#colorGradeComparison)" 
+                        name="Total Incidencias"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar 
+                        dataKey="studentsWithIncidents" 
+                        fill="#f59e0b" 
+                        name="Estudiantes Involucrados"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  {/* Tabla comparativa detallada */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border border-gray-200 px-4 py-3 text-left text-sm font-bold text-gray-900">Grado</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Total Incidencias</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Estudiantes Involucrados</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel Promedio</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel 0</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel 1</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel 2</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel 3</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel 4</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparisonByGrade.map((item, index) => (
+                          <tr 
+                            key={index} 
+                            className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                          >
+                            <td className="border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700">
+                              {item.label}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">
+                              {item.totalIncidents}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-gray-700">
+                              {item.studentsWithIncidents}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm font-semibold text-blue-600">
+                              {item.averageReincidence.toFixed(2)}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-green-600">
+                              {item.levelDistribution.level0}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-yellow-600">
+                              {item.levelDistribution.level1}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-orange-600">
+                              {item.levelDistribution.level2}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-red-600">
+                              {item.levelDistribution.level3}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-red-700">
+                              {item.levelDistribution.level4}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                  No hay datos para comparar
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Comparativa por Secciones */}
+          <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Comparativa por Secciones</CardTitle>
+          </CardHeader>
+            <CardContent className="pt-6">
+              {comparisonBySection.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Gráfico de barras comparativo */}
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={comparisonBySection}>
+                      <defs>
+                        <linearGradient id="colorSectionComparison" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9}/>
+                          <stop offset="100%" stopColor="#d97706" stopOpacity={0.7}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis 
+                        dataKey="label" 
+                        stroke="#6b7280" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={120}
+                      />
+                      <YAxis stroke="#6b7280" />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'white', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: '8px' 
+                        }}
+                        formatter={(value: any) => [value, 'Incidencias']}
+                      />
+                      <Legend />
+                      <Bar 
+                        dataKey="totalIncidents" 
+                        fill="url(#colorSectionComparison)" 
+                        name="Total Incidencias"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar 
+                        dataKey="studentsWithIncidents" 
+                        fill="#3b82f6" 
+                        name="Estudiantes Involucrados"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  {/* Tabla comparativa detallada */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border border-gray-200 px-4 py-3 text-left text-sm font-bold text-gray-900">Sección</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Total Incidencias</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Estudiantes Involucrados</th>
+                          <th className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">Nivel Promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparisonBySection.map((item, index) => (
+                          <tr 
+                            key={index} 
+                            className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                          >
+                            <td className="border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700">
+                              {item.label}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm font-bold text-gray-900">
+                              {item.totalIncidents}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm text-gray-700">
+                              {item.studentsWithIncidents}
+                            </td>
+                            <td className="border border-gray-200 px-4 py-3 text-center text-sm font-semibold text-blue-600">
+                              {item.averageReincidence.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                  No hay datos para comparar
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
     </div>
   );
 };

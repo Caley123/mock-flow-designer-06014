@@ -1,5 +1,8 @@
 import { supabase } from '../supabaseClient';
 import { User, UsuarioDB } from '@/types';
+import { sessionService } from './sessionService';
+import { loginRateLimiter } from '@/lib/utils/rateLimit';
+import { sanitize } from '@/lib/utils/sanitize';
 
 /**
  * Servicio de autenticación
@@ -10,11 +13,29 @@ export const authService = {
    */
   async login(username: string, password: string): Promise<{ user: User | null; error: string | null }> {
     try {
+      // Sanitizar inputs
+      const sanitizedUsername = sanitize.text(username, 50).trim();
+      const sanitizedPassword = password.trim();
+      
+      if (!sanitizedUsername || !sanitizedPassword) {
+        return { user: null, error: 'Usuario y contraseña son requeridos' };
+      }
+      
+      // Rate limiting
+      const clientKey = `login_${sanitizedUsername}_${window.location.hostname}`;
+      if (!loginRateLimiter.check(clientKey)) {
+        const timeRemaining = Math.ceil(loginRateLimiter.getTimeUntilReset(clientKey) / 60000);
+        return { 
+          user: null, 
+          error: `Demasiados intentos fallidos. Intente nuevamente en ${timeRemaining} minuto(s).` 
+        };
+      }
+      
       // Buscar usuario por username
       const { data: usuarioData, error: usuarioError } = await supabase
         .from('usuarios')
         .select('*')
-        .eq('username', username)
+        .eq('username', sanitizedUsername)
         .eq('activo', true)
         .maybeSingle();
 
@@ -85,8 +106,12 @@ export const authService = {
           })
           .eq('id_usuario', usuarioData.id_usuario);
 
+        // No resetear rate limiter aquí, se reseteará automáticamente después del tiempo
         return { user: null, error: 'Usuario o contraseña incorrectos' };
       }
+      
+      // Resetear rate limiter en login exitoso
+      loginRateLimiter.reset(clientKey);
       
       // Actualizar último acceso y resetear intentos fallidos
       await supabase
@@ -109,9 +134,8 @@ export const authService = {
         cambioPasswordObligatorio: usuarioData.cambio_password_obligatorio,
       };
 
-      // Guardar en localStorage
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('userId', usuarioData.id_usuario.toString());
+      // Guardar sesión con expiración
+      sessionService.saveSession(user);
 
       return { user, error: null };
     } catch (error: any) {
@@ -124,21 +148,23 @@ export const authService = {
    * Cerrar sesión
    */
   async logout(): Promise<void> {
-    localStorage.removeItem('user');
-    localStorage.removeItem('userId');
+    sessionService.clearSession();
   },
 
   /**
-   * Obtener usuario actual desde localStorage
+   * Obtener usuario actual desde sesión
    */
   getCurrentUser(): User | null {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return null;
-    try {
-      return JSON.parse(userStr);
-    } catch {
+    const session = sessionService.getSession();
+    if (!session) return null;
+    
+    // Verificar si la sesión expiró
+    if (sessionService.isExpired()) {
+      this.logout();
       return null;
     }
+    
+    return session.user;
   },
 
   /**

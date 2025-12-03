@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { 
   Table, 
   TableBody, 
@@ -61,6 +62,12 @@ const studentFormSchema = z.object({
   nivel_educativo: z.enum(['Primaria', 'Secundaria'], {
     required_error: 'El nivel educativo es requerido',
   }),
+  // Campos de contacto familiar (opcionales)
+  telefono_contacto: z.string().optional(),
+  email_contacto: z.string().email('Email inválido').optional().or(z.literal('')),
+  nombre_responsable: z.string().optional(),
+  parentesco_responsable: z.string().optional(),
+  telefono_emergencia: z.string().optional(),
 });
 
 type StudentFormValues = z.infer<typeof studentFormSchema>;
@@ -78,6 +85,10 @@ export const StudentsList = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
+  
+  // Métricas de rendimiento
+  usePerformanceMetrics('StudentsList');
   // Estados temporales para Select dentro del Dialog
   const [tempGrado, setTempGrado] = useState<string>('');
   const [tempSeccion, setTempSeccion] = useState<string>('');
@@ -89,8 +100,13 @@ export const StudentsList = () => {
       codigo_barras: '',
       nombre_completo: '',
       grado: '',
-    seccion: '',
-    nivel_educativo: 'Secundaria',
+      seccion: '',
+      nivel_educativo: 'Secundaria',
+      telefono_contacto: '',
+      email_contacto: '',
+      nombre_responsable: '',
+      parentesco_responsable: '',
+      telefono_emergencia: '',
     },
   });
 
@@ -103,6 +119,11 @@ export const StudentsList = () => {
         grado: '',
         seccion: '',
         nivel_educativo: 'Secundaria',
+        telefono_contacto: '',
+        email_contacto: '',
+        nombre_responsable: '',
+        parentesco_responsable: '',
+        telefono_emergencia: '',
       });
       setTempGrado('');
       setTempSeccion('');
@@ -112,34 +133,57 @@ export const StudentsList = () => {
   }, [dialogOpen]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadStudents();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    loadStudents();
+    if (isMountedRef.current) {
+      loadStudents();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelFilter]);
 
   const loadStudents = async () => {
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
-    const levelValue = levelFilter === 'all' ? undefined : levelFilter;
-    const { students: studentsList, error } = await studentsService.getAll({
-      search: searchTerm || undefined,
-      level: levelValue,
-      active: true,
-    });
-    if (error) {
+    try {
+      const levelValue = levelFilter === 'all' ? undefined : levelFilter;
+      const { students: studentsList, error } = await studentsService.getAll({
+        search: searchTerm || undefined,
+        level: levelValue,
+        active: true,
+      });
+      
+      if (!isMountedRef.current) return;
+      
+      if (error) {
+        toast.error('Error al cargar estudiantes');
+        setStudents([]);
+      } else {
+        setStudents(studentsList);
+      }
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error en loadStudents:', error);
       toast.error('Error al cargar estudiantes');
       setStudents([]);
-    } else {
-      setStudents(studentsList);
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (searchTerm !== undefined) {
+      if (isMountedRef.current && searchTerm !== undefined) {
         loadStudents();
       }
     }, 500);
@@ -208,36 +252,56 @@ export const StudentsList = () => {
   };
 
   const onSubmit = async (data: StudentFormValues) => {
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
     
-    let photoUrl: string | undefined = undefined;
-    if (photoFile) {
-      setUploadingPhoto(true);
-      photoUrl = await uploadProfilePhoto(photoFile) || undefined;
-      setUploadingPhoto(false);
-    }
+    try {
+      let photoUrl: string | undefined = undefined;
+      if (photoFile) {
+        if (!isMountedRef.current) return;
+        setUploadingPhoto(true);
+        photoUrl = await uploadProfilePhoto(photoFile) || undefined;
+        if (!isMountedRef.current) return;
+        setUploadingPhoto(false);
+      }
 
-    const { student, error } = await studentsService.create({
-      codigo_barras: data.codigo_barras,
-      nombre_completo: data.nombre_completo,
-      grado: data.grado,
-      seccion: data.seccion,
-      nivel_educativo: data.nivel_educativo as EducationalLevel,
-      foto_perfil: photoUrl,
-    });
-    
-    if (error) {
-      toast.error(error);
-    } else {
-      toast.success('Estudiante agregado exitosamente');
-      setDialogOpen(false);
-      form.reset();
-      setPhotoFile(null);
-      setPhotoPreview('');
-      setTempNivel('');
-      loadStudents();
+      const { student, error } = await studentsService.create({
+        codigo_barras: data.codigo_barras,
+        nombre_completo: data.nombre_completo,
+        grado: data.grado,
+        seccion: data.seccion,
+        nivel_educativo: data.nivel_educativo as EducationalLevel,
+        foto_perfil: photoUrl,
+        telefono_contacto: data.telefono_contacto || undefined,
+        email_contacto: data.email_contacto || undefined,
+        nombre_responsable: data.nombre_responsable || undefined,
+        parentesco_responsable: data.parentesco_responsable || undefined,
+        telefono_emergencia: data.telefono_emergencia || undefined,
+      });
+      
+      if (!isMountedRef.current) return;
+      
+      if (error) {
+        toast.error(error);
+      } else {
+        toast.success('Estudiante agregado exitosamente');
+        setDialogOpen(false);
+        form.reset();
+        setPhotoFile(null);
+        setPhotoPreview('');
+        setTempNivel('');
+        loadStudents();
+      }
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error en onSubmit:', error);
+      toast.error('Error al crear estudiante');
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   };
 
   const handleViewStudent = async (student: Student) => {
@@ -253,6 +317,11 @@ export const StudentsList = () => {
       grado: student.grade,
       seccion: student.section,
       nivel_educativo: student.level,
+      telefono_contacto: student.contactPhone || '',
+      email_contacto: student.contactEmail || '',
+      nombre_responsable: student.responsibleName || '',
+      parentesco_responsable: student.responsibleRelationship || '',
+      telefono_emergencia: student.emergencyPhone || '',
     });
     setTempGrado(student.grade);
     setTempSeccion(student.section);
@@ -262,39 +331,57 @@ export const StudentsList = () => {
   };
 
   const onEditSubmit = async (data: StudentFormValues) => {
-    if (!selectedStudent) return;
+    if (!selectedStudent || !isMountedRef.current) return;
     
     setLoading(true);
     
-    let photoUrl: string | undefined = selectedStudent.profilePhoto;
-    if (photoFile) {
-      setUploadingPhoto(true);
-      const newPhotoUrl = await uploadProfilePhoto(photoFile);
-      if (newPhotoUrl) photoUrl = newPhotoUrl;
-      setUploadingPhoto(false);
-    }
+    try {
+      let photoUrl: string | undefined = selectedStudent.profilePhoto;
+      if (photoFile) {
+        if (!isMountedRef.current) return;
+        setUploadingPhoto(true);
+        const newPhotoUrl = await uploadProfilePhoto(photoFile);
+        if (!isMountedRef.current) return;
+        if (newPhotoUrl) photoUrl = newPhotoUrl;
+        setUploadingPhoto(false);
+      }
 
-    const { success, error } = await studentsService.update(selectedStudent.id, {
-      nombre_completo: data.nombre_completo,
-      grado: data.grado,
-      seccion: data.seccion,
-      nivel_educativo: data.nivel_educativo as EducationalLevel,
-      foto_perfil: photoUrl,
-    });
-    
-    if (error) {
-      toast.error(error);
-    } else {
-      toast.success('Estudiante actualizado exitosamente');
-      setEditDialogOpen(false);
-      setSelectedStudent(null);
-      form.reset();
-      setPhotoFile(null);
-      setPhotoPreview('');
-      setTempNivel('');
-      loadStudents();
+      const { success, error } = await studentsService.update(selectedStudent.id, {
+        nombre_completo: data.nombre_completo,
+        grado: data.grado,
+        seccion: data.seccion,
+        nivel_educativo: data.nivel_educativo as EducationalLevel,
+        foto_perfil: photoUrl,
+        telefono_contacto: data.telefono_contacto || undefined,
+        email_contacto: data.email_contacto || undefined,
+        nombre_responsable: data.nombre_responsable || undefined,
+        parentesco_responsable: data.parentesco_responsable || undefined,
+        telefono_emergencia: data.telefono_emergencia || undefined,
+      });
+      
+      if (!isMountedRef.current) return;
+      
+      if (error) {
+        toast.error(error);
+      } else {
+        toast.success('Estudiante actualizado exitosamente');
+        setEditDialogOpen(false);
+        setSelectedStudent(null);
+        form.reset();
+        setPhotoFile(null);
+        setPhotoPreview('');
+        setTempNivel('');
+        loadStudents();
+      }
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error en onEditSubmit:', error);
+      toast.error('Error al actualizar estudiante');
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   };
 
   const stats = {
@@ -496,6 +583,78 @@ export const StudentsList = () => {
                           JPG o PNG, máx. 5MB
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Información de Contacto Familiar */}
+                  <div className="border-t pt-4 space-y-4">
+                    <h3 className="text-lg font-semibold">Información de Contacto Familiar</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="telefono_contacto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Teléfono de Contacto</FormLabel>
+                            <FormControl>
+                              <Input placeholder="987654321" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="email_contacto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email de Contacto</FormLabel>
+                            <FormControl>
+                              <Input type="email" placeholder="padre@email.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="nombre_responsable"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre del Responsable</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Nombre completo del padre/madre" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="parentesco_responsable"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Parentesco</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Padre, Madre, Apoderado, etc." {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="telefono_emergencia"
+                        render={({ field }) => (
+                          <FormItem className="col-span-2">
+                            <FormLabel>Teléfono de Emergencia</FormLabel>
+                            <FormControl>
+                              <Input placeholder="987654321" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -841,22 +1000,26 @@ export const StudentsList = () => {
               No se encontraron estudiantes
             </div>
           ) : (
-            <Table>
+            <Table role="table" aria-label="Lista de estudiantes">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Nivel / Grado</TableHead>
-                  <TableHead>Sección</TableHead>
-                  <TableHead>Faltas (60d)</TableHead>
-                  <TableHead>Nivel Reincidencia</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead scope="col">Código</TableHead>
+                  <TableHead scope="col">Nombre</TableHead>
+                  <TableHead scope="col">Nivel / Grado</TableHead>
+                  <TableHead scope="col">Sección</TableHead>
+                  <TableHead scope="col">Faltas (60d)</TableHead>
+                  <TableHead scope="col">Nivel Reincidencia</TableHead>
+                  <TableHead scope="col">Estado</TableHead>
+                  <TableHead scope="col">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredStudents.map((student) => (
-                  <TableRow key={student.id}>
+                  <TableRow 
+                    key={student.id}
+                    role="row"
+                    aria-label={`Estudiante ${student.fullName}`}
+                  >
                     <TableCell className="font-mono text-sm">{student.barcode}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -901,15 +1064,19 @@ export const StudentsList = () => {
                           variant="ghost" 
                           size="sm"
                           onClick={() => handleViewStudent(student)}
+                          aria-label={`Ver detalles de ${student.fullName}`}
+                          title="Ver detalles"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4" aria-hidden="true" />
                         </Button>
                         <Button 
                           variant="ghost" 
                           size="sm"
                           onClick={() => handleEditStudent(student)}
+                          aria-label={`Editar ${student.fullName}`}
+                          title="Editar estudiante"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="w-4 h-4" aria-hidden="true" />
                         </Button>
                       </div>
                     </TableCell>

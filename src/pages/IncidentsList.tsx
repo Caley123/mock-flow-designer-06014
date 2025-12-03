@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { 
   Table, 
   TableBody, 
@@ -17,11 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Filter, Eye, Edit, FileX, Camera, Download, Loader2 } from 'lucide-react';
+import { Search, Filter, Eye, Edit, FileX, Camera, Download } from 'lucide-react';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { PageLoader } from '@/components/ui/page-loader';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { incidentsService } from '@/lib/services';
@@ -34,23 +36,40 @@ export const IncidentsList = () => {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const isMountedRef = useRef(true);
+  
+  // Métricas de rendimiento
+  usePerformanceMetrics('IncidentsList');
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadIncidents();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadIncidents = async () => {
+    if (!isMountedRef.current) return;
     setLoading(true);
-    const { incidents: incidentsList, error } = await incidentsService.getAll({
-      nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
-    });
-    if (error) {
-      toast.error('Error al cargar incidencias');
-      setIncidents([]);
-    } else {
-      setIncidents(incidentsList);
+    try {
+      const { incidents: incidentsList, error } = await incidentsService.getAll({
+        nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+      });
+      if (!isMountedRef.current) return;
+      if (error) {
+        toast.error('Error al cargar incidencias');
+        setIncidents([]);
+      } else {
+        setIncidents(incidentsList);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   };
 
   const filteredIncidents = incidents.filter(incident =>
@@ -65,11 +84,7 @@ export const IncidentsList = () => {
   }, [levelFilter]);
 
   if (loading) {
-    return (
-      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <PageLoader message="Cargando incidencias..." />;
   }
 
   return (
@@ -131,22 +146,26 @@ export const IncidentsList = () => {
               No se encontraron incidencias
             </div>
           ) : (
-            <Table>
+            <Table role="table" aria-label="Lista de incidencias">
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Estudiante</TableHead>
-                  <TableHead>Falta</TableHead>
-                  <TableHead>Fecha/Hora</TableHead>
-                  <TableHead>Nivel</TableHead>
-                  <TableHead>Evidencia</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead scope="col">ID</TableHead>
+                  <TableHead scope="col">Estudiante</TableHead>
+                  <TableHead scope="col">Falta</TableHead>
+                  <TableHead scope="col">Fecha/Hora</TableHead>
+                  <TableHead scope="col">Nivel</TableHead>
+                  <TableHead scope="col">Evidencia</TableHead>
+                  <TableHead scope="col">Estado</TableHead>
+                  <TableHead scope="col">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredIncidents.map((incident) => (
-                  <TableRow key={incident.id}>
+                  <TableRow 
+                    key={incident.id}
+                    role="row"
+                    aria-label={`Incidencia ${incident.id} - ${incident.student?.fullName || 'N/A'}`}
+                  >
                     <TableCell className="font-mono text-sm">{incident.id}</TableCell>
                     <TableCell>
                       <div>

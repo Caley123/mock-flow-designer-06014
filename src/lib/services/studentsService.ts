@@ -39,6 +39,11 @@ export const studentsService = {
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
         faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
         active: data.activo,
+        contactPhone: data.telefono_contacto || null,
+        contactEmail: data.email_contacto || null,
+        responsibleName: data.nombre_responsable || null,
+        responsibleRelationship: data.parentesco_responsable || null,
+        emergencyPhone: data.telefono_emergencia || null,
       };
 
       return { student, error: null };
@@ -73,6 +78,11 @@ export const studentsService = {
         barcode: est.codigo_barras,
         profilePhoto: est.foto_perfil,
         active: est.activo,
+        contactPhone: est.telefono_contacto || null,
+        contactEmail: est.email_contacto || null,
+        responsibleName: est.nombre_responsable || null,
+        responsibleRelationship: est.parentesco_responsable || null,
+        emergencyPhone: est.telefono_emergencia || null,
       }));
 
       return { students, error: null };
@@ -93,9 +103,51 @@ export const studentsService = {
     search?: string;
   }): Promise<{ students: Student[]; error: string | null }> {
     try {
+      let studentIds: number[] | undefined = undefined;
+
+      // Si hay búsqueda, hacer consultas separadas para evitar problemas con caracteres especiales
+      if (filters?.search) {
+        // Escapar caracteres especiales para PostgREST ilike
+        // Los caracteres que necesitan escape en ilike: %, _, \
+        const escapedSearch = filters.search
+          .replace(/\\/g, '\\\\')  // Escapar backslashes primero
+          .replace(/%/g, '\\%')    // Escapar %
+          .replace(/_/g, '\\_');   // Escapar _
+        
+        const searchPattern = `%${escapedSearch}%`;
+        
+        // Hacer dos consultas separadas y combinar resultados para evitar problemas con .or()
+        // cuando hay caracteres especiales como comas en el texto de búsqueda
+        const [nameResult, barcodeResult] = await Promise.all([
+          supabase
+            .from('estudiantes')
+            .select('id_estudiante')
+            .ilike('nombre_completo', searchPattern),
+          supabase
+            .from('estudiantes')
+            .select('id_estudiante')
+            .ilike('codigo_barras', searchPattern),
+        ]);
+        
+        const nameIds = (nameResult.data || []).map((r: any) => r.id_estudiante);
+        const barcodeIds = (barcodeResult.data || []).map((r: any) => r.id_estudiante);
+        studentIds = [...new Set([...nameIds, ...barcodeIds])];
+        
+        // Si no hay resultados de búsqueda, retornar lista vacía
+        if (studentIds.length === 0) {
+          return { students: [], error: null };
+        }
+      }
+
+      // Construir la consulta principal
       let query = supabase
         .from('estudiantes')
         .select('*');
+
+      // Aplicar filtro de IDs si hay búsqueda
+      if (studentIds) {
+        query = query.in('id_estudiante', studentIds);
+      }
 
       if (filters?.grade) {
         query = query.eq('grado', filters.grade);
@@ -113,13 +165,6 @@ export const studentsService = {
         query = query.eq('activo', filters.active);
       }
 
-      if (filters?.search) {
-        // Buscar por nombre O código de barras usando OR de Supabase
-        const searchPattern = `%${filters.search}%`;
-        // Sintaxis PostgREST: campo1.operador.valor,campo2.operador.valor
-        query = query.or(`nombre_completo.ilike.${searchPattern},codigo_barras.ilike.${searchPattern}`);
-      }
-
       const { data, error } = await query.order('nombre_completo', { ascending: true });
 
       if (error) {
@@ -127,16 +172,16 @@ export const studentsService = {
       }
 
       // Obtener niveles de reincidencia para todos los estudiantes desde la vista
-      const studentIds = (data || []).map((est: EstudianteDB) => est.id_estudiante);
+      const allStudentIds = (data || []).map((est: EstudianteDB) => est.id_estudiante);
       
       let nivelDataMap: Record<number, { nivel_actual: number; total_faltas_60_dias: number }> = {};
       
-      if (studentIds.length > 0) {
+      if (allStudentIds.length > 0) {
         // Consultar la vista para obtener los niveles
         const { data: nivelesData } = await supabase
           .from('v_estudiantes_nivel_actual')
           .select('id_estudiante, nivel_actual, total_faltas_60_dias')
-          .in('id_estudiante', studentIds);
+          .in('id_estudiante', allStudentIds);
         
         if (nivelesData) {
           nivelesData.forEach((nivel: any) => {
@@ -161,6 +206,11 @@ export const studentsService = {
           active: est.activo,
           reincidenceLevel: nivelData.nivel_actual as any,
           faultsLast60Days: nivelData.total_faltas_60_dias,
+          contactPhone: est.telefono_contacto || null,
+          contactEmail: est.email_contacto || null,
+          responsibleName: est.nombre_responsable || null,
+          responsibleRelationship: est.parentesco_responsable || null,
+          emergencyPhone: est.telefono_emergencia || null,
         };
       });
 
@@ -204,6 +254,11 @@ export const studentsService = {
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
         faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
         active: data.activo,
+        contactPhone: data.telefono_contacto || null,
+        contactEmail: data.email_contacto || null,
+        responsibleName: data.nombre_responsable || null,
+        responsibleRelationship: data.parentesco_responsable || null,
+        emergencyPhone: data.telefono_emergencia || null,
       };
 
       return { student, error: null };
@@ -223,6 +278,11 @@ export const studentsService = {
     seccion: string;
     nivel_educativo: EducationalLevel;
     foto_perfil?: string;
+    telefono_contacto?: string;
+    email_contacto?: string;
+    nombre_responsable?: string;
+    parentesco_responsable?: string;
+    telefono_emergencia?: string;
   }): Promise<{ student: Student | null; error: string | null }> {
     try {
       const { data, error } = await supabase
@@ -244,6 +304,11 @@ export const studentsService = {
         barcode: data.codigo_barras,
         profilePhoto: data.foto_perfil,
         active: data.activo,
+        contactPhone: data.telefono_contacto || null,
+        contactEmail: data.email_contacto || null,
+        responsibleName: data.nombre_responsable || null,
+        responsibleRelationship: data.parentesco_responsable || null,
+        emergencyPhone: data.telefono_emergencia || null,
       };
 
       return { student: newStudent, error: null };
@@ -265,6 +330,11 @@ export const studentsService = {
       nivel_educativo: EducationalLevel;
       foto_perfil: string;
       activo: boolean;
+      telefono_contacto?: string;
+      email_contacto?: string;
+      nombre_responsable?: string;
+      parentesco_responsable?: string;
+      telefono_emergencia?: string;
     }>
   ): Promise<{ success: boolean; error: string | null }> {
     try {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,10 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2, LogOut, AlertTriangle } from 'lucide-react';
 import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
+import { authService } from '@/lib/services';
 
 export const ArrivalControl = () => {
   const [records, setRecords] = useState<ArrivalRecord[]>([]);
@@ -30,47 +31,110 @@ export const ArrivalControl = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'A tiempo' | 'Tarde'>('all');
   const [stats, setStats] = useState<{ total: number; onTime: number; late: number } | null>(null);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const isMountedRef = useRef(true);
+  
+  // Obtener fecha actual en formato YYYY-MM-DD
+  const getTodayDate = () => {
+    const nowLima = new Date().toLocaleString('es-PE', { 
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const [dd, mm, yyyy] = nowLima.split('/');
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  };
+  
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadArrivals();
-    loadStats();
-  }, []);
+    
+    return () => {
+      isMountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   const loadArrivals = async () => {
+    if (!isMountedRef.current) return;
+    
+    // Usar requestAnimationFrame para asegurar que el componente está montado
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
     try {
-      // Obtener la fecha actual en la zona horaria de Lima
-      const nowLima = new Date().toLocaleString('es-PE', { 
-        timeZone: 'America/Lima',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
-      const [dd, mm, yyyy] = nowLima.split('/');
-      const today = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-      
-      console.log('Cargando llegadas para la fecha:', today);
-      const { records: arrivals, error } = await arrivalService.getArrivals({ date: today });
+      console.log('Cargando llegadas para la fecha:', selectedDate);
+      const { records: arrivals, error } = await arrivalService.getArrivals({ date: selectedDate });
+
+      // Verificar nuevamente después de la llamada async
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (!isMountedRef.current) return;
 
       if (error) {
+        if (!isMountedRef.current) return;
         toast.error('Error al cargar llegadas');
         console.error('Error en getArrivals:', error);
+        if (isMountedRef.current) {
+          setRecords([]);
+          setStats({ total: 0, onTime: 0, late: 0 });
+        }
       } else {
-        console.log('Llegadas cargadas:', arrivals);
-        setRecords(arrivals);
+        if (!isMountedRef.current) return;
+        console.log('Llegadas cargadas:', arrivals.length, 'registros');
+        // Calcular estadísticas antes de actualizar estado
+        const onTime = arrivals.filter(r => r.status === 'A tiempo').length;
+        const late = arrivals.filter(r => r.status === 'Tarde').length;
+        const total = arrivals.length;
+        
+        // Actualizar estados de forma atómica
+        if (isMountedRef.current) {
+          setRecords(arrivals);
+          setStats({ total, onTime, late });
+        }
       }
     } catch (error) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (!isMountedRef.current) return;
       console.error('Error en loadArrivals:', error);
       toast.error('Error al procesar las llegadas');
+      if (isMountedRef.current) {
+        setRecords([]);
+        setStats({ total: 0, onTime: 0, late: 0 });
+      }
     } finally {
-      setLoading(false);
+      // Verificar una última vez antes de actualizar loading
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadStats = async () => {
-    const { stats: dailyStats, error } = await arrivalService.getTodayStats();
-    if (!error && dailyStats) {
-      setStats(dailyStats);
+  const handleRegisterDeparture = async (recordId: number) => {
+    if (!isMountedRef.current) return;
+    
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Debe estar autenticado para registrar salidas');
+      return;
+    }
+
+    const { success, error } = await arrivalService.createDepartureRecord(
+      recordId,
+      currentUser.id,
+      'Normal'
+    );
+
+    if (!isMountedRef.current) return;
+
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success('Salida registrada exitosamente');
+      loadArrivals(); // Recargar los registros
     }
   };
 
@@ -90,7 +154,9 @@ export const ArrivalControl = () => {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Control de Llegadas</h1>
-        <p className="text-muted-foreground">Monitoreo de asistencia del día</p>
+        <p className="text-muted-foreground">
+          Monitoreo de asistencia {selectedDate === getTodayDate() ? 'del día' : `del ${new Date(selectedDate).toLocaleDateString('es-PE')}`}
+        </p>
       </div>
 
       {/* Stats Cards */}
@@ -130,6 +196,15 @@ export const ArrivalControl = () => {
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 md:flex-row">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">Fecha</p>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              max={getTodayDate()}
+            />
+          </div>
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -187,8 +262,10 @@ export const ArrivalControl = () => {
                   <TableHead>Estudiante</TableHead>
                   <TableHead>Nivel / Grado</TableHead>
                   <TableHead>Hora de Llegada</TableHead>
+                  <TableHead>Hora de Salida</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Registrado por</TableHead>
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -212,6 +289,22 @@ export const ArrivalControl = () => {
                       </div>
                     </TableCell>
                     <TableCell>
+                      {record.departureTime ? (
+                        <div className="flex items-center gap-2">
+                          <LogOut className="h-4 w-4 text-green-600" />
+                          <span className="font-medium">{record.departureTime}</span>
+                          {record.departureType === 'Autorizada' && (
+                            <Badge variant="outline" className="text-xs">Autorizada</Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-amber-600">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span className="text-sm">Sin salida</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Badge
                         variant={record.status === 'A tiempo' ? 'default' : 'destructive'}
                         className={
@@ -225,6 +318,19 @@ export const ArrivalControl = () => {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {record.registeredByUser?.fullName || 'Sistema'}
+                    </TableCell>
+                    <TableCell>
+                      {!record.departureTime && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRegisterDeparture(record.id)}
+                          className="gap-2"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Registrar Salida
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

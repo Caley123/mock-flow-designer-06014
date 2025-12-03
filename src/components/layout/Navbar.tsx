@@ -36,10 +36,19 @@ export const Navbar = () => {
     setMobileMenuOpen(false);
   }, [navigate, setMobileMenuOpen]);
 
-  const handleLogout = async () => {
-    await authService.logout();
-    toast.success('Sesión cerrada');
-    navigate('/login');
+  const handleLogout = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    
+    try {
+      await authService.logout();
+      toast.success('Sesión cerrada');
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      // Asegurar redirección incluso si hay error
+      navigate('/login', { replace: true });
+    }
   };
 
   interface NavItem {
@@ -54,6 +63,18 @@ export const Navbar = () => {
     // Tutores no tienen acceso al navbar (usan su propia interfaz)
     if (user?.role === 'Tutor') {
       return [];
+    }
+
+    // Padres solo tienen acceso al portal
+    if (user?.role === 'Padre') {
+      return [
+        {
+          path: '/parent-portal',
+          label: 'Portal de Padres',
+          icon: User,
+          roles: ['Padre'],
+        },
+      ];
     }
 
     const allItems: NavItem[] = [
@@ -77,12 +98,19 @@ export const Navbar = () => {
         subItems: [
           { path: '/incidents', label: 'Lista de Incidencias' },
           { path: '/register', label: 'Registrar Incidencia' },
+          { path: '/justify-faults', label: 'Justificar Faltas' },
         ],
       },
       {
         path: '/students',
         label: 'Estudiantes',
         icon: Users,
+        roles: ['Supervisor', 'Director', 'Admin'],
+      },
+      {
+        path: '/parent-meetings',
+        label: 'Citas con Padres',
+        icon: User,
         roles: ['Supervisor', 'Director', 'Admin'],
       },
       {

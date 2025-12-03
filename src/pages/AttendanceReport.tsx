@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,9 @@ import { arrivalService } from '@/lib/services';
 import { EducationalLevel, MonthlyAttendanceRow } from '@/types';
 import { Loader2, Printer, FileDown, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
-// @ts-ignore - jspdf types may not be available
 import jsPDF from 'jspdf';
-// @ts-ignore - exceljs types may not be available
 import ExcelJS from 'exceljs';
+import { getCurrentSchoolYear, getAllBimestres, formatBimestreLabel, type Bimestre } from '@/lib/utils/bimestreUtils';
 
 const LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
@@ -36,48 +35,99 @@ const getCurrentMonthValue = () => {
 };
 
 export const AttendanceReport = () => {
+  const [reportType, setReportType] = useState<'monthly' | 'bimestral'>('monthly');
   const [monthValue, setMonthValue] = useState(getCurrentMonthValue());
+  const [bimestre, setBimestre] = useState<Bimestre | 'all'>('all');
+  const [añoEscolar, setAñoEscolar] = useState<number>(getCurrentSchoolYear());
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
   const [rows, setRows] = useState<MonthlyAttendanceRow[]>([]);
   const [daysInMonth, setDaysInMonth] = useState<number>(new Date().getDate());
   const [loading, setLoading] = useState(false);
+  const isMountedRef = useRef(true);
 
   const fetchReport = async () => {
-    const [yearStr, monthStr] = monthValue.split('-');
-    if (!yearStr || !monthStr) return;
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
     try {
-      const { rows: reportRows, daysInMonth: totalDays, error } = await arrivalService.getMonthlyAttendance({
-        month: Number(monthStr),
-        year: Number(yearStr),
-        level: levelFilter === 'all' ? undefined : levelFilter,
-        grade: gradeFilter === 'all' ? undefined : gradeFilter,
-        section: sectionFilter === 'all' ? undefined : sectionFilter,
-      });
+      if (reportType === 'bimestral') {
+        if (bimestre === 'all') {
+          toast.error('Por favor selecciona un bimestre');
+          if (isMountedRef.current) {
+            setLoading(false);
+          }
+          return;
+        }
+        
+        const { rows: reportRows, daysInBimestre: totalDays, error } = await arrivalService.getBimestralAttendance({
+          bimestre: bimestre,
+          añoEscolar: añoEscolar,
+          level: levelFilter === 'all' ? undefined : levelFilter,
+          grade: gradeFilter === 'all' ? undefined : gradeFilter,
+          section: sectionFilter === 'all' ? undefined : sectionFilter,
+        });
 
-      if (error) {
-        toast.error(error);
-        setRows([]);
-        setDaysInMonth(0);
+        if (!isMountedRef.current) return;
+
+        if (error) {
+          toast.error(error);
+          setRows([]);
+          setDaysInMonth(0);
+        } else {
+          setRows(reportRows);
+          setDaysInMonth(totalDays);
+        }
       } else {
-        setRows(reportRows);
-        setDaysInMonth(totalDays);
+        const [yearStr, monthStr] = monthValue.split('-');
+        if (!yearStr || !monthStr) {
+          if (isMountedRef.current) {
+            setLoading(false);
+          }
+          return;
+        }
+        
+        const { rows: reportRows, daysInMonth: totalDays, error } = await arrivalService.getMonthlyAttendance({
+          month: Number(monthStr),
+          year: Number(yearStr),
+          level: levelFilter === 'all' ? undefined : levelFilter,
+          grade: gradeFilter === 'all' ? undefined : gradeFilter,
+          section: sectionFilter === 'all' ? undefined : sectionFilter,
+        });
+
+        if (!isMountedRef.current) return;
+
+        if (error) {
+          toast.error(error);
+          setRows([]);
+          setDaysInMonth(0);
+        } else {
+          setRows(reportRows);
+          setDaysInMonth(totalDays);
+        }
       }
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       toast.error(error?.message || 'Error al generar reporte');
       setRows([]);
       setDaysInMonth(0);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchReport();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reportType, bimestre, añoEscolar]);
 
   const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, idx) => idx + 1), [daysInMonth]);
 
@@ -94,10 +144,13 @@ export const AttendanceReport = () => {
   }, [rows]);
 
   const handlePrint = () => {
+    if (!isMountedRef.current) return;
     window.print();
   };
 
   const exportToPDF = async () => {
+    if (!isMountedRef.current) return;
+    
     if (rows.length === 0) {
       toast.error('No hay datos para exportar');
       return;
@@ -408,14 +461,18 @@ export const AttendanceReport = () => {
       const fileName = `Reporte_Asistencias_${monthValue.replace('-', '_')}.pdf`;
       pdf.save(fileName);
       
+      if (!isMountedRef.current) return;
       toast.success('PDF generado exitosamente', { id: 'pdf-export' });
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       console.error('Error al generar PDF:', error);
       toast.error('Error al generar PDF: ' + (error.message || 'Error desconocido'), { id: 'pdf-export' });
     }
   };
 
   const exportToExcel = async () => {
+    if (!isMountedRef.current) return;
+    
     if (rows.length === 0) {
       toast.error('No hay datos para exportar');
       return;
@@ -606,8 +663,10 @@ export const AttendanceReport = () => {
       link.click();
       window.URL.revokeObjectURL(url);
       
+      if (!isMountedRef.current) return;
       toast.success('Excel generado exitosamente', { id: 'excel-export' });
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       console.error('Error al generar Excel:', error);
       toast.error('Error al generar Excel: ' + (error.message || 'Error desconocido'), { id: 'excel-export' });
     }
@@ -642,14 +701,28 @@ export const AttendanceReport = () => {
       <div id="attendance-report" className="container relative z-10 mx-auto p-6 space-y-6">
         <div className="print-hidden flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-sm text-muted-foreground uppercase tracking-wide">Reporte mensual</p>
+            <p className="text-sm text-muted-foreground uppercase tracking-wide">
+              {reportType === 'monthly' ? 'Reporte mensual' : 'Reporte bimestral'}
+            </p>
             <h1 className="text-3xl font-bold">Asistencia por estudiante</h1>
             <p className="text-sm text-muted-foreground">
-              Visualiza las asistencias del mes con totales por tardanza y faltas justificadas.
+              {reportType === 'monthly' 
+                ? 'Visualiza las asistencias del mes con totales por tardanza y faltas justificadas.'
+                : bimestre !== 'all' 
+                  ? `Visualiza las asistencias del ${formatBimestreLabel(getAllBimestres(añoEscolar).find(b => b.numero === bimestre)!)} con totales por tardanza y faltas justificadas.`
+                  : 'Visualiza las asistencias del bimestre seleccionado con totales por tardanza y faltas justificadas.'}
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={fetchReport} disabled={loading}>
+            <Button 
+              variant="outline" 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fetchReport();
+              }} 
+              disabled={loading}
+            >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -659,15 +732,39 @@ export const AttendanceReport = () => {
                 'Actualizar'
               )}
             </Button>
-            <Button onClick={handlePrint} variant="ghost" disabled={rows.length === 0}>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handlePrint();
+              }} 
+              variant="ghost" 
+              disabled={rows.length === 0}
+            >
               <Printer className="w-4 h-4 mr-2" />
               Imprimir
             </Button>
-            <Button onClick={exportToPDF} variant="ghost" disabled={rows.length === 0}>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                exportToPDF();
+              }} 
+              variant="ghost" 
+              disabled={rows.length === 0}
+            >
               <FileDown className="w-4 h-4 mr-2" />
               Exportar PDF
             </Button>
-            <Button onClick={exportToExcel} variant="ghost" disabled={rows.length === 0}>
+            <Button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                exportToExcel();
+              }} 
+              variant="ghost" 
+              disabled={rows.length === 0}
+            >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Exportar Excel
             </Button>
@@ -678,15 +775,58 @@ export const AttendanceReport = () => {
           <CardHeader>
             <CardTitle>Filtros</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-5">
+          <CardContent className="grid gap-4 md:grid-cols-6">
             <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Mes</p>
-              <Input
-                type="month"
-                value={monthValue}
-                onChange={(e) => setMonthValue(e.target.value)}
-              />
+              <p className="text-sm font-medium text-muted-foreground">Tipo de Reporte</p>
+              <Select value={reportType} onValueChange={(value: 'monthly' | 'bimestral') => setReportType(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Mensual</SelectItem>
+                  <SelectItem value="bimestral">Bimestral</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {reportType === 'monthly' ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Mes</p>
+                <Input
+                  type="month"
+                  value={monthValue}
+                  onChange={(e) => setMonthValue(e.target.value)}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Año Escolar</p>
+                  <Input
+                    type="number"
+                    value={añoEscolar}
+                    onChange={(e) => setAñoEscolar(Number(e.target.value))}
+                    min={2020}
+                    max={2050}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Bimestre</p>
+                  <Select value={bimestre === 'all' ? 'all' : String(bimestre)} onValueChange={(value) => setBimestre(value === 'all' ? 'all' : (Number(value) as Bimestre))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar bimestre" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los bimestres</SelectItem>
+                      {getAllBimestres(añoEscolar).map((b) => (
+                        <SelectItem key={b.numero} value={String(b.numero)}>
+                          {formatBimestreLabel(b)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <p className="text-sm font-medium text-muted-foreground">Nivel</p>
               <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>

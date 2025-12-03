@@ -12,10 +12,10 @@ function mapAuditLog(log: AuditoriaLogDB): AuditLog {
   return {
     id: log.id_log,
     table: log.tabla_afectada,
-    operation: log.operacion,
+    operation: log.accion,
     previousData: log.datos_anteriores,
     newData: log.datos_nuevos,
-    userId: log.usuario_id,
+    userId: log.id_usuario || undefined,
     timestamp: log.fecha_hora,
   };
 }
@@ -46,7 +46,7 @@ export async function getAuditLogs(filters?: {
     }
 
     if (filters?.operation) {
-      query = query.eq('operacion', filters.operation);
+      query = query.eq('accion', filters.operation);
     }
 
     if (filters?.startDate) {
@@ -96,7 +96,7 @@ export async function getAuditStats(days: number = 7): Promise<{
 
     const { data, error } = await supabase
       .from('auditoria_logs')
-      .select('operacion, tabla_afectada')
+      .select('accion, tabla_afectada')
       .gte('fecha_hora', startDate.toISOString());
 
     if (error) {
@@ -106,9 +106,9 @@ export async function getAuditStats(days: number = 7): Promise<{
 
     const stats = {
       totalOperations: data.length,
-      inserts: data.filter((log) => log.operacion === 'INSERT').length,
-      updates: data.filter((log) => log.operacion === 'UPDATE').length,
-      deletes: data.filter((log) => log.operacion === 'DELETE').length,
+      inserts: data.filter((log) => log.accion === 'INSERT').length,
+      updates: data.filter((log) => log.accion === 'UPDATE').length,
+      deletes: data.filter((log) => log.accion === 'DELETE').length,
       byTable: data.reduce((acc, log) => {
         acc[log.tabla_afectada] = (acc[log.tabla_afectada] || 0) + 1;
         return acc;
