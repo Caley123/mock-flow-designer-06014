@@ -1,6 +1,11 @@
 import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
+import { getLimaNow, getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getCached, setCached } from '@/lib/utils/memoryCache';
+
+const ARRIVAL_LIMIT_CACHE_KEY = 'config:hora_limite_llegada';
+const ARRIVAL_LIMIT_CACHE_TTL = 15 * 60 * 1000;
 
 /**
  * Servicio para gestionar registros de llegada
@@ -57,14 +62,26 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
  * Devuelve un string en formato HH:MM (24h). Valor por defecto: '08:00'
  */
 async function getArrivalLimitTime(): Promise<string> {
+  const cached = getCached<string>(ARRIVAL_LIMIT_CACHE_KEY);
+  if (cached) return cached;
+
   const { config } = await configService.getByKey('hora_limite_llegada');
   const raw = config?.value?.trim() || '08:00';
-  // Normalizar a HH:MM
   const match = raw.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return '08:00';
+  if (!match) {
+    setCached(ARRIVAL_LIMIT_CACHE_KEY, '08:00', ARRIVAL_LIMIT_CACHE_TTL);
+    return '08:00';
+  }
   const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
   const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  setCached(ARRIVAL_LIMIT_CACHE_KEY, normalized, ARRIVAL_LIMIT_CACHE_TTL);
+  return normalized;
+}
+
+/** Precarga la hora límite (llamar al abrir el escáner del tutor) */
+export async function prefetchArrivalConfig(): Promise<void> {
+  await getArrivalLimitTime();
 }
 
 function getNowHHMM(): string {
@@ -83,38 +100,19 @@ export async function createArrivalRecord(
   registeredBy?: number
 ): Promise<{ record: ArrivalRecord | null; error: string | null }> {
   try {
-    // Obtener la fecha y hora actual en la zona horaria de Lima
-    const now = new Date();
-    
-    // Formatear la fecha de manera directa usando toISOString y ajustando la zona horaria
-    const year = now.toLocaleString('es-PE', { timeZone: 'America/Lima', year: 'numeric' });
-    const month = now.toLocaleString('es-PE', { timeZone: 'America/Lima', month: '2-digit' });
-    const day = now.toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit' });
-    const hours = now.toLocaleString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', hour12: false });
-    const minutes = now.toLocaleString('es-PE', { timeZone: 'America/Lima', minute: '2-digit' });
-    
-    // Asegurarse de que los valores de un solo dígito tengan un 0 al inicio
-    const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    const formattedTime = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
-    
-    console.log('Fecha y hora procesadas:', {
-      formattedDate,
-      formattedTime,
-      timeZone: 'America/Lima'
-    });
+    const { date: formattedDate, time: formattedTime } = getLimaNow();
 
-    const insertData: any = {
+    const insertData: Record<string, unknown> = {
       id_estudiante: studentId,
       fecha: formattedDate,
       hora_llegada: formattedTime,
-      fecha_creacion: new Date().toISOString() // Guardar en UTC
+      fecha_creacion: new Date().toISOString(),
     };
 
     if (registeredBy) {
       insertData.registrado_por = registeredBy;
     }
 
-    // Calcular estado en base a hora_limite_llegada de configuracion_sistema
     const limitHHMM = await getArrivalLimitTime();
     insertData.estado = formattedTime <= limitHHMM ? 'A tiempo' : 'Tarde';
 
@@ -122,9 +120,7 @@ export async function createArrivalRecord(
       .from('registros_llegada')
       .insert(insertData)
       .select(`
-        *,
-        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(*),
-        usuario:usuarios!registros_llegada_registrado_por_fkey(*)
+        id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por
       `)
       .single();
 
@@ -133,7 +129,17 @@ export async function createArrivalRecord(
       return { record: null, error: error.message };
     }
 
-    return { record: mapArrivalRecord(data), error: null };
+    const record: ArrivalRecord = {
+      id: data.id_registro,
+      studentId: data.id_estudiante,
+      date: data.fecha,
+      arrivalTime: data.hora_llegada,
+      status: data.estado,
+      registeredBy: data.registrado_por,
+      createdAt: data.fecha_creacion,
+    };
+
+    return { record, error: null };
   } catch (error: any) {
     console.error('Error al registrar llegada:', error);
     return { record: null, error: error.message };
@@ -181,7 +187,6 @@ export async function getArrivals(filters?: {
           formattedDate = filters.date.split('T')[0];
         }
         
-        console.log('Filtrando por fecha:', `original: ${filters.date}, formatted: ${formattedDate}`);
         query = query.eq('fecha', formattedDate);
       } catch (error) {
         console.error('Error al formatear la fecha:', error);
@@ -695,14 +700,7 @@ export async function getDepartureAlerts(date?: string, horaLimite?: string): Pr
 }
 
 function getTodayDate(): string {
-  const nowLima = new Date().toLocaleString('es-PE', { 
-    timeZone: 'America/Lima',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const [dd, mm, yyyy] = nowLima.split('/');
-  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  return getLimaTodayDate();
 }
 
 export const arrivalService = {
@@ -714,4 +712,5 @@ export const arrivalService = {
   createDepartureRecord,
   getStudentsWithoutDeparture,
   getDepartureAlerts,
+  prefetchArrivalConfig,
 };

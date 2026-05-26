@@ -12,21 +12,15 @@ export const ReincidenceBadge = ({ level, className }: ReincidenceBadgeProps) =>
   const label = getReincidenceLevelLabel(level);
 
   const variantMap = {
-    success: 'default',
-    warning: 'secondary',
+    success: 'success',
+    warning: 'warning',
     danger: 'destructive',
-  };
+  } as const;
 
   return (
     <Badge 
       variant={variantMap[color] as any}
       className={className}
-      style={{
-        backgroundColor: color === 'success' ? 'hsl(var(--success))' : 
-                        color === 'warning' ? 'hsl(var(--warning))' : 
-                        'hsl(var(--danger))',
-        color: 'hsl(var(--success-foreground))',
-      }}
     >
       {label}
     </Badge>

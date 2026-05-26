@@ -28,7 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Edit, Loader2 } from 'lucide-react';
+import { Search, Plus, Edit, Loader2, BookOpen } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
 import { FaultCategory } from '@/types';
@@ -146,9 +147,14 @@ export const FaultsCatalog = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Catálogo de Faltas</h1>
+    <div className="app-page">
+      <PageHeader
+        icon={BookOpen}
+        eyebrow="Catálogos"
+        title="Catálogo de Faltas"
+        description="Defina tipos de falta, severidad y puntos asignados para el cálculo de reincidencia"
+        accent="secondary"
+      >
         <Dialog 
           open={dialogOpen} 
           onOpenChange={(open) => {
@@ -161,7 +167,7 @@ export const FaultsCatalog = () => {
           }}
         >
           <DialogTrigger asChild>
-            <Button>
+            <Button variant="warning">
               <Plus className="w-4 h-4 mr-2" />
               Nueva Falta
             </Button>
@@ -286,7 +292,7 @@ export const FaultsCatalog = () => {
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit" disabled={loading}>
+                  <Button type="submit" variant="success" disabled={loading}>
                     {loading ? (
                       <span className="flex items-center">
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -301,10 +307,9 @@ export const FaultsCatalog = () => {
             </Form>
           </DialogContent>
         </Dialog>
-      </div>
+      </PageHeader>
 
-      {/* Search */}
-      <Card>
+      <Card className="app-card">
         <CardContent className="pt-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />

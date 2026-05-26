@@ -37,7 +37,6 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Calendar,
   Clock,
   UserPlus,
   CheckCircle,
@@ -52,19 +51,23 @@ import {
   ScanLine,
   Calendar as CalendarIcon,
   List,
-  Grid3x3,
 } from 'lucide-react';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { ModernCalendar } from '@/components/calendar/ModernCalendar';
 import { parentMeetingsService, studentsService } from '@/lib/services';
 import { ParentMeeting, Student, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { authService } from '@/lib/services';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  formatDateKeyLima,
+  getLimaTodayDate,
+  parseMeetingDateTime,
+} from '@/lib/utils/limaDateTime';
 
 const meetingFormSchema = z.object({
   id_estudiante: z.number().min(1, 'Debe seleccionar un estudiante').optional(),
@@ -298,9 +301,9 @@ export const ParentMeetings = () => {
     }
   };
 
-  const handleBarcodeScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleBarcodeScan = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    e?.preventDefault();
+
     if (!barcodeInput.trim()) {
       toast.error('Por favor ingrese o escanee el código de barras');
       return;
@@ -343,35 +346,49 @@ export const ParentMeetings = () => {
   const filteredMeetings = meetings.filter((meeting) => {
     const studentName = meeting.student?.fullName ?? '';
     const matchesSearch = studentName.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Si estamos en modo calendario, filtrar por fecha seleccionada
+
     if (viewMode === 'calendar' && selectedDate) {
-      const meetingDate = new Date(meeting.fecha);
-      const selected = new Date(selectedDate);
-      const matchesDate = 
-        meetingDate.getDate() === selected.getDate() &&
-        meetingDate.getMonth() === selected.getMonth() &&
-        meetingDate.getFullYear() === selected.getFullYear();
-      return matchesSearch && matchesDate;
+      const meetingDay = meeting.fecha.slice(0, 10);
+      const selectedKey = formatDateKeyLima(selectedDate);
+      return matchesSearch && meetingDay === selectedKey;
     }
-    
+
     return matchesSearch;
   });
 
-  // Obtener citas para el calendario (agrupar por fecha)
-  const meetingsByDate = meetings.reduce((acc, meeting) => {
-    const date = meeting.fecha;
-    if (!acc[date]) {
-      acc[date] = [];
+  const getMeetingColor = (estado: ParentMeeting['estado']) => {
+    switch (estado) {
+      case 'Pendiente':
+        return 'amber' as const;
+      case 'Confirmada':
+        return 'blue' as const;
+      case 'Completada':
+        return 'green' as const;
+      default:
+        return 'gray' as const;
     }
-    acc[date].push(meeting);
-    return acc;
-  }, {} as Record<string, ParentMeeting[]>);
+  };
 
-  // Obtener citas del día seleccionado
-  const selectedDateMeetings = selectedDate 
-    ? meetingsByDate[selectedDate.toISOString().split('T')[0]] || []
-    : [];
+  const calendarEvents = meetings.map((m) => {
+    const { start, end } = parseMeetingDateTime(m.fecha, m.hora);
+    return {
+      id: m.id,
+      title: m.motivo,
+      start,
+      end,
+      student: m.student
+        ? {
+            id: m.student.id,
+            fullName: m.student.fullName,
+            grade: m.student.grade,
+            section: m.student.section,
+          }
+        : undefined,
+      estado: m.estado,
+      motivo: m.motivo,
+      color: getMeetingColor(m.estado),
+    };
+  });
 
   const getStatusBadge = (estado: ParentMeeting['estado']) => {
     const variants: Record<ParentMeeting['estado'], { variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
@@ -391,18 +408,17 @@ export const ParentMeetings = () => {
   };
 
   // Obtener fecha mínima (hoy)
-  const getMinDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  };
+  const getMinDate = () => getLimaTodayDate();
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Gestión de Citas con Padres</h1>
-        <p className="text-muted-foreground">Programa y gestiona las reuniones con padres de familia</p>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        icon={CalendarDays}
+        eyebrow="Comunicación"
+        title="Citas con Padres"
+        description="Programe reuniones, confirme asistencia y haga seguimiento del estado de cada cita"
+        accent="accent"
+      />
 
       {/* Stats Cards */}
       {stats && (
@@ -567,21 +583,7 @@ export const ParentMeetings = () => {
           {viewMode === 'calendar' ? (
             <div className="h-full">
               <ModernCalendar
-                events={meetings.map(m => ({
-                  id: m.id,
-                  title: m.motivo,
-                  start: new Date(`${m.fecha}T${m.hora}`),
-                  end: new Date(`${m.fecha}T${m.hora}`),
-                  student: m.student ? {
-                    id: m.student.id,
-                    fullName: m.student.fullName,
-                    grade: m.student.grade,
-                    section: m.student.section,
-                  } : undefined,
-                  estado: m.estado,
-                  motivo: m.motivo,
-                  color: m.estado === 'Pendiente' ? 'amber' : m.estado === 'Confirmada' ? 'blue' : m.estado === 'Completada' ? 'green' : 'gray',
-                }))}
+                events={calendarEvents}
                 onDateClick={(date) => {
                   setSelectedDate(date);
                   form.setValue('fecha', format(date, 'yyyy-MM-dd'));
@@ -633,7 +635,7 @@ export const ParentMeetings = () => {
                     <SelectItem value="Cancelada">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={() => setDialogOpen(true)}>
+                <Button variant="accent" onClick={() => setDialogOpen(true)}>
                   <UserPlus className="w-4 h-4 mr-2" />
                   Nueva Cita
                 </Button>

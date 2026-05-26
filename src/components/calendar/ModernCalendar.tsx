@@ -167,7 +167,8 @@ export const ModernCalendar = ({
                               event.color === 'amber' ? "bg-amber-500 hover:bg-amber-600" :
                               event.color === 'green' ? "bg-green-500 hover:bg-green-600" :
                               event.color === 'gray' ? "bg-gray-500 hover:bg-gray-600" :
-                              "bg-blue-500 hover:bg-blue-600"
+                              event.color === 'blue' ? "bg-blue-500 hover:bg-blue-600" :
+                              "bg-primary hover:bg-primary/90"
                             )}
                             style={{
                               top: `${top}px`,
@@ -252,7 +253,8 @@ export const ModernCalendar = ({
                         event.color === 'amber' ? "bg-amber-500 hover:bg-amber-600" :
                         event.color === 'green' ? "bg-green-500 hover:bg-green-600" :
                         event.color === 'gray' ? "bg-gray-500 hover:bg-gray-600" :
-                        "bg-blue-500 hover:bg-blue-600"
+                        event.color === 'blue' ? "bg-blue-500 hover:bg-blue-600" :
+                        "bg-primary hover:bg-primary/90"
                       )}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -339,7 +341,8 @@ export const ModernCalendar = ({
                             event.color === 'amber' ? "bg-amber-500 hover:bg-amber-600" :
                             event.color === 'green' ? "bg-green-500 hover:bg-green-600" :
                             event.color === 'gray' ? "bg-gray-500 hover:bg-gray-600" :
-                            "bg-blue-500 hover:bg-blue-600"
+                            event.color === 'blue' ? "bg-blue-500 hover:bg-blue-600" :
+                            "bg-primary hover:bg-primary/90"
                           )}
                           style={{
                             top: `${top}px`,

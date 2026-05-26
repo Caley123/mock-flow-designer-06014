@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 import { FaultType, CatalogoFaltaDB, FaultCategory } from '@/types';
+import { getCached, setCached } from '@/lib/utils/memoryCache';
+
+const FAULTS_CACHE_KEY = 'faults:active';
+const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
 /**
  * Servicio de catálogo de faltas
@@ -9,6 +13,13 @@ export const faultsService = {
    * Obtener todas las faltas activas, ordenadas por categoría y orden visualización
    */
   async getAll(activeOnly: boolean = true): Promise<{ faults: FaultType[]; error: string | null }> {
+    if (activeOnly) {
+      const cached = getCached<FaultType[]>(FAULTS_CACHE_KEY);
+      if (cached) {
+        return { faults: cached, error: null };
+      }
+    }
+
     try {
       let query = supabase
         .from('catalogo_faltas')
@@ -37,6 +48,10 @@ export const faultsService = {
         active: falta.activo,
         ordenVisualizacion: falta.orden_visualizacion,
       }));
+
+      if (activeOnly) {
+        setCached(FAULTS_CACHE_KEY, faults, FAULTS_CACHE_TTL);
+      }
 
       return { faults, error: null };
     } catch (error: any) {

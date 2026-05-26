@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/api/openwa": {
+        target: "http://localhost:2785",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/openwa/, "/api"),
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
@@ -36,6 +43,6 @@ export default defineConfig(({ mode }) => ({
     sourcemap: mode === 'development',
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
+    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js'],
   },
 }));

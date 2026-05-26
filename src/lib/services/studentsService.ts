@@ -1,5 +1,11 @@
 import { supabase } from '../supabaseClient';
 import { Student, EstudianteDB, EducationalLevel } from '@/types';
+import { resolveStudentProfilePhotoUrl } from '@/lib/utils/profilePhoto';
+
+function mapProfilePhoto(raw: string | null | undefined): string | null | undefined {
+  const resolved = resolveStudentProfilePhotoUrl(raw);
+  return resolved ?? raw ?? null;
+}
 
 /**
  * Servicio de estudiantes
@@ -8,12 +14,19 @@ export const studentsService = {
   /**
    * Buscar estudiante por código de barras
    */
-  async getByBarcode(barcode: string): Promise<{ student: Student | null; error: string | null }> {
+  async getByBarcode(
+    barcode: string,
+    options?: { skipReincidence?: boolean }
+  ): Promise<{ student: Student | null; error: string | null }> {
     try {
+      const columns = options?.skipReincidence
+        ? 'id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, foto_perfil, activo, telefono_contacto, telefono_emergencia'
+        : '*';
+
       const { data, error } = await supabase
         .from('estudiantes')
-        .select('*')
-        .eq('codigo_barras', barcode)
+        .select(columns)
+        .eq('codigo_barras', barcode.trim())
         .eq('activo', true)
         .single();
 
@@ -21,12 +34,18 @@ export const studentsService = {
         return { student: null, error: 'Estudiante no encontrado' };
       }
 
-      // Obtener nivel de reincidencia usando la vista
-      const { data: nivelData } = await supabase
-        .from('v_estudiantes_nivel_actual')
-        .select('nivel_actual, total_faltas_60_dias')
-        .eq('id_estudiante', data.id_estudiante)
-        .single();
+      let reincidenceLevel = 0;
+      let faultsLast60Days = 0;
+
+      if (!options?.skipReincidence) {
+        const { data: nivelData } = await supabase
+          .from('v_estudiantes_nivel_actual')
+          .select('nivel_actual, total_faltas_60_dias')
+          .eq('id_estudiante', data.id_estudiante)
+          .single();
+        reincidenceLevel = nivelData?.nivel_actual || 0;
+        faultsLast60Days = nivelData?.total_faltas_60_dias || 0;
+      }
 
       const student: Student = {
         id: data.id_estudiante,
@@ -35,9 +54,9 @@ export const studentsService = {
         section: data.seccion,
         level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
-        profilePhoto: data.foto_perfil,
-        reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
-        faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
+        profilePhoto: mapProfilePhoto(data.foto_perfil),
+        reincidenceLevel: reincidenceLevel as Student['reincidenceLevel'],
+        faultsLast60Days,
         active: data.activo,
         contactPhone: data.telefono_contacto || null,
         contactEmail: data.email_contacto || null,
@@ -76,7 +95,7 @@ export const studentsService = {
         section: est.seccion,
         level: est.nivel_educativo as EducationalLevel,
         barcode: est.codigo_barras,
-        profilePhoto: est.foto_perfil,
+        profilePhoto: mapProfilePhoto(est.foto_perfil),
         active: est.activo,
         contactPhone: est.telefono_contacto || null,
         contactEmail: est.email_contacto || null,
@@ -202,7 +221,7 @@ export const studentsService = {
           section: est.seccion,
           level: est.nivel_educativo as EducationalLevel,
           barcode: est.codigo_barras,
-          profilePhoto: est.foto_perfil,
+          profilePhoto: mapProfilePhoto(est.foto_perfil),
           active: est.activo,
           reincidenceLevel: nivelData.nivel_actual as any,
           faultsLast60Days: nivelData.total_faltas_60_dias,
@@ -250,7 +269,7 @@ export const studentsService = {
         section: data.seccion,
         level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
-        profilePhoto: data.foto_perfil,
+        profilePhoto: mapProfilePhoto(data.foto_perfil),
         reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
         faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
         active: data.activo,
@@ -302,7 +321,7 @@ export const studentsService = {
         section: data.seccion,
         level: data.nivel_educativo as EducationalLevel,
         barcode: data.codigo_barras,
-        profilePhoto: data.foto_perfil,
+        profilePhoto: mapProfilePhoto(data.foto_perfil),
         active: data.activo,
         contactPhone: data.telefono_contacto || null,
         contactEmail: data.email_contacto || null,

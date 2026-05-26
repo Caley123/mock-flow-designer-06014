@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -22,179 +24,195 @@ import {
   AlertTriangle,
   CheckCircle,
   Calendar,
-  User,
   Phone,
   Mail,
+  FileText,
+  BarChart3,
+  User as UserIcon,
+  GraduationCap,
 } from 'lucide-react';
 import { PageLoader } from '@/components/ui/page-loader';
-import { arrivalService, studentsService, parentMeetingsService } from '@/lib/services';
-import { ArrivalRecord, ParentMeeting, Student } from '@/types';
+import {
+  arrivalService,
+  authService,
+  incidentsService,
+  parentMeetingsService,
+  parentPortalService,
+} from '@/lib/services';
+import type { ArrivalRecord, Incident, ParentMeeting, Student } from '@/types';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { authService } from '@/lib/services';
+import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { StudentPhoto } from '@/components/shared/StudentPhoto';
+import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
+import { getReincidenceLevelDescription } from '@/lib/utils/reincidenceUtils';
+
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
 
 export const ParentPortal = () => {
+  const currentUser = authService.getCurrentUser();
+  const userId = currentUser?.id;
+  const isParentRole = currentUser?.role === 'Padre';
+
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [student, setStudent] = useState<Student | null>(null);
   const [arrivalRecords, setArrivalRecords] = useState<ArrivalRecord[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [meetings, setMeetings] = useState<ParentMeeting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-  const isMountedRef = useRef(true);
+  const [loadingTab, setLoadingTab] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => getLimaTodayDate());
+  const [reportMonth, setReportMonth] = useState(() => String(new Date().getMonth()));
+  const [reportYear, setReportYear] = useState(() => String(new Date().getFullYear()));
 
+  // userId estable: getCurrentUser() devuelve objeto nuevo cada render y causaba bucle infinito
   useEffect(() => {
-    isMountedRef.current = true;
-    loadStudentData();
-    
-    return () => {
-      isMountedRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (isMountedRef.current && student) {
-      loadArrivalRecords();
-      loadMeetings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [student, selectedDate]);
-
-  const loadStudentData = async () => {
-    if (!isMountedRef.current) return;
-    
-    setLoading(true);
-    try {
-      // En un sistema real, el padre estaría vinculado a un estudiante específico
-      // Por ahora, vamos a obtener el estudiante del usuario actual o permitir selección
+    async function loadStudents() {
       const user = authService.getCurrentUser();
-      
-      // TODO: Implementar lógica para obtener el estudiante vinculado al padre
-      // Por ahora, usaremos un estudiante de ejemplo o permitiremos selección
-      
-      // Cargar todos los estudiantes activos para selección (temporal)
-      const { students } = await studentsService.getAll({ active: true });
-      if (!isMountedRef.current) return;
-      
-      if (students.length > 0) {
-        // En producción, esto vendría de la relación padre-estudiante
-        setStudent(students[0]); // Temporal: usar el primero
+      if (!user) {
+        if (!cancelled) setLoading(false);
+        return;
       }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error loading student data:', error);
-      toast.error('Error al cargar información del estudiante');
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
-    }
-  };
 
-  const loadArrivalRecords = async () => {
-    if (!student || !isMountedRef.current) return;
+      if (!cancelled) setLoading(true);
 
-    try {
-      const { records, error } = await arrivalService.getArrivals({
-        studentId: student.id,
-        date: selectedDate || undefined,
-      });
+      const { students: list, error } = await parentPortalService.getLinkedStudents(user);
+      if (cancelled) return;
 
-      if (!isMountedRef.current) return;
-
-      if (error) {
-        toast.error('Error al cargar registros de asistencia');
+      if (error && list.length === 0) {
+        toast.error(error);
+        setStudents([]);
+        setStudent(null);
+        setSelectedStudentId('');
       } else {
-        setArrivalRecords(records);
+        setStudents(list);
+        if (list.length > 0) {
+          setSelectedStudentId((prev) => {
+            if (prev && list.some((s) => String(s.id) === prev)) return prev;
+            return String(list[0].id);
+          });
+        }
       }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error loading arrival records:', error);
+      setLoading(false);
     }
-  };
 
-  const loadMeetings = async () => {
-    if (!student || !isMountedRef.current) return;
+    void loadStudents();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
-    try {
-      const { meetings: meetingsList, error } = await parentMeetingsService.getAll({
-        estudianteId: student.id,
-      });
+  useEffect(() => {
+    if (!selectedStudentId) {
+      setStudent(null);
+      return;
+    }
+    const found = students.find((s) => String(s.id) === selectedStudentId);
+    setStudent(found ?? null);
+  }, [selectedStudentId, students]);
 
-      if (!isMountedRef.current) return;
+  useEffect(() => {
+    const studentId = Number(selectedStudentId);
+    if (!studentId) return;
 
-      if (error) {
-        console.error('Error loading meetings:', error);
-      } else {
-        setMeetings(meetingsList);
+    let cancelled = false;
+
+    async function loadStudentDetails() {
+      setLoadingTab(true);
+      try {
+        const [arrivalsRes, incidentsRes, meetingsRes] = await Promise.all([
+          arrivalService.getArrivals({ studentId, limit: 120 }),
+          incidentsService.getAll({ estudianteId: studentId, limit: 40 }),
+          parentMeetingsService.getAll({ estudianteId: studentId }),
+        ]);
+
+        if (cancelled) return;
+
+        if (arrivalsRes.error) toast.error('No se pudo cargar asistencia');
+        else setArrivalRecords(arrivalsRes.records);
+
+        if (!incidentsRes.error) setIncidents(incidentsRes.incidents);
+        if (!meetingsRes.error) setMeetings(meetingsRes.meetings);
+      } finally {
+        if (!cancelled) setLoadingTab(false);
       }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error loading meetings:', error);
     }
-  };
 
-  // Obtener alertas de salidas no registradas
-  const getDepartureAlerts = () => {
-    if (!student) return [];
-    
-    const today = new Date().toISOString().split('T')[0];
-    return arrivalRecords.filter(
-      record => 
-        record.date === today && 
-        !record.departureTime &&
-        record.arrivalTime
-    );
-  };
+    void loadStudentDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudentId]);
 
-  const departureAlerts = getDepartureAlerts();
+  const filteredArrivalsByDay = useMemo(() => {
+    return arrivalRecords.filter((r) => r.date?.slice(0, 10) === selectedDate);
+  }, [arrivalRecords, selectedDate]);
 
-  // Obtener estadísticas del mes actual
-  const getMonthlyStats = () => {
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const monthlyReport = useMemo(() => {
+    const month = Number(reportMonth);
+    const year = Number(reportYear);
+    const start = startOfMonth(new Date(year, month, 1));
+    const end = endOfMonth(start);
 
-    const monthRecords = arrivalRecords.filter(record => {
-      const recordDate = new Date(record.date);
-      return recordDate >= firstDay && recordDate <= lastDay;
+    const inMonth = arrivalRecords.filter((r) => {
+      try {
+        if (!r.date) return false;
+        const d = parseISO(r.date.slice(0, 10));
+        return isWithinInterval(d, { start, end });
+      } catch {
+        return false;
+      }
     });
 
-    const onTime = monthRecords.filter(r => r.status === 'A tiempo').length;
-    const late = monthRecords.filter(r => r.status === 'Tarde').length;
-    const withDeparture = monthRecords.filter(r => r.departureTime).length;
+    const onTime = inMonth.filter((r) => r.status === 'A tiempo').length;
+    const late = inMonth.filter((r) => r.status === 'Tarde').length;
+    const withDeparture = inMonth.filter((r) => r.departureTime).length;
 
     return {
-      total: monthRecords.length,
+      total: inMonth.length,
       onTime,
       late,
       withDeparture,
-      attendanceRate: monthRecords.length > 0 ? Math.round((onTime / monthRecords.length) * 100) : 0,
+      punctuality: inMonth.length > 0 ? Math.round((onTime / inMonth.length) * 100) : 0,
+      rows: inMonth.sort((a, b) => b.date.localeCompare(a.date)),
     };
-  };
+  }, [arrivalRecords, reportMonth, reportYear]);
 
-  const monthlyStats = getMonthlyStats();
+  const departureAlerts = useMemo(() => {
+    const today = getLimaTodayDate();
+    return arrivalRecords.filter(
+      (r) => r.date === today && r.arrivalTime && !r.departureTime
+    );
+  }, [arrivalRecords]);
+
+  const activeIncidents = useMemo(
+    () => incidents.filter((i) => i.status === 'Activa'),
+    [incidents]
+  );
 
   if (loading) {
-    return <PageLoader message="Cargando información del estudiante..." />;
+    return <PageLoader message="Cargando portal familiar..." />;
   }
 
-  if (!student) {
+  if (!currentUser || students.length === 0) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="app-page max-w-lg mx-auto">
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-              <p className="text-lg font-semibold mb-2">No se encontró información del estudiante</p>
-              <p className="text-muted-foreground">
-                Por favor, contacte con la administración para vincular su cuenta con un estudiante.
-              </p>
-            </div>
+          <CardContent className="pt-8 pb-8 text-center">
+            <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Sin estudiantes vinculados</h2>
+            <p className="text-muted-foreground text-sm">
+              {isParentRole
+                ? 'Su cuenta de apoderado aún no está asociada a un alumno. Solicite el vínculo en secretaría.'
+                : 'No hay estudiantes para mostrar. Use el script CREAR_PADRES_ESTUDIANTES.sql o asigne studentIds en grados_asignados.'}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -202,239 +220,416 @@ export const ParentPortal = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header con información del estudiante */}
-      <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+    <div className="app-page space-y-6">
+      {/* Cabecera */}
+      <Card className="border-0 shadow-lg overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground">
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
-                <User className="w-8 h-8 text-primary" />
-              </div>
+              {student && (
+                <StudentPhoto
+                  src={student.profilePhoto}
+                  name={student.fullName}
+                  className="h-20 w-20 border-2 border-white/30"
+                  imageClassName="object-cover"
+                />
+              )}
               <div>
-                <h1 className="text-2xl font-bold">{student.fullName}</h1>
-                <p className="text-muted-foreground">
-                  {student.level} • {student.grade} {student.section}
+                <p className="text-xs uppercase tracking-wide text-white/70 mb-1">
+                  Portal de padres de familia
                 </p>
-                {student.contactPhone && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    {student.contactPhone}
-                  </div>
-                )}
-                {student.contactEmail && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    {student.contactEmail}
-                  </div>
-                )}
+                <h1 className="text-2xl font-bold">{student?.fullName ?? '—'}</h1>
+                <p className="text-white/85 flex items-center gap-2 mt-1">
+                  <GraduationCap className="h-4 w-4" />
+                  {student?.level} · {student?.grade} {student?.section}
+                </p>
+                <p className="text-sm text-white/70 mt-1">DNI / código: {student?.barcode}</p>
               </div>
             </div>
-            <div className="text-right">
-              <Badge variant="outline" className="text-lg px-4 py-2">
-                Portal de Padres
-              </Badge>
+            <div className="flex flex-col gap-2 min-w-[200px]">
+              {students.length > 1 && (
+                <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                    <SelectValue placeholder="Seleccionar hijo/a" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {student && student.reincidenceLevel !== undefined && (
+                <div className="flex items-center gap-2">
+                  <ReincidenceBadge level={student.reincidenceLevel} />
+                  <span className="text-xs text-white/80">
+                    {getReincidenceLevelDescription(student.reincidenceLevel)}
+                  </span>
+                </div>
+              )}
+              {!isParentRole && (
+                <Badge variant="secondary" className="w-fit">
+                  Vista personal (prueba)
+                </Badge>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Alertas de salidas no registradas */}
-      {departureAlerts.length > 0 && (
-        <Card className="border-l-4 border-amber-500 bg-amber-50/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-700">
-              <AlertTriangle className="h-5 w-5" />
-              Alerta: Salida No Registrada
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-amber-700">
-              Su hijo/a llegó a las {departureAlerts[0].arrivalTime} pero no se ha registrado su salida.
-              Por favor, contacte con la institución si tiene alguna consulta.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Estadísticas del mes */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Asistencias del Mes</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{monthlyStats.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {monthlyStats.attendanceRate}% puntualidad
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">A Tiempo</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{monthlyStats.onTime}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tardanzas</CardTitle>
-            <Clock className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{monthlyStats.late}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Salidas Registradas</CardTitle>
-            <LogOut className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{monthlyStats.withDeparture}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtro de fecha */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Fecha</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md"
-              />
+          {(student?.contactPhone || student?.contactEmail || student?.responsibleName) && (
+            <div className="mt-4 pt-4 border-t border-white/20 flex flex-wrap gap-4 text-sm text-white/85">
+              {student.responsibleName && (
+                <span className="flex items-center gap-1">
+                  <UserIcon className="h-4 w-4" />
+                  {student.responsibleName}
+                  {student.responsibleRelationship ? ` (${student.responsibleRelationship})` : ''}
+                </span>
+              )}
+              {student.contactPhone && (
+                <span className="flex items-center gap-1">
+                  <Phone className="h-4 w-4" />
+                  {student.contactPhone}
+                </span>
+              )}
+              {student.contactEmail && (
+                <span className="flex items-center gap-1">
+                  <Mail className="h-4 w-4" />
+                  {student.contactEmail}
+                </span>
+              )}
             </div>
-            <div className="flex items-end">
-              <button
-                onClick={() => {
-                  const today = new Date();
-                  setSelectedDate(today.toISOString().split('T')[0]);
-                }}
-                className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-              >
-                Hoy
-              </button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Registros de asistencia */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Registros de Asistencia</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {arrivalRecords.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No hay registros para la fecha seleccionada
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Hora de Llegada</TableHead>
-                  <TableHead>Hora de Salida</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {arrivalRecords.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      {format(new Date(record.date), 'dd/MM/yyyy', { locale: es })}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        {record.arrivalTime}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {record.departureTime ? (
-                        <div className="flex items-center gap-2">
-                          <LogOut className="h-4 w-4 text-green-600" />
-                          {record.departureTime}
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="text-amber-600">
-                          Sin salida
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={record.status === 'A tiempo' ? 'default' : 'destructive'}
-                        className={
-                          record.status === 'A tiempo'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-orange-100 text-orange-700'
-                        }
-                      >
-                        {record.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           )}
         </CardContent>
       </Card>
 
-      {/* Citas programadas */}
-      {meetings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Citas Programadas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {meetings.map((meeting) => (
-                <div
-                  key={meeting.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/5 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="font-semibold">{meeting.motivo}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(meeting.fecha), 'dd/MM/yyyy', { locale: es })} a las {meeting.hora}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant={
-                      meeting.estado === 'Completada'
-                        ? 'default'
-                        : meeting.estado === 'Cancelada'
-                        ? 'destructive'
-                        : 'outline'
-                    }
-                  >
-                    {meeting.estado}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+      {departureAlerts.length > 0 && (
+        <Card className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="py-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Hoy llegó a las {departureAlerts[0].arrivalTime} y aún no se registró su salida.
+            </p>
           </CardContent>
         </Card>
       )}
+
+      <Tabs defaultValue="resumen" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="asistencia">Asistencia</TabsTrigger>
+          <TabsTrigger value="incidencias">Incidencias</TabsTrigger>
+          <TabsTrigger value="citas">Citas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumen" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Asistencias (mes actual)"
+              value={monthlyReport.total}
+              sub={`${monthlyReport.punctuality}% a tiempo`}
+              icon={Calendar}
+            />
+            <StatCard title="A tiempo" value={monthlyReport.onTime} icon={CheckCircle} accent="text-emerald-600" />
+            <StatCard title="Tardanzas" value={monthlyReport.late} icon={Clock} accent="text-orange-600" />
+            <StatCard title="Incidencias activas" value={activeIncidents.length} icon={FileText} accent="text-destructive" />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Reporte mensual de asistencia
+              </CardTitle>
+              <CardDescription>Llegadas y salidas del mes seleccionado</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <Select value={reportMonth} onValueChange={setReportMonth}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTH_NAMES.map((name, i) => (
+                      <SelectItem key={name} value={String(i)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={reportYear} onValueChange={setReportYear}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2025, 2026].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {monthlyReport.rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  Sin registros en {MONTH_NAMES[Number(reportMonth)]} {reportYear}
+                </p>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Llegada</TableHead>
+                        <TableHead>Salida</TableHead>
+                        <TableHead>Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {monthlyReport.rows.map((r) => (
+                        <TableRow key={r.id}>
+                          <TableCell>
+                            {r.date
+                              ? format(parseISO(r.date.slice(0, 10)), 'dd/MM/yyyy', { locale: es })
+                              : '—'}
+                          </TableCell>
+                          <TableCell>{r.arrivalTime || '—'}</TableCell>
+                          <TableCell>{r.departureTime || '—'}</TableCell>
+                          <TableCell>
+                            <Badge variant={r.status === 'A tiempo' ? 'default' : 'destructive'}>
+                              {r.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {incidents.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Últimas incidencias</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {incidents.slice(0, 3).map((inc) => (
+                  <IncidentRow key={inc.id} incident={inc} />
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="asistencia" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Consulta por día</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Fecha</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <Button type="button" variant="secondary" onClick={() => setSelectedDate(getLimaTodayDate())}>
+                Hoy
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Registros del día</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingTab ? (
+                <PageLoader message="Cargando..." />
+              ) : filteredArrivalsByDay.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground text-sm">
+                  Sin registros para esta fecha
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Llegada</TableHead>
+                      <TableHead>Salida</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredArrivalsByDay.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.arrivalTime}</TableCell>
+                        <TableCell>
+                          {r.departureTime ? (
+                            r.departureTime
+                          ) : (
+                            <Badge variant="outline" className="text-amber-600">
+                              Sin salida
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.status === 'A tiempo' ? 'default' : 'destructive'}>
+                            {r.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="incidencias" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Historial de incidencias</CardTitle>
+              <CardDescription>
+                Conducta, uniforme, puntualidad y otras faltas registradas en el colegio
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {incidents.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground text-sm">
+                  No hay incidencias registradas
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {incidents.map((inc) => (
+                    <IncidentRow key={inc.id} incident={inc} detailed />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="citas" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Citas con la institución</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {meetings.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground text-sm">
+                  No tiene citas programadas
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {meetings.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 rounded-lg border"
+                    >
+                      <div className="flex gap-3">
+                        <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">{m.motivo}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(m.fecha), 'dd/MM/yyyy', { locale: es })} · {m.hora}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={
+                          m.estado === 'Completada'
+                            ? 'default'
+                            : m.estado === 'Cancelada'
+                              ? 'destructive'
+                              : 'outline'
+                        }
+                      >
+                        {m.estado}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <p className="text-xs text-center text-muted-foreground pb-4">
+        Bienvenido, {currentUser.fullName}. Ante dudas contacte a secretaría del colegio.
+      </p>
     </div>
   );
 };
 
+function StatCard({
+  title,
+  value,
+  sub,
+  icon: Icon,
+  accent,
+}: {
+  title: string;
+  value: number;
+  sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent?: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <Icon className={`h-4 w-4 ${accent ?? 'text-muted-foreground'}`} />
+      </CardHeader>
+      <CardContent>
+        <div className={`text-2xl font-bold ${accent ?? ''}`}>{value}</div>
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IncidentRow({ incident, detailed }: { incident: Incident; detailed?: boolean }) {
+  const faultName = incident.faultType?.name ?? 'Falta registrada';
+  const dateStr = incident.registeredAt
+    ? format(new Date(incident.registeredAt), 'dd/MM/yyyy HH:mm', { locale: es })
+    : '—';
+
+  return (
+    <div className="p-4 rounded-lg border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-medium">{faultName}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{dateStr}</p>
+          {detailed && incident.faultType?.category && (
+            <Badge variant="outline" className="mt-2">
+              {incident.faultType.category}
+            </Badge>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <Badge
+            variant={
+              incident.status === 'Activa'
+                ? 'destructive'
+                : incident.status === 'Justificada'
+                  ? 'default'
+                  : 'secondary'
+            }
+          >
+            {incident.status}
+          </Badge>
+          <ReincidenceBadge level={incident.reincidenceLevel ?? 0} />
+        </div>
+      </div>
+      {detailed && incident.observations && (
+        <p className="text-sm text-muted-foreground mt-2 border-t pt-2">{incident.observations}</p>
+      )}
+    </div>
+  );
+}

@@ -1,13 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
-import { useSpring, animated } from '@react-spring/web';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Barcode, Clock, AlertCircle, CheckCircle, LogOut, User, X } from 'lucide-react';
+import {
+  Barcode,
+  Clock,
+  AlertCircle,
+  LogOut,
+  X,
+  ScanLine,
+} from 'lucide-react';
+import { StudentPhoto } from '@/components/shared/StudentPhoto';
+import { GuardyMark } from '@/components/brand/GuardyMark';
 import { toast } from 'sonner';
-import { studentsService, faultsService, incidentsService, authService, arrivalService } from '@/lib/services';
-import { Student, FaultType } from '@/types';
+import {
+  studentsService,
+  faultsService,
+  incidentsService,
+  authService,
+  arrivalService,
+  whatsappService,
+} from '@/lib/services';
+import { Student, FaultType, ArrivalRecord } from '@/types';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
@@ -26,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { configService } from '@/lib/services';
 
 export const TutorScanner = () => {
   const navigate = useNavigate();
@@ -34,28 +50,59 @@ export const TutorScanner = () => {
   const [student, setStudent] = useState<Student | null>(null);
   const [showIncidentDialog, setShowIncidentDialog] = useState(false);
   const [faults, setFaults] = useState<FaultType[]>([]);
-  const [selectedFault, setSelectedFault] = useState<string>('');
+  const [selectedFault, setSelectedFault] = useState('');
   const [observations, setObservations] = useState('');
   const [registering, setRegistering] = useState(false);
   const [showStudentProfile, setShowStudentProfile] = useState(false);
-  const [arrivalRecord, setArrivalRecord] = useState<any>(null);
+  const [arrivalRecord, setArrivalRecord] = useState<ArrivalRecord | null>(null);
+  const [arrivalLimit, setArrivalLimit] = useState<string>('08:00');
+  const [nowHHMM, setNowHHMM] = useState<string>('');
+  const [sessionCount, setSessionCount] = useState<{ total: number; onTime: number; late: number }>({
+    total: 0,
+    onTime: 0,
+    late: 0,
+  });
+  const [recentScans, setRecentScans] = useState<
+    Array<{ id: string; name: string; time: string; status: 'A tiempo' | 'Tarde' | string }>
+  >([]);
   const isMountedRef = useRef(true);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const user = authService.getCurrentUser();
+
+  const focusBarcodeInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      const input = barcodeInputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
     loadFaults();
-    
+    arrivalService.prefetchArrivalConfig();
+    loadArrivalLimit();
+    const stopClock = startClock();
+    focusBarcodeInput();
+
     return () => {
       isMountedRef.current = false;
+      stopClock?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!showIncidentDialog) {
+      focusBarcodeInput();
+    }
+  }, [showIncidentDialog, focusBarcodeInput]);
+
   const loadFaults = async () => {
     if (!isMountedRef.current) return;
-    
+
     try {
       const { faults: faultsList } = await faultsService.getAll(true);
       if (!isMountedRef.current) return;
@@ -66,36 +113,65 @@ export const TutorScanner = () => {
     }
   };
 
+  const loadArrivalLimit = async () => {
+    try {
+      const { config } = await configService.getByKey('hora_limite_llegada');
+      const raw = config?.value?.trim() || '08:00';
+      const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+      if (!match) return;
+      const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
+      const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
+      setArrivalLimit(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    } catch {
+      // Silencioso: mostramos valor por defecto
+    }
+  };
+
+  const startClock = () => {
+    const tick = () => {
+      const now = new Date().toLocaleTimeString('es-PE', {
+        timeZone: 'America/Lima',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      setNowHHMM(now);
+    };
+    tick();
+    const id = window.setInterval(tick, 15_000);
+    return () => window.clearInterval(id);
+  };
+
   const handleLogout = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    
+
     try {
       await authService.logout();
       toast.success('Sesión cerrada');
       navigate('/login', { replace: true });
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
-      // Asegurar redirección incluso si hay error
       navigate('/login', { replace: true });
     }
   };
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!barcode.trim() || !isMountedRef.current) {
       if (!isMountedRef.current) return;
       toast.error('Ingrese un código de barras');
       return;
     }
 
+    const code = barcode.trim();
     setScanning(true);
-    setStudent(null);
-    setShowStudentProfile(false);
 
     try {
-      const { student: foundStudent, error } = await studentsService.getByBarcode(barcode);
+      const { student: foundStudent, error } = await studentsService.getByBarcode(code, {
+        skipReincidence: true,
+      });
 
       if (!isMountedRef.current) return;
 
@@ -103,10 +179,10 @@ export const TutorScanner = () => {
         toast.error('Estudiante no encontrado');
         setBarcode('');
         setScanning(false);
+        focusBarcodeInput();
         return;
       }
 
-      // Registrar hora de llegada en la base de datos
       const currentUser = authService.getCurrentUser();
       const { record, error: arrivalError } = await arrivalService.createArrivalRecord(
         foundStudent.id,
@@ -120,27 +196,56 @@ export const TutorScanner = () => {
         toast.error('Error al registrar la llegada');
         setBarcode('');
         setScanning(false);
+        focusBarcodeInput();
         return;
       }
 
-      // Actualizar el estado con el estudiante y su registro de llegada
-      setStudent(foundStudent);
+      const { student: fullStudent } = await studentsService.getById(foundStudent.id);
+      const studentToShow = fullStudent ?? foundStudent;
+
+      setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
-      
-      // Enfocar automáticamente el campo de código de barras para el siguiente escaneo
-      const barcodeInput = document.getElementById('barcode-input') as HTMLInputElement;
-      if (barcodeInput) {
-        barcodeInput.focus();
-      }
+      setBarcode('');
 
-    } catch (error: any) {
+      const status = record?.status || 'Registrado';
+      setSessionCount((prev) => ({
+        total: prev.total + 1,
+        onTime: prev.onTime + (status === 'A tiempo' ? 1 : 0),
+        late: prev.late + (status === 'Tarde' ? 1 : 0),
+      }));
+      setRecentScans((prev) => {
+        const next = [
+          {
+            id: `${Date.now()}-${studentToShow.id}`,
+            name: studentToShow.fullName,
+            time: record?.arrivalTime ?? nowHHMM,
+            status,
+          },
+          ...prev,
+        ];
+        return next.slice(0, 6);
+      });
+
+      if (record && whatsappService.isEnabled()) {
+        void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
+          if (!isMountedRef.current) return;
+          if (wa.ok) {
+            toast.success('WhatsApp enviado al apoderado');
+          } else if (wa.error) {
+            toast.warning(`WhatsApp: ${wa.error}`);
+          }
+        });
+      }
+    } catch (error: unknown) {
       if (!isMountedRef.current) return;
       console.error('Error al escanear:', error);
       toast.error('Error al procesar el escaneo');
+      setBarcode('');
     } finally {
       if (isMountedRef.current) {
         setScanning(false);
+        focusBarcodeInput();
       }
     }
   };
@@ -170,7 +275,7 @@ export const TutorScanner = () => {
         return;
       }
 
-      const { incident, error } = await incidentsService.create({
+      const { error } = await incidentsService.create({
         id_estudiante: student.id,
         id_falta: parseInt(selectedFault),
         id_usuario_registro: currentUser.id,
@@ -187,9 +292,12 @@ export const TutorScanner = () => {
         setSelectedFault('');
         setObservations('');
         setStudent(null);
+        setShowStudentProfile(false);
+        setArrivalRecord(null);
         setBarcode('');
+        focusBarcodeInput();
       }
-    } catch (error) {
+    } catch {
       if (!isMountedRef.current) return;
       toast.error('Error al registrar incidencia');
     } finally {
@@ -199,309 +307,346 @@ export const TutorScanner = () => {
     }
   };
 
-  // Cerrar el perfil del estudiante
+  const clearScan = () => {
+    setBarcode('');
+    setStudent(null);
+    setShowStudentProfile(false);
+    setArrivalRecord(null);
+    focusBarcodeInput();
+  };
+
   const closeStudentProfile = () => {
     setShowStudentProfile(false);
     setStudent(null);
+    setArrivalRecord(null);
     setBarcode('');
+    focusBarcodeInput();
   };
 
-  // Efecto para limpiar el código de barras cuando se cierra el perfil
-  useEffect(() => {
-    if (!showStudentProfile) {
-      setBarcode('');
-    }
-  }, [showStudentProfile]);
-
-  // Animaciones con react-spring
-  const cardAnimation = useSpring({
-    opacity: showStudentProfile ? 1 : 0,
-    transform: showStudentProfile ? 'translateY(0)' : 'translateY(20px)',
-    config: { tension: 300, friction: 30 }
-  });
-
-  const buttonHover = useSpring({
-    scale: 1,
-    from: { scale: 0.98 },
-    config: { tension: 300, friction: 10 }
-  });
-
-  // Paleta de colores del Colegio San Ramón
-  const colors = {
-    guinda: '#800020',
-    azulMarino: '#1E3A8A',
-    dorado: '#D4AF37',
-    blanco: '#FFFFFF',
-    grisClaro: '#F3F4F6',
-    guindaClaro: '#A00030',
-    naranja: '#F59E0B',
-    naranjaClaro: '#FEF3C7'
-  };
+  const arrivalOnTime = arrivalRecord?.status === 'A tiempo';
+  const displayArrivalTime =
+    arrivalRecord?.arrivalTime?.length && arrivalRecord.arrivalTime.length >= 5
+      ? arrivalRecord.arrivalTime.slice(0, 5)
+      : arrivalRecord?.arrivalTime ?? '—:—';
+  const limitTone = useMemo(() => {
+    if (!nowHHMM) return 'secondary' as const;
+    return nowHHMM <= arrivalLimit ? ('success' as const) : ('warning' as const);
+  }, [nowHHMM, arrivalLimit]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cream via-sand to-beige relative overflow-hidden">
-      {/* Elementos decorativos de fondo */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-20 left-20 w-96 h-96 bg-primary rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-accent rounded-full blur-3xl"></div>
-      </div>
-      
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary via-primary-dark to-primary shadow-2xl border-b-4 border-accent relative z-10">
-        <div className="max-w-4xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="bg-gradient-to-br from-white to-cream p-3 rounded-xl shadow-xl border-2 border-accent/40">
-              <Barcode className="w-7 h-7 text-primary" />
+    <div className="tutor-page">
+      <header className="tutor-header">
+        <div className="tutor-header__inner">
+          <div className="tutor-header__brand">
+            <div className="tutor-header__shield p-1" aria-hidden>
+              <GuardyMark size="sm" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white drop-shadow-lg">Control de Asistencia</h1>
-              <p className="text-sm text-accent-light font-medium">Colegio San Ramón • 60 años</p>
+            <div className="min-w-0">
+              <p className="tutor-header__title">Control de asistencia</p>
+              <p className="tutor-header__subtitle">SIE — Sistema de Incidencias Escolares</p>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-white bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20 font-medium">{user?.fullName}</span>
-            <Button
-              size="sm"
-              onClick={handleLogout}
-              className="bg-accent hover:bg-accent-dark text-foreground hover:text-white border-2 border-accent-dark hover:border-accent-light transition-all duration-300 font-bold shadow-lg"
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <span className="tutor-header__user">{user?.fullName}</span>
+            <Badge
+              variant="outline"
+              className="sm:hidden border-[var(--tutor-lead)] bg-[var(--tutor-graphite)] text-[var(--tutor-starlight)] text-xs max-w-[100px] truncate"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              Salir
+              {user?.fullName?.split(' ')[0]}
+            </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleLogout}
+              className="border-[var(--tutor-lead)] bg-transparent text-[var(--tutor-starlight)] hover:bg-[var(--tutor-graphite)] hover:text-[var(--tutor-starlight)]"
+            >
+              <LogOut className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Salir</span>
             </Button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto p-6 space-y-6 relative z-10">
-        {/* Scanner Card */}
-        <Card className="mb-6 border-2 border-accent shadow-2xl overflow-hidden bg-white/95 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-br from-primary via-primary-dark to-primary text-white p-6 relative overflow-hidden">
-            {/* Patrón decorativo */}
-            <div className="absolute inset-0 opacity-10">
-              <div className="absolute top-0 right-0 w-24 h-24 border-4 border-accent rounded-full -translate-y-12 translate-x-12"></div>
-            </div>
-            
-            <CardTitle className="flex items-center gap-3 text-white relative">
-              <div className="bg-accent/20 p-2 rounded-full border-2 border-accent/40">
-                <Barcode className="w-6 h-6 text-accent-light" />
-              </div>
-              Escanear Código de Barras
-            </CardTitle>
-            <CardDescription className="text-accent-light font-medium">
-              Escanee el código de barras del estudiante para registrar su asistencia
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 bg-gradient-to-b from-white to-cream/20">
-            <form onSubmit={handleScan} className="space-y-5">
-              <div className="space-y-3">
-                <Label htmlFor="barcode-input" className="text-base font-bold text-foreground">Código de Barras</Label>
-                <Input
-                  id="barcode-input"
-                  type="text"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Escanee o ingrese el código de barras"
-                  autoComplete="off"
-                  autoFocus
-                  disabled={scanning}
-                  className="text-lg font-mono tracking-wider h-14 border-2 border-warm-gray focus:border-primary focus:ring-4 focus:ring-primary/20 bg-white shadow-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setBarcode('');
-                    setStudent(null);
-                    setShowStudentProfile(false);
-                  }}
-                  disabled={scanning}
-                  className="border-2 border-warm-gray hover:bg-warm-gray/50"
-                >
-                  Limpiar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={scanning || !barcode}
-                  className="bg-gradient-to-r from-primary via-primary-dark to-primary hover:from-primary-dark hover:to-primary text-white font-bold px-8 shadow-lg hover:shadow-2xl transition-all border-2 border-accent/30"
-                >
-                  {scanning ? (
-                    <>
-                      <Clock className="w-5 h-5 mr-2 animate-spin" />
-                      Escaneando...
-                    </>
-                  ) : (
-                    <>
-                      <Barcode className="w-5 h-5 mr-2" />
-                      Escanear
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Perfil del Estudiante */}
-        {showStudentProfile && student && (
-          <animated.div style={cardAnimation}>
-            <Card className="relative mb-6 border-2 border-primary shadow-2xl overflow-hidden bg-gradient-to-br from-white to-cream/30">
-              <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-primary via-accent to-primary-dark"></div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-4 right-4 h-10 w-10 rounded-full text-muted hover:bg-warm-gray/50 border-2 border-transparent hover:border-accent"
-                onClick={() => setShowStudentProfile(false)}
-              >
-                <X className="h-6 w-6" />
-                <span className="sr-only">Cerrar</span>
-              </Button>
-              <CardHeader className="pb-2 pt-6">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    {student.profilePhoto ? (
-                      <img
-                        src={student.profilePhoto}
-                        alt={student.fullName}
-                        className="w-16 h-16 rounded-full object-cover border-2 border-primary"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary">
-                        <User className="w-8 h-8 text-primary" />
-                      </div>
-                    )}
-                    <Badge 
-                      variant={arrivalRecord?.status === 'A tiempo' ? 'default' : 'secondary'}
-                      className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 whitespace-nowrap"
-                    >
-                      {arrivalRecord?.status || 'Pendiente'}
-                    </Badge>
+      <main className="tutor-main">
+        <div className="tutor-grid">
+          <section className="tutor-left">
+            <div className="tutor-scan-card">
+              <div className="tutor-scan-card__head">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                    <ScanLine className="h-5 w-5" strokeWidth={2} />
                   </div>
-                  <div>
-                    <CardTitle className="text-2xl font-bold text-[#1E3A8A]">
-                      {student.fullName}
-                    </CardTitle>
-                    <CardDescription className="text-base text-gray-600 mt-1">
-                      {student.level} • {student.grade} {student.section}
-                    </CardDescription>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-primary">
+                        Registro de llegada
+                      </p>
+                      <Badge variant={limitTone} className="text-[10px]">
+                        Límite {arrivalLimit}
+                      </Badge>
+                    </div>
+                    <h2 className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
+                      Escanear código de barras
+                    </h2>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Enfoque automático, registro continuo y acceso rápido a incidencias.
+                    </p>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-2 pb-6">
-                <div className="grid gap-6">
-                  <div className="flex items-start gap-6">
-                    <div className="h-20 w-20 rounded-full border-2 border-[#D4AF37] p-0.5">
-                      {student.profilePhoto ? (
-                        <img
-                          src={student.profilePhoto}
-                          alt={student.fullName}
-                          className="h-full w-full rounded-full object-cover"
-                        />
+              </div>
+
+              <CardContent className="p-5 sm:p-7 pt-5 sm:pt-6">
+                <form onSubmit={handleScan} className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="barcode-input" className="text-sm font-medium text-foreground">
+                      Código de barras
+                    </Label>
+                    <Input
+                      ref={barcodeInputRef}
+                      id="barcode-input"
+                      type="text"
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                      autoComplete="off"
+                      autoFocus
+                      className="tutor-scan-input"
+                    />
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
+                        Enter
+                      </span>
+                      <span>Registrar</span>
+                      <span className="mx-1">·</span>
+                      <span className="rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
+                        Esc
+                      </span>
+                      <span>Limpiar</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={clearScan}
+                      disabled={scanning}
+                      className="sm:min-w-[120px]"
+                    >
+                      Limpiar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={scanning || !barcode.trim()}
+                      className="sm:min-w-[180px]"
+                    >
+                      {scanning ? (
+                        <>
+                          <Clock className="h-4 w-4 animate-spin" />
+                          Procesando…
+                        </>
                       ) : (
-                        <div className="h-full w-full rounded-full bg-gradient-to-br from-[#1E3A8A] to-[#800020] flex items-center justify-center">
-                          <User className="h-8 w-8 text-white" />
-                        </div>
+                        <>
+                          <Barcode className="h-4 w-4" />
+                          Registrar llegada
+                        </>
                       )}
-                    </div>
-                    
-                    <div className="flex-1">
-                      <div className="bg-[#F3F4F6] p-4 rounded-lg">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-sm font-medium text-gray-500">Código</p>
-                            <p className="font-mono text-sm">{student.barcode || '--'}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-500">Hora de llegada</p>
-                            <p className="font-medium">{arrivalRecord?.arrivalTime || '--:--'}</p>
-                          </div>
-                        </div>
-                      </div>
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </div>
+
+            {showStudentProfile && student && (
+              <div
+                className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
+              >
+                <div className="tutor-student-card__banner" aria-hidden />
+                <div className="tutor-student-card__body">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="tutor-student-card__close"
+                    onClick={closeStudentProfile}
+                  >
+                    <X className="h-5 w-5" />
+                    <span className="sr-only">Cerrar</span>
+                  </Button>
+
+                  <div className="tutor-student-card__hero">
+                    <StudentPhoto
+                      src={student.profilePhoto}
+                      name={student.fullName}
+                      className="tutor-student-card__photo"
+                    />
+                    <div className="tutor-student-card__identity">
+                      <Badge
+                        variant={arrivalOnTime ? 'success' : 'warning'}
+                        className="tutor-student-card__status mb-2"
+                      >
+                        {arrivalRecord?.status ?? 'Registrado'}
+                      </Badge>
+                      <h3 className="tutor-student-card__name">{student.fullName}</h3>
+                      <p className="tutor-student-card__grade">
+                        {student.level} · {student.grade} {student.section}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex justify-end">
-                    <animated.div 
-                      style={{
-                        transform: buttonHover.scale.to(scale => `scale(${scale})`),
-                        display: 'inline-block'
-                      }}
-                      onMouseEnter={() => buttonHover.scale.start(1.05)}
-                      onMouseLeave={() => buttonHover.scale.start(1)}
+                  <div className="tutor-student-card__stats">
+                    <div className="tutor-student-card__stat tutor-student-card__stat--time">
+                      <p className="tutor-student-card__stat-label">Hora de llegada</p>
+                      <p className="tutor-student-card__stat-value tutor-student-card__stat-value--clock">
+                        {displayArrivalTime}
+                      </p>
+                    </div>
+                    <div className="tutor-student-card__stat">
+                      <p className="tutor-student-card__stat-label">Código de barras</p>
+                      <p className="tutor-student-card__stat-value tutor-student-card__stat-value--code">
+                        {student.barcode || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="tutor-student-card__actions">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={closeStudentProfile}
+                      className="tutor-student-card__btn-next"
                     >
-                      <Button
-                        onClick={() => setShowIncidentDialog(true)}
-                        className="gap-2 bg-[#800020] hover:bg-[#A00030] text-white border border-[#D4AF37] hover:border-[#D4AF37] transition-all duration-200 shadow-sm"
-                      >
-                      <AlertCircle className="h-4 w-4 text-[#D4AF37]" />
-                      Registrar Incidencia
-                      </Button>
-                    </animated.div>
+                      Siguiente estudiante
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="lg"
+                      onClick={handleRegisterFault}
+                      className="tutor-student-card__btn-incident gap-2"
+                    >
+                      <AlertCircle className="h-5 w-5" />
+                      Registrar incidencia
+                    </Button>
                   </div>
                 </div>
+              </div>
+            )}
+          </section>
+
+          <aside className="tutor-right">
+            <div className="tutor-side-card">
+              <div className="tutor-side-card__head">
+                <CardTitle className="text-base font-semibold">Estado del turno</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Hora local Lima y conteo de registros en esta sesión.
+                </p>
+              </div>
+              <div className="tutor-meta">
+                <div className="tutor-meta__item">
+                  <p className="tutor-meta__k">Hora actual</p>
+                  <p className="tutor-meta__v">{nowHHMM || '—:—'}</p>
+                </div>
+                <div className="tutor-meta__item">
+                  <p className="tutor-meta__k">Límite</p>
+                  <p className="tutor-meta__v">{arrivalLimit}</p>
+                </div>
+              </div>
+              <div className="tutor-kpis">
+                <div className="tutor-kpi">
+                  <p className="tutor-kpi__value">{sessionCount.total}</p>
+                  <p className="tutor-kpi__label">Total</p>
+                </div>
+                <div className="tutor-kpi">
+                  <p className="tutor-kpi__value">{sessionCount.onTime}</p>
+                  <p className="tutor-kpi__label">A tiempo</p>
+                </div>
+                <div className="tutor-kpi">
+                  <p className="tutor-kpi__value">{sessionCount.late}</p>
+                  <p className="tutor-kpi__label">Tarde</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="tutor-side-card">
+              <div className="tutor-side-card__head">
+                <CardTitle className="text-base font-semibold">Últimos escaneos</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Historial rápido (máx. 6).</p>
+              </div>
+              <div className="tutor-feed">
+                {recentScans.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aún no hay registros en esta sesión. Escanea el primer carnet para empezar.
+                  </p>
+                ) : (
+                  recentScans.map((row) => (
+                    <div key={row.id} className="tutor-feed__row">
+                      <span className="tutor-feed__name">{row.name}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="tutor-feed__time">{row.time}</span>
+                        <Badge variant={row.status === 'A tiempo' ? 'success' : row.status === 'Tarde' ? 'warning' : 'secondary'}>
+                          {row.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <Card className="tutor-instructions">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Instrucciones</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 pb-5">
+                <ol>
+                  <li>
+                    <span className="tutor-instructions__step">1</span>
+                    <span>Escanee o ingrese el código de barras del carnet del estudiante.</span>
+                  </li>
+                  <li>
+                    <span className="tutor-instructions__step">2</span>
+                    <span>El sistema registrará automáticamente la hora de llegada.</span>
+                  </li>
+                  <li>
+                    <span className="tutor-instructions__step">3</span>
+                    <span>
+                      Si detecta una falta (uniforme, conducta, etc.), use{' '}
+                      <strong className="text-foreground font-medium">Registrar incidencia</strong>.
+                    </span>
+                  </li>
+                  <li>
+                    <span className="tutor-instructions__step">4</span>
+                    <span>Complete el tipo de falta y guarde el registro.</span>
+                  </li>
+                </ol>
               </CardContent>
             </Card>
-          </animated.div>
-        )}
+          </aside>
+        </div>
+      </main>
 
-        {/* Register Fault Button */}
-        <animated.div style={{
-          opacity: showStudentProfile ? 1 : 0,
-          transform: showStudentProfile ? 'translateY(0)' : 'translateY(10px)',
-          transition: 'all 0.3s ease-out'
-        }}>
-          {student && showStudentProfile && (
-            <Card className="border-2 border-[#F59E0B] bg-[#FEF3C7] mt-4 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-orange-800">
-                <AlertCircle className="w-6 h-6 text-orange-600" />
-                ¿Detectó alguna falta?
-              </CardTitle>
-              <CardDescription className="text-orange-700">
-                Si el estudiante presenta alguna falta, puede registrarla aquí
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                onClick={handleRegisterFault}
-                variant="outline"
-                className="w-full border-orange-300 hover:bg-orange-50 dark:border-orange-700 dark:hover:bg-orange-950/30"
-              >
-                Registrar Incidencia
-              </Button>
-            </CardContent>
-            </Card>
-          )}
-        </animated.div>
-
-        {/* Instructions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Instrucciones</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>1. Escanee o ingrese el código de barras del carnet del estudiante</p>
-            <p>2. El sistema registrará automáticamente la hora de llegada</p>
-            <p>3. Si detecta alguna falta (uniforme, conducta, etc.), presione "Registrar Incidencia"</p>
-            <p>4. Complete la información de la incidencia y guarde</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Incident Dialog */}
-      <Dialog open={showIncidentDialog} onOpenChange={setShowIncidentDialog}>
-        <DialogContent>
+      <Dialog
+        open={showIncidentDialog}
+        onOpenChange={(open) => {
+          setShowIncidentDialog(open);
+          if (!open) {
+            setSelectedFault('');
+            setObservations('');
+            focusBarcodeInput();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-[28px]">
           <DialogHeader>
-            <DialogTitle>Registrar Incidencia</DialogTitle>
+            <DialogTitle>Registrar incidencia</DialogTitle>
             <DialogDescription>
-              Estudiante: <strong>{student?.fullName}</strong>
+              Estudiante: <span className="font-medium text-foreground">{student?.fullName}</span>
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Tipo de Falta</Label>
+              <Label>Tipo de falta</Label>
               <Select value={selectedFault} onValueChange={setSelectedFault}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar falta" />
@@ -510,7 +655,10 @@ export const TutorScanner = () => {
                   {faults.map((fault) => (
                     <SelectItem key={fault.id} value={fault.id.toString()}>
                       <div className="flex items-center gap-2">
-                        <Badge variant={fault.severity === 'Grave' ? 'destructive' : 'secondary'}>
+                        <Badge
+                          variant={fault.severity === 'Grave' ? 'destructive' : 'secondary'}
+                          className="text-[10px]"
+                        >
                           {fault.severity}
                         </Badge>
                         <span>{fault.name}</span>
@@ -525,24 +673,30 @@ export const TutorScanner = () => {
               <Textarea
                 value={observations}
                 onChange={(e) => setObservations(e.target.value)}
-                placeholder="Describa brevemente la situación..."
                 rows={3}
+                className="resize-none"
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
+              type="button"
               variant="outline"
               onClick={() => {
                 setShowIncidentDialog(false);
                 setSelectedFault('');
                 setObservations('');
+                focusBarcodeInput();
               }}
             >
               Cancelar
             </Button>
-            <Button onClick={handleSubmitIncident} disabled={!selectedFault || registering}>
-              {registering ? 'Guardando...' : 'Guardar Incidencia'}
+            <Button
+              type="button"
+              onClick={handleSubmitIncident}
+              disabled={!selectedFault || registering}
+            >
+              {registering ? 'Guardando…' : 'Guardar incidencia'}
             </Button>
           </DialogFooter>
         </DialogContent>

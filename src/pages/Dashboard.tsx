@@ -46,6 +46,8 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { LayoutDashboard } from 'lucide-react';
 
 // Colores para los niveles de incidencia
 const LEVEL_COLORS = {
@@ -89,40 +91,38 @@ export const Dashboard = () => {
       setLoading(true);
       
       try {
-        const { stats: dashboardStats, error } = await dashboardService.getDashboardStats();
+        const [
+          statsResult,
+          alertsResult,
+          incidentsResult,
+          trendResult,
+        ] = await Promise.all([
+          dashboardService.getDashboardStats(),
+          arrivalService.getDepartureAlerts(),
+          incidentsService.getAll({ limit: 6, offset: 0 }),
+          dashboardService.getMonthlyTrend(),
+        ]);
 
         if (!isMountedRef.current) return;
 
-        if (error) {
-          console.error('Error fetching dashboard data:', error);
+        if (statsResult.error) {
+          console.error('Error fetching dashboard data:', statsResult.error);
           toast.error('Error al cargar estadísticas del dashboard');
           setStats(null);
-        } else if (dashboardStats) {
-          setStats(dashboardStats);
-        }
-        
-        // Cargar alertas de salidas no registradas
-        const { alerts, error: alertsError } = await arrivalService.getDepartureAlerts();
-        if (!isMountedRef.current) return;
-        if (!alertsError && alerts) {
-          setDepartureAlerts(alerts);
+        } else if (statsResult.stats) {
+          setStats(statsResult.stats);
         }
 
-        // Cargar incidencias recientes
-        const { incidents, error: incidentsError } = await incidentsService.getAll({
-          limit: 6,
-          offset: 0,
-        });
-        if (!isMountedRef.current) return;
-        if (!incidentsError && incidents) {
-          setRecentIncidents(incidents);
+        if (!alertsResult.error && alertsResult.alerts) {
+          setDepartureAlerts(alertsResult.alerts);
         }
 
-        // Cargar tendencia mensual
-        const { monthlyTrend: trend, error: trendError } = await dashboardService.getMonthlyTrend();
-        if (!isMountedRef.current) return;
-        if (!trendError && trend) {
-          setMonthlyTrend(trend);
+        if (!incidentsResult.error && incidentsResult.incidents) {
+          setRecentIncidents(incidentsResult.incidents);
+        }
+
+        if (!trendResult.error && trendResult.monthlyTrend) {
+          setMonthlyTrend(trendResult.monthlyTrend);
         }
       } catch (error) {
         if (!isMountedRef.current) return;
@@ -206,124 +206,125 @@ export const Dashboard = () => {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-4 md:p-6 space-y-6 w-full">
-      {/* Header */}
+    <div className="app-page w-full">
       <animated.div style={fadeIn}>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-gray-600 mt-1">Bienvenido al sistema de gestión escolar</p>
-          </div>
+        <PageHeader
+          icon={LayoutDashboard}
+          eyebrow="Resumen general"
+          title="Panel de Inicio"
+          description="Indicadores del día, tendencias y accesos rápidos a las tareas más frecuentes"
+          accent="primary"
+        >
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/register')}>
+            <Button variant="outline-warning" onClick={() => navigate('/register')}>
               <FileText className="w-4 h-4 mr-2" />
               Nueva Incidencia
             </Button>
-            <Button onClick={() => navigate('/arrival-control')}>
+            <Button variant="success" onClick={() => navigate('/arrival-control')}>
               <Clock className="w-4 h-4 mr-2" />
               Control de Asistencia
             </Button>
           </div>
-        </div>
+        </PageHeader>
       </animated.div>
 
       {/* Stats Cards - Top Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Incidencias */}
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card border-l-4 border-l-primary">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Total Incidencias</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalIncidents}</p>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Total Incidencias</p>
+                <p className="text-3xl font-bold text-foreground">{stats.totalIncidents}</p>
                 <div className="flex items-center mt-2">
-                  <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                  <span className="text-sm text-green-600 font-medium">
+                  <TrendingUp className="w-4 h-4 text-success mr-1" />
+                  <span className="text-sm text-success font-medium">
                     +{stats.incidentsThisMonth} este mes
                   </span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-blue-600" />
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-primary" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Incidencias Hoy */}
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card border-l-4 border-l-warning">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Incidencias Hoy</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.incidentsToday}</p>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Incidencias Hoy</p>
+                <p className="text-3xl font-bold text-foreground">{stats.incidentsToday}</p>
                 <div className="flex items-center mt-2">
                   {stats.incidentsToday > 0 ? (
                     <>
-                      <AlertCircle className="w-4 h-4 text-amber-500 mr-1" />
-                      <span className="text-sm text-amber-600 font-medium">
+                      <AlertCircle className="w-4 h-4 text-warning mr-1" />
+                      <span className="text-sm text-warning font-medium">
                         {stats.incidentsToday} {stats.incidentsToday === 1 ? 'incidencia' : 'incidencias'}
                       </span>
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 className="w-4 h-4 text-green-500 mr-1" />
-                      <span className="text-sm text-green-600 font-medium">Sin incidencias</span>
+                      <CheckCircle2 className="w-4 h-4 text-success mr-1" />
+                      <span className="text-sm text-success font-medium">Sin incidencias</span>
                     </>
                   )}
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-amber-600" />
+              <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
+                <FileText className="w-6 h-6 text-warning" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Estudiantes Afectados */}
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card border-l-4 border-l-accent">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Estudiantes Afectados</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.studentsWithIncidents}</p>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Estudiantes Afectados</p>
+                <p className="text-3xl font-bold text-foreground">{stats.studentsWithIncidents}</p>
                 <div className="flex items-center mt-2">
-                  <Activity className="w-4 h-4 text-purple-500 mr-1" />
-                  <span className="text-sm text-purple-600 font-medium">
+                  <Activity className="w-4 h-4 text-accent mr-1" />
+                  <span className="text-sm text-accent font-medium">
                     {stats.incidentsThisWeek} esta semana
                   </span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Users className="w-6 h-6 text-accent" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Tasa de Resolución */}
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card border-l-4 border-l-success">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Tasa de Resolución</p>
-                <p className="text-3xl font-bold text-gray-900">{resolutionRate}%</p>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Tasa de Resolución</p>
+                <p className="text-3xl font-bold text-foreground">{resolutionRate}%</p>
                 <div className="flex items-center mt-2">
                   {resolutionRate > 80 ? (
                     <>
-                      <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                      <span className="text-sm text-green-600 font-medium">Excelente</span>
+                      <TrendingUp className="w-4 h-4 text-success mr-1" />
+                      <span className="text-sm text-success font-medium">Excelente</span>
                     </>
                   ) : (
                     <>
-                      <TrendingDown className="w-4 h-4 text-amber-500 mr-1" />
-                      <span className="text-sm text-amber-600 font-medium">Mejorable</span>
+                      <TrendingDown className="w-4 h-4 text-warning mr-1" />
+                      <span className="text-sm text-warning font-medium">Mejorable</span>
                     </>
                   )}
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <Target className="w-6 h-6 text-green-600" />
+              <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
+                <Target className="w-6 h-6 text-success" />
               </div>
             </div>
           </CardContent>
@@ -333,14 +334,14 @@ export const Dashboard = () => {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Total Revenue Chart - Incidencias Mensuales */}
-        <Card className="lg:col-span-2 bg-white border-0 shadow-sm">
+        <Card className="lg:col-span-2 app-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Tendencia de Incidencias</CardTitle>
-                <CardDescription className="text-sm text-gray-600">Últimos 5 meses</CardDescription>
+                <CardTitle className="text-lg font-semibold text-foreground">Tendencia de Incidencias</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">Últimos 5 meses</CardDescription>
               </div>
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              <Badge variant="success">
                 <ArrowUpRight className="w-3 h-3 mr-1" />
                 {growthPercentage > 0 ? '+' : ''}{growthPercentage.toFixed(1)}%
               </Badge>
@@ -349,35 +350,35 @@ export const Dashboard = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={monthlyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis 
                   dataKey="month" 
-                  stroke="#6b7280"
+                  stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                 />
                 <YAxis 
-                  stroke="#6b7280"
+                  stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                 />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
+                    backgroundColor: 'hsl(var(--card))', 
+                    border: '1px solid hsl(var(--border))',
                     borderRadius: '8px',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)'
                   }}
                 />
-                <Bar dataKey="incidents" fill="#6366f1" radius={[8, 8, 0, 0]} />
-                <Line type="monotone" dataKey="incidents" stroke="#8b5cf6" strokeWidth={2} />
+                <Bar dataKey="incidents" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
+                <Line type="monotone" dataKey="incidents" stroke="hsl(var(--accent))" strokeWidth={2} />
               </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         {/* Growth Card */}
-        <Card className="bg-white border-0 shadow-sm">
+        <Card className="app-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-gray-900">Crecimiento</CardTitle>
+            <CardTitle className="text-lg font-semibold text-foreground">Crecimiento</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="text-center">
@@ -387,7 +388,7 @@ export const Dashboard = () => {
                     cx="64"
                     cy="64"
                     r="56"
-                    stroke="#e5e7eb"
+                    stroke="hsl(var(--border))"
                     strokeWidth="8"
                     fill="none"
                   />
@@ -395,7 +396,7 @@ export const Dashboard = () => {
                     cx="64"
                     cy="64"
                     r="56"
-                    stroke="#6366f1"
+                    stroke="hsl(var(--primary))"
                     strokeWidth="8"
                     fill="none"
                     strokeDasharray={`${(stats.incidentsThisMonth / Math.max(stats.totalIncidents, 1)) * 352} 352`}
@@ -404,23 +405,23 @@ export const Dashboard = () => {
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div>
-                    <p className="text-2xl font-bold text-gray-900">{stats.incidentsThisMonth}</p>
-                    <p className="text-xs text-gray-600">Este mes</p>
+                    <p className="text-2xl font-bold text-foreground">{stats.incidentsThisMonth}</p>
+                    <p className="text-xs text-muted-foreground">Este mes</p>
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-4">Incidencias del mes actual</p>
+              <p className="text-sm text-muted-foreground mt-4">Incidencias del mes actual</p>
             </div>
-            <div className="space-y-3 pt-4 border-t">
+            <div className="space-y-3 pt-4 border-t border-border">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Promedio Nivel</span>
-                <span className="text-sm font-semibold text-gray-900">
+                <span className="text-sm text-muted-foreground">Promedio Nivel</span>
+                <span className="text-sm font-semibold text-foreground">
                   {stats.averageReincidenceLevel.toFixed(1)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Esta Semana</span>
-                <span className="text-sm font-semibold text-gray-900">{stats.incidentsThisWeek}</span>
+                <span className="text-sm text-muted-foreground">Esta Semana</span>
+                <span className="text-sm font-semibold text-foreground">{stats.incidentsThisWeek}</span>
               </div>
             </div>
           </CardContent>
@@ -430,10 +431,10 @@ export const Dashboard = () => {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Distribution Chart */}
-        <Card className="bg-white border-0 shadow-sm">
+        <Card className="app-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-gray-900">Distribución por Nivel</CardTitle>
-            <CardDescription className="text-sm text-gray-600">Niveles de reincidencia</CardDescription>
+            <CardTitle className="text-lg font-semibold text-foreground">Distribución por Nivel</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">Niveles de reincidencia</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
@@ -445,7 +446,7 @@ export const Dashboard = () => {
                   labelLine={false}
                   label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="hsl(var(--accent))"
                   dataKey="value"
                 >
                   {levelData.map((entry, index) => (
@@ -466,24 +467,24 @@ export const Dashboard = () => {
         </Card>
 
         {/* Top Faults */}
-        <Card className="bg-white border-0 shadow-sm">
+        <Card className="app-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-gray-900">Faltas Más Frecuentes</CardTitle>
-            <CardDescription className="text-sm text-gray-600">Top 5 faltas registradas</CardDescription>
+            <CardTitle className="text-lg font-semibold text-foreground">Faltas Más Frecuentes</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">Top 5 faltas registradas</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {stats.topFaults.slice(0, 5).map((fault, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <div className="flex items-center gap-3 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                      <span className="text-xs font-bold text-purple-600">#{index + 1}</span>
+                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                      <span className="text-xs font-bold text-accent">#{index + 1}</span>
                     </div>
-                    <span className="text-sm font-medium text-gray-700 flex-1 truncate">
+                    <span className="text-sm font-medium text-foreground/85 flex-1 truncate">
                       {fault.faultType}
                     </span>
                   </div>
-                  <span className="text-sm font-bold text-gray-900 ml-2">{fault.count}</span>
+                  <span className="text-sm font-bold text-foreground ml-2">{fault.count}</span>
                 </div>
               ))}
             </div>
@@ -491,12 +492,12 @@ export const Dashboard = () => {
         </Card>
 
         {/* Recent Incidents */}
-        <Card className="bg-white border-0 shadow-sm">
+        <Card className="app-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Incidencias Recientes</CardTitle>
-                <CardDescription className="text-sm text-gray-600">Últimas 6 incidencias</CardDescription>
+                <CardTitle className="text-lg font-semibold text-foreground">Incidencias Recientes</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">Últimas 6 incidencias</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => navigate('/incidents')}>
                 Ver todas
@@ -509,39 +510,38 @@ export const Dashboard = () => {
                 recentIncidents.map((incident) => (
                   <div
                     key={incident.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/incidents`)}
                   >
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-5 h-5 text-blue-600" />
+                    <div className="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle className="w-5 h-5 text-warning" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {incident.student?.fullName || 'Estudiante desconocido'}
                       </p>
-                      <p className="text-xs text-gray-600 truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         {incident.faultType?.name || 'Falta desconocida'}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted-foreground/80 mt-1">
                         {format(new Date(incident.registeredAt), "dd MMM, HH:mm", { locale: es })}
                       </p>
                     </div>
-                    <Badge 
-                      variant="outline" 
-                      className={`${
-                        incident.reincidenceLevel >= 3 
-                          ? 'bg-red-50 text-red-700 border-red-200' 
+                    <Badge
+                      variant={
+                        incident.reincidenceLevel >= 3
+                          ? 'destructive'
                           : incident.reincidenceLevel >= 2
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-green-50 text-green-700 border-green-200'
-                      }`}
+                            ? 'warning'
+                            : 'success'
+                      }
                     >
                       Nivel {incident.reincidenceLevel}
                     </Badge>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500 text-center py-4">No hay incidencias recientes</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No hay incidencias recientes</p>
               )}
             </div>
           </CardContent>
@@ -550,9 +550,9 @@ export const Dashboard = () => {
 
       {/* Alertas de Salidas */}
       {departureAlerts.length > 0 && (
-        <Card className="bg-white border-0 shadow-sm border-l-4 border-amber-500">
+        <Card className="app-card border-l-4 border-l-warning">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-700">
+            <CardTitle className="flex items-center gap-2 text-warning">
               <AlertCircle className="h-5 w-5" />
               Alertas: Estudiantes sin Salida Registrada
               <Badge variant="destructive" className="ml-2">{departureAlerts.length}</Badge>
@@ -563,22 +563,22 @@ export const Dashboard = () => {
               {departureAlerts.slice(0, 6).map((alert) => (
                 <div
                   key={alert.record.id}
-                  className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-300 transition-colors"
+                  className="flex items-center justify-between p-3 bg-warning/10 rounded-lg border border-warning/20 hover:border-warning/30 transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`w-2 h-2 rounded-full ${alert.isCritical ? 'bg-red-500' : 'bg-amber-500'}`} />
+                    <div className={`w-2 h-2 rounded-full ${alert.isCritical ? 'bg-destructive' : 'bg-warning'}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {alert.record.student?.fullName}
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-muted-foreground">
                         {alert.hoursSinceArrival.toFixed(1)}h sin salida
                       </p>
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="outline-warning"
                     onClick={() => navigate('/arrival-control')}
                     className="ml-2 flex-shrink-0"
                   >

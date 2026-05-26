@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Shield, FileText, Database, ChevronLeft, ChevronRight, Search, Filter } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { auditService } from '@/lib/services';
 import type { AuditLog } from '@/types';
 import { toast } from 'sonner';
@@ -72,17 +73,14 @@ export const AuditLogs = () => {
   const uniqueTables = Array.from(new Set(stats?.byTable ? Object.keys(stats.byTable) : []));
 
   return (
-    <div className="min-h-screen p-6 space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Shield className="w-8 h-8 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold">Auditoría del Sistema</h1>
-          <p className="text-muted-foreground">Registro completo de operaciones en la base de datos</p>
-        </div>
-      </div>
+    <div className="app-page animate-fade-in">
+      <PageHeader
+        icon={Shield}
+        eyebrow="Administración"
+        title="Registro de Auditoría"
+        description="Historial de operaciones y cambios realizados en el sistema"
+        accent="secondary"
+      />
 
       {/* Stats Cards */}
       {stats && (

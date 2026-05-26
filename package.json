@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "openwa": "npm run dev --prefix OpenWA",
+    "openwa:install": "powershell -ExecutionPolicy Bypass -File scripts/instalar-openwa.ps1"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Settings, Plus, Edit, Trash2, Clock } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { configService } from '@/lib/services';
 import type { SystemConfig as SystemConfigType } from '@/types';
@@ -162,24 +163,21 @@ export const SystemConfig = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Settings className="w-8 h-8" />
-            Configuración del Sistema
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gestione los parámetros globales del sistema
-          </p>
-        </div>
-        <Button onClick={handleAdd}>
+    <div className="app-page">
+      <PageHeader
+        icon={Settings}
+        eyebrow="Administración"
+        title="Configuración del Sistema"
+        description="Parámetros globales, umbrales y reglas que aplican a todo el colegio"
+        accent="secondary"
+      >
+        <Button variant="secondary" onClick={handleAdd}>
           <Plus className="w-4 h-4 mr-2" />
           Agregar Configuración
         </Button>
-      </div>
+      </PageHeader>
 
-      <Card>
+      <Card className="app-card">
         <CardHeader>
           <CardTitle>Parámetros del Sistema</CardTitle>
           <CardDescription>

@@ -30,6 +30,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Search, CheckCircle2, XCircle, FileText, Calendar, User, AlertCircle } from 'lucide-react';
+import { getLimaDayRangeISO } from '@/lib/utils/limaDateTime';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { incidentsService, studentsService, authService } from '@/lib/services';
 import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
@@ -80,11 +82,9 @@ export const JustifyFaults = () => {
       }
 
       if (dateFilter) {
-        const date = new Date(dateFilter);
-        date.setHours(0, 0, 0, 0);
-        filters.fechaDesde = date.toISOString();
-        date.setHours(23, 59, 59, 999);
-        filters.fechaHasta = date.toISOString();
+        const { desde, hasta } = getLimaDayRangeISO(dateFilter);
+        filters.fechaDesde = desde;
+        filters.fechaHasta = hasta;
       }
 
       const { incidents: incidentsList, error } = await incidentsService.getAll(filters);
@@ -174,14 +174,14 @@ export const JustifyFaults = () => {
   const justifiedCount = incidents.filter(i => i.status === 'Justificada').length;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Justificación de Faltas</h1>
-        <p className="text-muted-foreground">
-          Gestione las justificaciones de faltas de los estudiantes
-        </p>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        icon={CheckCircle2}
+        eyebrow="Incidencias"
+        title="Justificar Faltas"
+        description="Revise incidencias pendientes y registre la justificación con su documentación"
+        accent="success"
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">

@@ -20,6 +20,7 @@ import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSpring, animated } from '@react-spring/web';
+import { GuardyMark } from '@/components/brand/GuardyMark';
 
 interface NavItem {
   path: string;
@@ -75,7 +76,7 @@ export const Sidebar = () => {
       return [
         {
           path: '/parent-portal',
-          label: 'Portal de Padres',
+          label: 'Mis hijos',
           icon: User,
           roles: ['Padre'],
         },
@@ -170,7 +171,7 @@ export const Sidebar = () => {
       <Button
         variant="ghost"
         size="sm"
-        className="fixed top-4 left-4 z-50 md:hidden bg-white shadow-md"
+        className="fixed top-4 left-4 z-50 md:hidden bg-primary-dark text-white shadow-lg"
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
       >
         {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -188,20 +189,21 @@ export const Sidebar = () => {
       <animated.aside
         style={sidebarAnimation}
         className={cn(
-          'fixed left-0 top-0 h-full bg-white border-r border-gray-200 z-40 transition-transform duration-300',
-          'w-64 flex flex-col',
+          'fixed left-0 top-0 h-full z-40 transition-transform duration-300',
+          'w-64 flex flex-col bg-primary-dark',
+          'border-r border-white/10 shadow-xl',
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
         {/* Logo Section */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-white/15">
           <Link to="/" className="flex items-center space-x-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-110">
-              <FileText className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center group-hover:scale-105 transition-transform p-1.5">
+              <GuardyMark size="sm" />
             </div>
             <div>
-              <span className="text-gray-900 font-bold text-lg">Sistema Escolar</span>
-              <p className="text-xs text-gray-500">Gestión de Incidencias</p>
+              <span className="text-white font-bold text-lg">SIE</span>
+              <p className="text-xs text-white/70">Incidencias Escolares</p>
             </div>
           </Link>
         </div>
@@ -223,24 +225,24 @@ export const Sidebar = () => {
                       'w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200',
                       'text-sm font-medium',
                       active
-                        ? 'bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 border border-blue-200'
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'bg-white/10 text-white border-l-2 border-l-primary pl-[14px]'
+                        : 'text-white/75 hover:bg-white/10 hover:text-white'
                     )}
                   >
                     <div className="flex items-center space-x-3">
-                      <Icon className={cn('w-5 h-5', active ? 'text-blue-600' : 'text-gray-500')} />
+                      <Icon className={cn('w-5 h-5', active ? 'text-primary' : 'text-white/55')} />
                       <span>{item.label}</span>
                     </div>
                     <ChevronRight
                       className={cn(
                         'w-4 h-4 transition-transform duration-200',
                         isExpanded && 'rotate-90',
-                        active ? 'text-blue-600' : 'text-gray-400'
+                        active ? 'text-primary' : 'text-white/45'
                       )}
                     />
                   </button>
                   {isExpanded && (
-                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-4">
+                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-white/20 pl-4">
                       {item.subItems?.map((subItem) => {
                         const subActive = location.pathname === subItem.path;
                         return (
@@ -251,8 +253,8 @@ export const Sidebar = () => {
                             className={cn(
                               'flex items-center px-4 py-2 rounded-lg text-sm transition-all duration-200',
                               subActive
-                                ? 'bg-blue-50 text-blue-700 font-medium border border-blue-200'
-                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                ? 'bg-white/10 text-white font-medium border-l-2 border-l-primary'
+                                : 'text-white/65 hover:bg-white/10 hover:text-white'
                             )}
                           >
                             <ChevronRight className="w-3 h-3 mr-2" />
@@ -274,11 +276,11 @@ export const Sidebar = () => {
                 className={cn(
                   'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium',
                   active
-                    ? 'bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 border border-blue-200'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-white/10 text-white border-l-2 border-l-primary pl-[14px]'
+                    : 'text-white/75 hover:bg-white/10 hover:text-white'
                 )}
               >
-                <Icon className={cn('w-5 h-5', active ? 'text-blue-600' : 'text-gray-500')} />
+                <Icon className={cn('w-5 h-5', active ? 'text-primary' : 'text-white/55')} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -286,19 +288,19 @@ export const Sidebar = () => {
         </nav>
 
         {/* User Section */}
-        <div className="p-4 border-t border-gray-200 space-y-3">
-          <div className="flex items-center space-x-3 px-4 py-3 bg-gray-50 rounded-lg">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+        <div className="p-4 border-t border-white/15 space-y-3">
+          <div className="flex items-center space-x-3 px-4 py-3 bg-white/10 rounded-lg border border-white/10">
+            <div className="w-10 h-10 rounded-full bg-info flex items-center justify-center">
               <User className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{user?.fullName}</p>
-              <p className="text-xs text-gray-500 truncate">{user?.role}</p>
+              <p className="text-sm font-medium text-white truncate">{user?.fullName}</p>
+              <p className="text-xs text-white/65 truncate">{user?.role}</p>
             </div>
           </div>
           <Button
             variant="ghost"
-            className="w-full justify-start text-gray-700 hover:bg-red-50 hover:text-red-600"
+            className="w-full justify-start text-white/90 hover:bg-white/10 hover:text-white"
             onClick={handleLogout}
           >
             <LogOut className="w-4 h-4 mr-3" />

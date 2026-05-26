@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# OpenWA (clonar aparte; ver OPENWA_WHATSAPP.md)
+OpenWA/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

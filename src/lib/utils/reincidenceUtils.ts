@@ -9,9 +9,10 @@ export const getReincidenceLevelColor = (level: ReincidenceLevel): string => {
       return 'warning';
     case 3:
     case 4:
+    case 5:
       return 'danger';
     default:
-      return 'success';
+      return 'danger';
   }
 };
 
@@ -31,6 +32,8 @@ export const getReincidenceLevelDescription = (level: ReincidenceLevel): string 
       return 'Reincidencia alta - Requiere atención';
     case 4:
       return 'Reincidencia crítica - Acción inmediata';
+    case 5:
+      return 'Reincidencia crítica máxima - Acción inmediata';
     default:
       return '';
   }
@@ -48,6 +51,8 @@ export const getSuggestedAction = (level: ReincidenceLevel): string => {
       return 'Reunión con padres - Compromiso escrito';
     case 4:
       return 'Medida disciplinaria severa - Director';
+    case 5:
+      return 'Escalamiento inmediato - Dirección y tutela';
     default:
       return '';
   }

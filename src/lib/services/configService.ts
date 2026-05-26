@@ -1,5 +1,8 @@
 import { supabase } from '../supabaseClient';
 import type { ConfiguracionSistemaDB, SystemConfig } from '@/types';
+import { getCached, setCached } from '@/lib/utils/memoryCache';
+
+const CONFIG_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
 
 /**
  * Servicio para gestionar la configuración del sistema
@@ -45,6 +48,12 @@ export async function getAll(): Promise<{ configs: SystemConfig[]; error: string
  * Obtener una configuración por clave
  */
 export async function getByKey(key: string): Promise<{ config: SystemConfig | null; error: string | null }> {
+  const cacheKey = `config:${key}`;
+  const cached = getCached<SystemConfig>(cacheKey);
+  if (cached) {
+    return { config: cached, error: null };
+  }
+
   try {
     const { data, error } = await supabase
       .from('configuracion_sistema')
@@ -62,7 +71,9 @@ export async function getByKey(key: string): Promise<{ config: SystemConfig | nu
       return { config: null, error: null };
     }
 
-    return { config: mapSystemConfig(data), error: null };
+    const config = mapSystemConfig(data);
+    setCached(cacheKey, config, CONFIG_CACHE_TTL);
+    return { config, error: null };
   } catch (error: any) {
     console.error('Error al obtener configuración:', error);
     return { config: null, error: error.message };

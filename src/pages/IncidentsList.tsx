@@ -18,7 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Filter, Eye, Edit, FileX, Camera, Download } from 'lucide-react';
+import { Search, Filter, Eye, Edit, FileX, Camera, Download, FileText } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
@@ -88,19 +89,21 @@ export const IncidentsList = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Gestión de Incidencias</h1>
-        <Button variant="outline" onClick={loadIncidents}>
-          <span className="flex items-center">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </span>
+    <div className="app-page">
+      <PageHeader
+        icon={FileText}
+        eyebrow="Incidencias"
+        title="Lista de Incidencias"
+        description="Consulta el historial, filtra por nivel educativo y gestiona el estado de cada registro"
+        accent="warning"
+      >
+        <Button variant="outline-primary" onClick={loadIncidents}>
+          <Download className="w-4 h-4 mr-2" />
+          Exportar
         </Button>
-      </div>
+      </PageHeader>
 
-      {/* Search and Filters */}
-      <Card>
+      <Card className="app-card">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1 relative">

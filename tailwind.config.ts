@@ -48,7 +48,7 @@ export default {
         },
         warning: {
           DEFAULT: COLORS.warning,
-          foreground: COLORS.textPrimary,
+          foreground: COLORS.white,
         },
         error: {
           DEFAULT: COLORS.error,
@@ -58,8 +58,6 @@ export default {
           DEFAULT: COLORS.info,
           foreground: COLORS.white,
         },
-        
-        // Capas y fondos (expandidos)
         background: {
           DEFAULT: COLORS.background,
           alt: COLORS.backgroundAlt,
@@ -88,14 +86,14 @@ export default {
         
         // Barra lateral
         sidebar: {
-          DEFAULT: COLORS.primary,
+          DEFAULT: COLORS.primaryDark,
           foreground: COLORS.textOnPrimary,
           primary: COLORS.primary,
           'primary-foreground': COLORS.textOnPrimary,
-          accent: COLORS.accent,
-          'accent-foreground': COLORS.textOnAccent,
-          border: 'rgba(255, 255, 255, 0.1)',
-          ring: 'rgba(255, 255, 255, 0.2)',
+          accent: COLORS.primaryDark,
+          'accent-foreground': COLORS.textOnPrimary,
+          border: 'hsl(222 18% 22%)',
+          ring: COLORS.primaryLight,
         },
         
         // Bordes y divisiones

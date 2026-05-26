@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
-import { ParentMeeting, CitaPadreDB, Student, User } from '@/types';
+import { ParentMeeting, CitaPadreDB } from '@/types';
+import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
 
 /**
  * Servicio para gestionar citas con padres
@@ -118,25 +119,37 @@ export const parentMeetingsService = {
         }
         studentIds = (allStudents || []).map(s => s.id_estudiante);
       } else if (meetings.tipo === 'grade' && meetings.grade) {
-        // Por grado
-        const { data: gradeStudents, error: gradeError } = await supabase
+        // Por grado (y nivel si se indicó)
+        let gradeQuery = supabase
           .from('estudiantes')
           .select('id_estudiante')
           .eq('activo', true)
           .eq('grado', meetings.grade);
+
+        if (meetings.level) {
+          gradeQuery = gradeQuery.eq('nivel_educativo', meetings.level);
+        }
+
+        const { data: gradeStudents, error: gradeError } = await gradeQuery;
 
         if (gradeError) {
           return { success: false, count: 0, error: gradeError.message };
         }
         studentIds = (gradeStudents || []).map(s => s.id_estudiante);
       } else if (meetings.tipo === 'section' && meetings.grade && meetings.section) {
-        // Por sección
-        const { data: sectionStudents, error: sectionError } = await supabase
+        // Por sección (y nivel si se indicó)
+        let sectionQuery = supabase
           .from('estudiantes')
           .select('id_estudiante')
           .eq('activo', true)
           .eq('grado', meetings.grade)
           .eq('seccion', meetings.section);
+
+        if (meetings.level) {
+          sectionQuery = sectionQuery.eq('nivel_educativo', meetings.level);
+        }
+
+        const { data: sectionStudents, error: sectionError } = await sectionQuery;
 
         if (sectionError) {
           return { success: false, count: 0, error: sectionError.message };
@@ -321,7 +334,7 @@ export const parentMeetingsService = {
       }
 
       // Buscar citas pendientes o confirmadas para hoy
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLimaTodayDate();
       const { data: meetings, error: meetingsError } = await supabase
         .from('citas_padres')
         .select('id_cita, hora')

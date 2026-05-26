@@ -37,7 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Eye, Edit, UserPlus, Download, Loader2, Upload, Trash2 } from 'lucide-react';
+import { Search, Eye, Edit, UserPlus, Download, Loader2, Upload, Trash2, Users } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { Badge } from '@/components/ui/badge';
 import { useForm } from 'react-hook-form';
@@ -400,11 +401,16 @@ export const StudentsList = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Gestión de Estudiantes</h1>
+    <div className="app-page">
+      <PageHeader
+        icon={Users}
+        eyebrow="Estudiantes"
+        title="Padrón de Estudiantes"
+        description="Administre datos del alumno, contacto familiar y nivel de reincidencia"
+        accent="info"
+      >
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline-primary">
             <Download className="w-4 h-4 mr-2" />
             Exportar
           </Button>
@@ -419,7 +425,7 @@ export const StudentsList = () => {
             }}
           >
             <DialogTrigger asChild>
-              <Button>
+              <Button variant="info">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Nuevo Estudiante
               </Button>
@@ -662,7 +668,7 @@ export const StudentsList = () => {
                     <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button type="submit" disabled={loading || uploadingPhoto}>
+                    <Button type="submit" variant="success" disabled={loading || uploadingPhoto}>
                       {loading ? (
                         <span className="flex items-center">
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -900,7 +906,7 @@ export const StudentsList = () => {
                     <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button type="submit" disabled={loading || uploadingPhoto}>
+                    <Button type="submit" variant="success" disabled={loading || uploadingPhoto}>
                       {loading ? (
                         <span className="flex items-center">
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -916,10 +922,9 @@ export const StudentsList = () => {
             </DialogContent>
           </Dialog>
         </div>
-      </div>
+      </PageHeader>
 
-      {/* Search & Filters */}
-      <Card>
+      <Card className="app-card">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="relative flex-1">

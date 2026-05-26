@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -59,54 +60,30 @@ export const ArrivalControl = () => {
 
   const loadArrivals = async () => {
     if (!isMountedRef.current) return;
-    
-    // Usar requestAnimationFrame para asegurar que el componente está montado
-    await new Promise(resolve => requestAnimationFrame(resolve));
-    if (!isMountedRef.current) return;
-    
+
     setLoading(true);
     try {
-      console.log('Cargando llegadas para la fecha:', selectedDate);
       const { records: arrivals, error } = await arrivalService.getArrivals({ date: selectedDate });
 
-      // Verificar nuevamente después de la llamada async
-      await new Promise(resolve => requestAnimationFrame(resolve));
       if (!isMountedRef.current) return;
 
       if (error) {
-        if (!isMountedRef.current) return;
         toast.error('Error al cargar llegadas');
-        console.error('Error en getArrivals:', error);
-        if (isMountedRef.current) {
-          setRecords([]);
-          setStats({ total: 0, onTime: 0, late: 0 });
-        }
+        setRecords([]);
+        setStats({ total: 0, onTime: 0, late: 0 });
       } else {
-        if (!isMountedRef.current) return;
-        console.log('Llegadas cargadas:', arrivals.length, 'registros');
-        // Calcular estadísticas antes de actualizar estado
-        const onTime = arrivals.filter(r => r.status === 'A tiempo').length;
-        const late = arrivals.filter(r => r.status === 'Tarde').length;
-        const total = arrivals.length;
-        
-        // Actualizar estados de forma atómica
-        if (isMountedRef.current) {
-          setRecords(arrivals);
-          setStats({ total, onTime, late });
-        }
+        const onTime = arrivals.filter((r) => r.status === 'A tiempo').length;
+        const late = arrivals.filter((r) => r.status === 'Tarde').length;
+        setRecords(arrivals);
+        setStats({ total: arrivals.length, onTime, late });
       }
     } catch (error) {
-      await new Promise(resolve => requestAnimationFrame(resolve));
       if (!isMountedRef.current) return;
       console.error('Error en loadArrivals:', error);
       toast.error('Error al procesar las llegadas');
-      if (isMountedRef.current) {
-        setRecords([]);
-        setStats({ total: 0, onTime: 0, late: 0 });
-      }
+      setRecords([]);
+      setStats({ total: 0, onTime: 0, late: 0 });
     } finally {
-      // Verificar una última vez antes de actualizar loading
-      await new Promise(resolve => requestAnimationFrame(resolve));
       if (isMountedRef.current) {
         setLoading(false);
       }
@@ -150,18 +127,17 @@ export const ArrivalControl = () => {
   });
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Control de Llegadas</h1>
-        <p className="text-muted-foreground">
-          Monitoreo de asistencia {selectedDate === getTodayDate() ? 'del día' : `del ${new Date(selectedDate).toLocaleDateString('es-PE')}`}
-        </p>
-      </div>
+    <div className="app-page">
+      <PageHeader
+        icon={Clock}
+        eyebrow="Asistencia"
+        title="Control de Llegadas"
+        description={`Registro y seguimiento de ingresos ${selectedDate === getTodayDate() ? 'del día de hoy' : `del ${new Date(selectedDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}`}`}
+        accent="success"
+      />
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="app-card border-l-4 border-l-primary">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Llegadas</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -170,7 +146,7 @@ export const ArrivalControl = () => {
             <div className="text-2xl font-bold">{stats?.total || 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="app-card border-l-4 border-l-success">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">A Tiempo</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-600" />
@@ -179,7 +155,7 @@ export const ArrivalControl = () => {
             <div className="text-2xl font-bold text-green-600">{stats?.onTime || 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="app-card border-l-4 border-l-warning">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Tarde</CardTitle>
             <AlertCircle className="h-4 w-4 text-orange-600" />
@@ -190,9 +166,8 @@ export const ArrivalControl = () => {
         </Card>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
+      <Card className="app-card">
+        <CardHeader className="app-card-header">
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 md:flex-row">

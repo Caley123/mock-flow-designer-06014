@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Download, TrendingUp, Users, AlertTriangle, Calendar, Loader2, Filter, BarChart3, FileDown, FileSpreadsheet } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import jsPDF from 'jspdf';
 import ExcelJS from 'exceljs';
 
@@ -627,18 +628,17 @@ export const Reports = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-4 md:p-6 space-y-6 w-full">
-      {/* Header */}
+    <div className="app-page w-full">
       <AnimatedDiv style={headerAnimation}>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Reportes y Estadísticas</h1>
-            <p className="text-gray-600 mt-1">Visión general de las incidencias registradas en el sistema</p>
-          </div>
-        </div>
+        <PageHeader
+          icon={BarChart3}
+          eyebrow="Reportes"
+          title="Reportes de Incidencias"
+          description="Analice tendencias, distribución por nivel y faltas más frecuentes del período"
+          accent="primary"
+        />
       </AnimatedDiv>
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="flex flex-wrap gap-3 items-center bg-card p-4 rounded-xl shadow-md border border-primary/15">
         <Select value={selectedLevel} onValueChange={(value) => setSelectedLevel(value as 'all' | EducationalLevel)}>
           <SelectTrigger className="w-[170px] bg-white border-gray-300">
             <SelectValue placeholder="Todos los niveles" />
@@ -714,7 +714,7 @@ export const Reports = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -727,7 +727,7 @@ export const Reports = () => {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -740,7 +740,7 @@ export const Reports = () => {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -753,7 +753,7 @@ export const Reports = () => {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
+        <Card className="app-card">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>

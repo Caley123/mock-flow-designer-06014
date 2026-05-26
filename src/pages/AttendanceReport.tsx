@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/select';
 import { arrivalService } from '@/lib/services';
 import { EducationalLevel, MonthlyAttendanceRow } from '@/types';
-import { Loader2, Printer, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Printer, FileDown, FileSpreadsheet, Calendar } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import ExcelJS from 'exceljs';
@@ -698,21 +699,21 @@ export const AttendanceReport = () => {
             }
           }`}
       </style>
-      <div id="attendance-report" className="container relative z-10 mx-auto p-6 space-y-6">
-        <div className="print-hidden flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground uppercase tracking-wide">
-              {reportType === 'monthly' ? 'Reporte mensual' : 'Reporte bimestral'}
-            </p>
-            <h1 className="text-3xl font-bold">Asistencia por estudiante</h1>
-            <p className="text-sm text-muted-foreground">
-              {reportType === 'monthly' 
-                ? 'Visualiza las asistencias del mes con totales por tardanza y faltas justificadas.'
-                : bimestre !== 'all' 
-                  ? `Visualiza las asistencias del ${formatBimestreLabel(getAllBimestres(añoEscolar).find(b => b.numero === bimestre)!)} con totales por tardanza y faltas justificadas.`
-                  : 'Visualiza las asistencias del bimestre seleccionado con totales por tardanza y faltas justificadas.'}
-            </p>
-          </div>
+      <div id="attendance-report" className="app-page relative z-10">
+        <div className="print-hidden space-y-6">
+        <PageHeader
+          icon={Calendar}
+          eyebrow="Reportes"
+          title="Reporte de Asistencias"
+          description={
+            reportType === 'monthly'
+              ? 'Resumen mensual por estudiante: tardanzas, faltas y justificaciones.'
+              : bimestre !== 'all'
+                ? `Bimestre: ${formatBimestreLabel(getAllBimestres(añoEscolar).find(b => b.numero === bimestre)!)}`
+                : 'Consolidado de asistencia según el bimestre seleccionado.'
+          }
+          accent="success"
+        >
           <div className="flex gap-2">
             <Button 
               variant="outline" 
@@ -769,10 +770,10 @@ export const AttendanceReport = () => {
               Exportar Excel
             </Button>
           </div>
-        </div>
+        </PageHeader>
 
-        <Card className="print-hidden">
-          <CardHeader>
+        <Card className="print-hidden app-card">
+          <CardHeader className="app-card-header">
             <CardTitle>Filtros</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-6">
@@ -987,6 +988,7 @@ export const AttendanceReport = () => {
             ))}
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );

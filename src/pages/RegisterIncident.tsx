@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 // Reemplazado Select de Radix por <select> nativo para evitar errores de reconciliación
 import { Student, FaultType } from '@/types';
-import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2 } from 'lucide-react';
+import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2, FileText } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -260,11 +261,16 @@ export const RegisterIncident = () => {
   }, [faults]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-bold">Registrar Incidencia</h1>
+    <div className="app-page">
+      <PageHeader
+        icon={FileText}
+        eyebrow="Incidencias"
+        title="Registrar Incidencia"
+        description="Identifique al estudiante, seleccione la falta y adjunte evidencia cuando corresponda"
+        accent="warning"
+      />
 
-      {/* Barcode Scanner */}
-      <Card>
+      <Card className="app-card">
         <CardHeader>
           <CardTitle className="flex items-center">
             <Barcode className="w-5 h-5 mr-2" />
