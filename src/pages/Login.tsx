@@ -12,6 +12,41 @@ import { useErrorDialog } from '@/hooks/useErrorDialog';
 import { LoginLaptopMockup } from '@/components/login/LoginLaptopMockup';
 import { GuardyMark } from '@/components/brand/GuardyMark';
 
+function LoginBrandBlock({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={
+        compact
+          ? 'flex flex-col items-center gap-2 text-center'
+          : 'flex w-full flex-col items-center gap-2 text-center'
+      }
+    >
+      <img
+        src="/favicon.svg"
+        alt=""
+        className={compact ? 'h-9 w-9 object-contain' : 'h-10 w-10 object-contain'}
+        width={compact ? 36 : 40}
+        height={compact ? 36 : 40}
+        draggable={false}
+      />
+      <div className="flex flex-col items-center gap-0.5">
+        <p
+          className={
+            compact
+              ? 'text-lg font-medium text-[var(--color-starlight)]'
+              : 'text-xl font-medium tracking-[0.02em] text-[var(--color-starlight)]'
+          }
+        >
+          SIE
+        </p>
+        <p className="text-xs text-[var(--color-silver)]">
+          {compact ? 'Incidencias Escolares' : 'Sistema de Incidencias Escolares'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export const Login = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -78,12 +113,8 @@ export const Login = () => {
         <div className="login-hero__glow" aria-hidden />
         <div className="login-hero__grid" aria-hidden />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <GuardyMark size="lg" />
-          <div>
-            <p className="text-xl font-medium tracking-[0.02em] text-[var(--color-starlight)]">SIE</p>
-            <p className="text-sm text-[var(--color-silver)]">Sistema de Incidencias Escolares</p>
-          </div>
+        <div className="relative z-10 w-full pt-1">
+          <LoginBrandBlock />
         </div>
 
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center py-6">
@@ -116,12 +147,8 @@ export const Login = () => {
       {/* Panel derecho — formulario */}
       <main className="login-panel">
         <div className="login-card animate-in fade-in duration-500">
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <GuardyMark size="md" />
-            <div>
-              <p className="text-lg font-medium text-[var(--color-starlight)]">SIE</p>
-              <p className="text-xs text-[var(--color-silver)]">Incidencias Escolares</p>
-            </div>
+          <div className="mb-6 lg:hidden">
+            <LoginBrandBlock compact />
           </div>
 
           <p className="login-eyebrow">Acceso institucional</p>

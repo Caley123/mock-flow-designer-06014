@@ -20,8 +20,6 @@ import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSpring, animated } from '@react-spring/web';
-import { GuardyMark } from '@/components/brand/GuardyMark';
-
 interface NavItem {
   path: string;
   label: string;
@@ -195,15 +193,23 @@ export const Sidebar = () => {
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
-        {/* Logo Section */}
-        <div className="p-6 border-b border-white/15">
-          <Link to="/" className="flex items-center space-x-3 group">
-            <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center group-hover:scale-105 transition-transform p-1.5">
-              <GuardyMark size="sm" />
-            </div>
-            <div>
-              <span className="text-white font-bold text-lg">SIE</span>
-              <p className="text-xs text-white/70">Incidencias Escolares</p>
+        {/* Logo Section — escudo SVG (sin mancha del PNG) y más arriba */}
+        <div className="flex w-full justify-center border-b border-white/15 px-4 pb-4 pt-3 md:pt-4">
+          <Link
+            to="/"
+            className="group flex flex-col items-center justify-center gap-2 text-center"
+          >
+            <img
+              src="/favicon.svg"
+              alt=""
+              className="h-10 w-10 object-contain transition-transform duration-200 group-hover:scale-105"
+              width={40}
+              height={40}
+              draggable={false}
+            />
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-lg font-bold leading-none tracking-wide text-white">SIE</span>
+              <p className="text-[11px] leading-snug text-white/70">Incidencias Escolares</p>
             </div>
           </Link>
         </div>

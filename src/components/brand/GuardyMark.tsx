@@ -6,6 +6,7 @@ const sizeMap = {
   md: { box: 'h-7 w-7', img: 28 },
   lg: { box: 'h-10 w-10', img: 40 },
   xl: { box: 'h-11 w-11', img: 44 },
+  '2xl': { box: 'h-14 w-14', img: 56 },
 } as const;
 
 interface GuardyMarkProps {
@@ -25,7 +26,8 @@ export const GuardyMark = ({
   showWordmark = false,
 }: GuardyMarkProps) => {
   const s = sizeMap[size];
-  const src = s.img <= 20 ? '/favicon-32.png' : '/guardy-mark.png';
+  /** SVG del escudo — evita la mancha oscura del PNG guardy-mark */
+  const src = '/favicon.svg';
 
   return (
     <span
