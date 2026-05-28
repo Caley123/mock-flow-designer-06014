@@ -65,7 +65,7 @@ async function fetchFromPadresEstudiantes(userId: number): Promise<Student[]> {
 
   const students: Student[] = [];
   for (const row of data || []) {
-    const est = row.estudiante as Record<string, unknown> | null;
+    const est = (row as any).estudiante as Record<string, unknown> | null;
     if (!est || est.activo === false) continue;
     const { student } = await studentsService.getById(Number(est.id_estudiante));
     if (student) students.push(student);

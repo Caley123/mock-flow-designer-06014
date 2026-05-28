@@ -8,8 +8,8 @@ import { useNavigate } from 'react-router-dom';
  */
 export const useSessionMonitor = () => {
   const navigate = useNavigate();
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Verificar sesión inmediatamente

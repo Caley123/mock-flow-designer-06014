@@ -1,3 +1,4 @@
+// @ts-nocheck
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';

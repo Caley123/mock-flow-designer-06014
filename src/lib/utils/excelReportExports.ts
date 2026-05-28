@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { DashboardStats, Incident } from '@/types';

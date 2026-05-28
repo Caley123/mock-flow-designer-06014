@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { useSprings, animated, to as interpolate } from '@react-spring/web';
-import { BookOpen, Calculator, Lightbulb, Globe, GraduationCap, School, Award, Target } from 'lucide-react';
+import { BookOpen, Calculator, Lightbulb, Globe, GraduationCap, School, Award, Target, LucideIcon } from 'lucide-react';
 
 interface CardData {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   title: string;
   color: string;
   gradient: string;

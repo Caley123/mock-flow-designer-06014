@@ -23,16 +23,17 @@ export const studentsService = {
         ? 'id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, foto_perfil, activo, telefono_contacto, telefono_emergencia'
         : '*';
 
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('estudiantes')
         .select(columns)
         .eq('codigo_barras', barcode.trim())
         .eq('activo', true)
         .single();
 
-      if (error || !data) {
+      if (error || !rawData) {
         return { student: null, error: 'Estudiante no encontrado' };
       }
+      const data = rawData as any;
 
       let reincidenceLevel = 0;
       let faultsLast60Days = 0;

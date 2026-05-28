@@ -20,7 +20,7 @@ export const usePerformanceMetrics = (pageName: string) => {
     };
 
     // Log para desarrollo
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(
         `[Performance] ${pageName}:`,
         `Carga: ${metrics.pageLoadTime.toFixed(2)}ms,`,

@@ -263,10 +263,23 @@ export const incidentsService = {
    */
   async registerPrint(id: number): Promise<{ success: boolean; error: string | null }> {
     try {
+      // Leer el contador actual e incrementarlo (Supabase JS no expone .raw)
+      const { data: current, error: fetchError } = await supabase
+        .from('incidencias')
+        .select('veces_impreso')
+        .eq('id_incidencia', id)
+        .single();
+
+      if (fetchError) {
+        return { success: false, error: fetchError.message || 'Error al registrar impresión' };
+      }
+
+      const nuevoConteo = ((current?.veces_impreso as number) || 0) + 1;
+
       const { error } = await supabase
         .from('incidencias')
         .update({
-          veces_impreso: supabase.raw('veces_impreso + 1'),
+          veces_impreso: nuevoConteo,
           fecha_ultima_impresion: new Date().toISOString(),
         })
         .eq('id_incidencia', id);
