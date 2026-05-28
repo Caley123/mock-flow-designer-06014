@@ -3,7 +3,7 @@ import { useSprings, animated, to as interpolate } from '@react-spring/web';
 import { BookOpen, Calculator, Lightbulb, Globe, GraduationCap, School, Award, Target } from 'lucide-react';
 
 interface CardData {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   title: string;
   color: string;
   gradient: string;
