@@ -8,11 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Student, FaultType } from '@/types';
 import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2, FileText } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { StaffWorkflowSteps } from '@/components/staff';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getReincidenceLevelDescription, getSuggestedAction } from '@/lib/utils/reincidenceUtils';
 import { toast } from 'sonner';
+import { staffNotify } from '@/lib/utils/staffNotify';
 import { studentsService, faultsService, incidentsService, evidenceService } from '@/lib/services';
 import { authService } from '@/lib/services';
 import { ErrorDialog } from '@/components/ui/error-dialog';
@@ -97,7 +99,7 @@ export const RegisterIncident = () => {
       if (student.reincidenceLevel && student.reincidenceLevel >= 2) {
         setShowReincidenceAlert(true);
       }
-      toast.success(`Estudiante encontrado: ${student.fullName}`);
+      staffNotify.success('Estudiante encontrado', student.fullName);
       setBarcodeInput('');
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -189,10 +191,10 @@ export const RegisterIncident = () => {
     try {
       // 1. Crear la incidencia
       const { incident, error } = await incidentsService.create({
-        id_estudiante: selectedStudent.id,
-        id_falta: parseInt(selectedFault),
-        id_usuario_registro: currentUser.id,
-        observaciones: observations.trim() || null,
+        studentId: selectedStudent.id,
+        faultTypeId: parseInt(selectedFault, 10),
+        registeredBy: currentUser.id,
+        observations: observations.trim() || undefined,
       });
 
       if (!isMountedRef.current) return;
@@ -216,18 +218,18 @@ export const RegisterIncident = () => {
         const errors = results.filter(r => r.error);
         
         if (errors.length > 0) {
-          toast.warning('Incidencia registrada pero algunas fotos no se subieron', {
-            description: `${errors.length} de ${evidenceFiles.length} fotos fallaron`,
-          });
+          staffNotify.warning('Guardado con advertencia', `${errors.length} de ${evidenceFiles.length} fotos no se subieron`);
         } else {
-          toast.success('Incidencia y evidencias registradas correctamente', {
-            description: `ID: ${incident.id} - ${evidenceFiles.length} foto(s) subida(s)`,
-          });
+          staffNotify.success(
+            '¡Incidencia registrada!',
+            `Nº ${incident.id} · ${selectedStudent.fullName} · ${evidenceFiles.length} foto(s)`
+          );
         }
       } else {
-        toast.success('Incidencia registrada correctamente', {
-          description: `ID: ${incident.id}`,
-        });
+        staffNotify.success(
+          '¡Incidencia registrada!',
+          `Nº ${incident.id} · ${selectedStudent.fullName}`
+        );
       }
 
       // Reset form
@@ -260,14 +262,29 @@ export const RegisterIncident = () => {
     }, {} as Record<string, FaultType[]>);
   }, [faults]);
 
+  const workflowStep = !selectedStudent ? 'identify' : !selectedFault ? 'fault' : 'confirm';
+
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={FileText}
         eyebrow="Incidencias"
         title="Registrar Incidencia"
-        description="Identifique al estudiante, seleccione la falta y adjunte evidencia cuando corresponda"
+        description="Flujo guiado: estudiante → falta → evidencia y envío"
         accent="warning"
+      />
+
+      <StaffWorkflowSteps
+        currentStep={workflowStep}
+        steps={[
+          {
+            id: 'identify',
+            label: 'Identificar estudiante',
+            description: 'Código de barras o búsqueda por nombre',
+          },
+          { id: 'fault', label: 'Seleccionar falta', description: 'Tipo y observaciones' },
+          { id: 'confirm', label: 'Confirmar registro', description: 'Evidencia y guardar' },
+        ]}
       />
 
       <Card className="app-card">
@@ -302,8 +319,8 @@ export const RegisterIncident = () => {
       </Card>
 
       {/* Manual Search */}
-      <Card>
-        <CardHeader>
+      <Card className="app-card">
+        <CardHeader className="app-card-header">
           <CardTitle className="flex items-center">
             <Search className="w-5 h-5 mr-2" />
             Búsqueda Manual
@@ -346,8 +363,8 @@ export const RegisterIncident = () => {
       {/* Student Info */}
       {selectedStudent && (
         <>
-          <Card className="border-2 border-primary">
-            <CardHeader>
+          <Card className="app-card border-2 border-primary">
+            <CardHeader className="app-card-header">
               <CardTitle>Información del Estudiante</CardTitle>
             </CardHeader>
             <CardContent>
@@ -413,8 +430,8 @@ export const RegisterIncident = () => {
           )}
 
           {/* Fault Selection */}
-          <Card>
-            <CardHeader>
+          <Card className="app-card">
+            <CardHeader className="app-card-header">
               <CardTitle>Tipo de Falta</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">

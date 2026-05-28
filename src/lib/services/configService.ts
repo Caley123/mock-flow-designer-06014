@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import type { ConfiguracionSistemaDB, SystemConfig } from '@/types';
-import { getCached, setCached } from '@/lib/utils/memoryCache';
+import type { SystemSettingKey } from '@/config/systemSettings';
+import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
 
 const CONFIG_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
 
@@ -148,6 +149,43 @@ export async function update(
 /**
  * Eliminar una configuración
  */
+/**
+ * Crea o actualiza un parámetro por clave (upsert lógico).
+ */
+export async function upsertByKey(data: {
+  key: SystemSettingKey | string;
+  value: string;
+  description?: string;
+}): Promise<{ config: SystemConfig | null; error: string | null }> {
+  const cacheKey = `config:${data.key}`;
+  const existing = await getByKey(data.key);
+
+  if (existing.error) {
+    return { config: null, error: existing.error };
+  }
+
+  let result: { config: SystemConfig | null; error: string | null };
+
+  if (existing.config) {
+    result = await update(existing.config.id, {
+      value: data.value,
+      description: data.description ?? existing.config.description ?? undefined,
+    });
+  } else {
+    result = await create({
+      key: data.key,
+      value: data.value,
+      description: data.description,
+    });
+  }
+
+  if (!result.error) {
+    invalidateCache(cacheKey);
+  }
+
+  return result;
+}
+
 export async function deleteConfig(id: number): Promise<{ success: boolean; error: string | null }> {
   try {
     const { error } = await supabase
@@ -172,5 +210,6 @@ export const configService = {
   getByKey,
   create,
   update,
+  upsertByKey,
   delete: deleteConfig,
 };

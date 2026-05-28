@@ -37,7 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Eye, Edit, UserPlus, Download, Loader2, Upload, Trash2, Users } from 'lucide-react';
+import { Search, Eye, Edit, UserPlus, Download, Loader2, Upload, Trash2, Users, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { exportStudentsListExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { Badge } from '@/components/ui/badge';
@@ -385,6 +386,12 @@ export const StudentsList = () => {
     }
   };
 
+  const handleExportExcel = () => {
+    const filters =
+      levelFilter !== 'all' ? `Nivel: ${levelFilter}` : searchTerm ? `Búsqueda: ${searchTerm}` : undefined;
+    void exportStudentsListExcel(students, filters);
+  };
+
   const stats = {
     total: students.length,
     sinIncidencias: students.filter(s => (s.reincidenceLevel || 0) === 0).length,
@@ -394,14 +401,16 @@ export const StudentsList = () => {
 
   if (loading && students.length === 0) {
     return (
-      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="app-page">
+        <div className="app-page-state">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={Users}
         eyebrow="Estudiantes"
@@ -410,9 +419,13 @@ export const StudentsList = () => {
         accent="info"
       >
         <div className="flex gap-2">
-          <Button variant="outline-primary">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
+          <Button
+            variant="outline-primary"
+            onClick={handleExportExcel}
+            disabled={students.length === 0}
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-2" />
+            Exportar Excel
           </Button>
           <Dialog 
             open={dialogOpen} 
@@ -924,7 +937,7 @@ export const StudentsList = () => {
         </div>
       </PageHeader>
 
-      <Card className="app-card">
+      <Card className="app-toolbar">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="relative flex-1">
@@ -953,7 +966,7 @@ export const StudentsList = () => {
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={loadStudents} className="md:w-auto">
-              <Download className="w-4 h-4 mr-2" />
+              <RefreshCw className="w-4 h-4 mr-2" />
               Actualizar
             </Button>
           </div>
@@ -961,14 +974,14 @@ export const StudentsList = () => {
       </Card>
 
       {/* Students Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="app-kpi-grid">
+        <Card className="app-card">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-sm text-muted-foreground">Total Estudiantes</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="app-card">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-green-600">
               {stats.sinIncidencias}
@@ -976,7 +989,7 @@ export const StudentsList = () => {
             <p className="text-sm text-muted-foreground">Sin Incidencias</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="app-card">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-yellow-600">
               {stats.nivelModerado}
@@ -984,7 +997,7 @@ export const StudentsList = () => {
             <p className="text-sm text-muted-foreground">Nivel Moderado</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="app-card">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-red-600">
               {stats.nivelAlto}
@@ -995,7 +1008,7 @@ export const StudentsList = () => {
       </div>
 
       {/* Students Table */}
-      <Card>
+      <Card className="app-card">
         <CardHeader>
           <CardTitle>Listado de Estudiantes</CardTitle>
         </CardHeader>
@@ -1005,6 +1018,7 @@ export const StudentsList = () => {
               No se encontraron estudiantes
             </div>
           ) : (
+            <div className="app-table-wrap">
             <Table role="table" aria-label="Lista de estudiantes">
               <TableHeader>
                 <TableRow>
@@ -1089,6 +1103,7 @@ export const StudentsList = () => {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

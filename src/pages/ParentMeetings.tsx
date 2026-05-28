@@ -51,7 +51,9 @@ import {
   ScanLine,
   Calendar as CalendarIcon,
   List,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { exportParentMeetingsExcel } from '@/lib/utils/excelListExports';
 import { ModernCalendar } from '@/components/calendar/ModernCalendar';
 import { parentMeetingsService, studentsService } from '@/lib/services';
 import { ParentMeeting, Student, EducationalLevel } from '@/types';
@@ -418,7 +420,16 @@ export const ParentMeetings = () => {
         title="Citas con Padres"
         description="Programe reuniones, confirme asistencia y haga seguimiento del estado de cada cita"
         accent="accent"
-      />
+      >
+        <Button
+          variant="outline-primary"
+          onClick={() => void exportParentMeetingsExcel(filteredMeetings)}
+          disabled={filteredMeetings.length === 0}
+        >
+          <FileSpreadsheet className="w-4 h-4 mr-2" />
+          Exportar Excel
+        </Button>
+      </PageHeader>
 
       {/* Stats Cards */}
       {stats && (

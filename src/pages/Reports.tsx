@@ -11,8 +11,10 @@ import {
 } from '@/components/ui/select';
 import { Download, TrendingUp, Users, AlertTriangle, Calendar, Loader2, Filter, BarChart3, FileDown, FileSpreadsheet } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import jsPDF from 'jspdf';
-import ExcelJS from 'exceljs';
+import { StaffKpiStat, StaffToolbar } from '@/components/staff';
+import { Label } from '@/components/ui/label';
+import { exportIncidentsReportExcel } from '@/lib/utils/excelReportExports';
+import { PdfReportDocument, buildFilterSubtitle } from '@/lib/utils/pdfReportBuilder';
 
 import {
   BarChart,
@@ -156,268 +158,110 @@ export const Reports = () => {
 
     try {
       toast.loading('Generando PDF...', { id: 'pdf-export' });
-      
-      // Obtener todas las incidencias para el reporte
-      const { incidents: incidentsList } = await incidentsService.getAll({
+
+      const { incidents: incidentsList, error } = await incidentsService.getAll({
         nivelEducativo: selectedLevel === 'all' ? undefined : selectedLevel,
         grado: selectedGrade === 'all' ? undefined : selectedGrade,
         bimestre: bimestre !== 'all' ? bimestre : undefined,
         añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
       });
 
-      // Cargar el logo
-      const logoImg = new Image();
-      logoImg.crossOrigin = 'anonymous';
-      logoImg.src = '/logo2.png';
-      
-      await new Promise((resolve, reject) => {
-        logoImg.onload = resolve;
-        logoImg.onerror = () => {
-          console.warn('No se pudo cargar el logo, continuando sin él');
-          resolve(null);
-        };
-      });
+      if (error) {
+        toast.error('Error al cargar incidencias para el PDF', { id: 'pdf-export' });
+        return;
+      }
 
-      // Crear PDF en formato portrait
-      const pdf = new jsPDF('portrait', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      const margin = 10;
-      let currentY = margin + 5;
-      const lineHeight = 7;
-      const cellHeight = 6;
-      const fontSize = 9;
-      const headerFontSize = 14;
-      
-      // Función para agregar nueva página
-      const addNewPage = () => {
-        pdf.addPage();
-        currentY = margin + 5;
-      };
-      
-      // Agregar logo pequeño en la parte superior izquierda (solo primera página)
-      if (logoImg.complete && logoImg.naturalWidth > 0) {
-        const logoSize = 18;
-        const logoHeight = (logoImg.height * logoSize) / logoImg.width;
-        pdf.addImage(logoImg.src, 'PNG', margin, margin, logoSize, logoHeight);
-        currentY = margin + logoHeight + 3;
-      } else {
-        currentY = margin + 8;
-      }
-      
-      // Encabezado
-      pdf.setFontSize(headerFontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 58, 138);
-      pdf.text('REPORTE DE INCIDENCIAS', pdfWidth / 2, currentY, { align: 'center' });
-      currentY += lineHeight + 3;
-      
-      // Información de filtros
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(75, 85, 99);
-      let filterText = `Fecha de generación: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`;
-      if (selectedLevel !== 'all') filterText += ` | Nivel: ${selectedLevel}`;
-      if (selectedGrade !== 'all') filterText += ` | Grado: ${selectedGrade}`;
-      pdf.text(filterText, pdfWidth / 2, currentY, { align: 'center' });
-      currentY += lineHeight + 8;
-      pdf.setTextColor(0, 0, 0);
-      
-      // Resumen de estadísticas
-      pdf.setFontSize(headerFontSize - 2);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 58, 138);
-      pdf.text('RESUMEN GENERAL', margin, currentY);
-      currentY += lineHeight + 3;
-      
-      const summaryData = [
-        { label: 'Total Incidencias', value: stats.totalIncidents, color: [59, 130, 246], bgColor: [219, 234, 254] },
-        { label: 'Estudiantes Involucrados', value: stats.studentsWithIncidents, color: [5, 150, 105], bgColor: [209, 250, 229] },
-        { label: 'Nivel Promedio', value: stats.averageReincidenceLevel.toFixed(1), color: [146, 64, 14], bgColor: [254, 243, 199] },
-        { label: 'Casos Críticos', value: stats.levelDistribution.level3 + stats.levelDistribution.level4, color: [153, 27, 27], bgColor: [254, 226, 226] },
-      ];
-      
-      // Tarjetas de resumen
-      const cardWidth = (pdfWidth - margin * 2 - 6) / 2;
-      const cardHeight = 12;
-      let cardX = margin;
-      let cardY = currentY;
-      
-      summaryData.forEach(({ label, value, color, bgColor }, index) => {
-        if (index === 2) {
-          cardX = margin;
-          cardY += cardHeight + 3;
-        }
-        
-        pdf.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
-        pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 3, 3, 'F');
-        pdf.setDrawColor(200, 200, 200);
-        pdf.setLineWidth(0.3);
-        pdf.roundedRect(cardX, cardY, cardWidth, cardHeight, 3, 3);
-        
-        pdf.setFontSize(fontSize);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(75, 85, 99);
-        pdf.text(label, cardX + cardWidth / 2, cardY + 4, { align: 'center' });
-        
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(fontSize + 3);
-        pdf.setTextColor(color[0], color[1], color[2]);
-        pdf.text(value.toString(), cardX + cardWidth / 2, cardY + 9, { align: 'center' });
-        
-        cardX += cardWidth + 3;
-      });
-      
-      currentY = cardY + cardHeight + 10;
-      
-      // Distribución por nivel de reincidencia
-      if (currentY + 40 > pdfHeight - margin) {
-        addNewPage();
-      }
-      
-      pdf.setFontSize(headerFontSize - 2);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 58, 138);
-      pdf.text('DISTRIBUCIÓN POR NIVEL DE REINCIDENCIA', margin, currentY);
-      currentY += lineHeight + 3;
-      
-      pdf.setFontSize(fontSize);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      
-      levelItems.forEach((item) => {
-        if (currentY + cellHeight > pdfHeight - margin) {
-          addNewPage();
-        }
-        
-        const percentage = stats.totalIncidents > 0 ? (item.count / stats.totalIncidents) * 100 : 0;
-        pdf.text(`${item.level}:`, margin, currentY + 4);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(`${item.count} (${percentage.toFixed(1)}%)`, pdfWidth - margin - 30, currentY + 4, { align: 'right' });
-        pdf.setFont('helvetica', 'normal');
-        currentY += lineHeight;
-      });
-      
-      currentY += 5;
-      
-      // Faltas más frecuentes
-      if (currentY + 40 > pdfHeight - margin) {
-        addNewPage();
-      }
-      
-      pdf.setFontSize(headerFontSize - 2);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 58, 138);
-      pdf.text('FALTAS MÁS FRECUENTES', margin, currentY);
-      currentY += lineHeight + 3;
-      
-      pdf.setFontSize(fontSize);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      
-      stats.topFaults.slice(0, 10).forEach((fault, index) => {
-        if (currentY + cellHeight > pdfHeight - margin) {
-          addNewPage();
-        }
-        
-        const percentage = stats.totalIncidents > 0 ? (fault.count / stats.totalIncidents) * 100 : 0;
-        pdf.text(`${index + 1}. ${fault.faultType}:`, margin, currentY + 4);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(`${fault.count} (${percentage.toFixed(1)}%)`, pdfWidth - margin - 30, currentY + 4, { align: 'right' });
-        pdf.setFont('helvetica', 'normal');
-        currentY += lineHeight;
-      });
-      
-      currentY += 5;
-      
-      // Tabla de incidencias (si hay espacio)
-      if (incidentsList && incidentsList.length > 0 && currentY + 30 < pdfHeight - margin) {
-        if (currentY + 50 > pdfHeight - margin) {
-          addNewPage();
-        }
-        
-        pdf.setFontSize(headerFontSize - 2);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(30, 58, 138);
-        pdf.text('DETALLE DE INCIDENCIAS (Primeras 20)', margin, currentY);
-        currentY += lineHeight + 3;
-        
-        // Encabezados de tabla
-        pdf.setFontSize(fontSize);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFillColor(59, 130, 246);
-        pdf.rect(margin, currentY, 20, cellHeight, 'F');
-        pdf.text('ID', margin + 10, currentY + cellHeight / 2 + 1, { align: 'center' });
-        
-        pdf.rect(margin + 20, currentY, 60, cellHeight, 'F');
-        pdf.text('Estudiante', margin + 50, currentY + cellHeight / 2 + 1, { align: 'center' });
-        
-        pdf.rect(margin + 80, currentY, 50, cellHeight, 'F');
-        pdf.text('Falta', margin + 105, currentY + cellHeight / 2 + 1, { align: 'center' });
-        
-        pdf.rect(margin + 130, currentY, 25, cellHeight, 'F');
-        pdf.text('Nivel', margin + 142.5, currentY + cellHeight / 2 + 1, { align: 'center' });
-        
-        pdf.rect(margin + 155, currentY, 30, cellHeight, 'F');
-        pdf.text('Fecha', margin + 170, currentY + cellHeight / 2 + 1, { align: 'center' });
-        
-        pdf.setTextColor(0, 0, 0);
-        currentY += cellHeight;
-        
-        // Datos de incidencias
-        pdf.setFont('helvetica', 'normal');
-        incidentsList.slice(0, 20).forEach((incident) => {
-          if (currentY + cellHeight > pdfHeight - margin) {
-            addNewPage();
-            // Redibujar encabezados si es necesario
-            pdf.setFont('helvetica', 'bold');
-            pdf.setTextColor(255, 255, 255);
-            pdf.setFillColor(59, 130, 246);
-            pdf.rect(margin, currentY, 20, cellHeight, 'F');
-            pdf.text('ID', margin + 10, currentY + cellHeight / 2 + 1, { align: 'center' });
-            pdf.rect(margin + 20, currentY, 60, cellHeight, 'F');
-            pdf.text('Estudiante', margin + 50, currentY + cellHeight / 2 + 1, { align: 'center' });
-            pdf.rect(margin + 80, currentY, 50, cellHeight, 'F');
-            pdf.text('Falta', margin + 105, currentY + cellHeight / 2 + 1, { align: 'center' });
-            pdf.rect(margin + 130, currentY, 25, cellHeight, 'F');
-            pdf.text('Nivel', margin + 142.5, currentY + cellHeight / 2 + 1, { align: 'center' });
-            pdf.rect(margin + 155, currentY, 30, cellHeight, 'F');
-            pdf.text('Fecha', margin + 170, currentY + cellHeight / 2 + 1, { align: 'center' });
-            pdf.setTextColor(0, 0, 0);
-            currentY += cellHeight;
-            pdf.setFont('helvetica', 'normal');
-          }
-          
-          pdf.rect(margin, currentY, 20, cellHeight);
-          pdf.text(incident.id.toString(), margin + 10, currentY + cellHeight / 2 + 1, { align: 'center' });
-          
-          pdf.rect(margin + 20, currentY, 60, cellHeight);
-          const studentName = incident.student?.fullName || 'N/A';
-          pdf.text(studentName.length > 25 ? studentName.substring(0, 22) + '...' : studentName, margin + 23, currentY + cellHeight / 2 + 1);
-          
-          pdf.rect(margin + 80, currentY, 50, cellHeight);
-          const faultName = incident.faultType?.name || 'N/A';
-          pdf.text(faultName.length > 20 ? faultName.substring(0, 17) + '...' : faultName, margin + 83, currentY + cellHeight / 2 + 1);
-          
-          pdf.rect(margin + 130, currentY, 25, cellHeight);
-          pdf.text(incident.reincidenceLevel.toString(), margin + 142.5, currentY + cellHeight / 2 + 1, { align: 'center' });
-          
-          pdf.rect(margin + 155, currentY, 30, cellHeight);
-          pdf.text(format(new Date(incident.registeredAt), 'dd/MM/yyyy', { locale: es }), margin + 158, currentY + cellHeight / 2 + 1);
-          
-          currentY += cellHeight;
-        });
-      }
-      
+      const bimestreInfo =
+        bimestre !== 'all'
+          ? getAllBimestres(añoEscolar).find((b) => b.numero === bimestre)
+          : undefined;
+
+      const subtitle = buildFilterSubtitle([
+        `Generado ${format(new Date(), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}`,
+        selectedLevel !== 'all' && `Nivel: ${selectedLevel}`,
+        selectedGrade !== 'all' && `Grado: ${selectedGrade}`,
+        bimestreInfo && `Período: ${formatBimestreLabel(bimestreInfo)}`,
+      ]);
+
+      const doc = new PdfReportDocument('portrait', 'REPORTE DE INCIDENCIAS', subtitle);
+      await doc.drawCoverHeader();
+
+      const criticalCount = stats.levelDistribution.level3 + stats.levelDistribution.level4;
+
+      doc.drawKpiCards([
+        { label: 'Total incidencias', value: stats.totalIncidents, tone: 'primary' },
+        { label: 'Estudiantes involucrados', value: stats.studentsWithIncidents, tone: 'info' },
+        { label: 'Nivel promedio', value: stats.averageReincidenceLevel.toFixed(1), tone: 'warning' },
+        { label: 'Casos críticos', value: criticalCount, tone: criticalCount > 0 ? 'error' : 'success' },
+      ]);
+
+      doc.drawSectionTitle('Distribución por nivel de reincidencia');
+      doc.drawKeyValueList(
+        levelItems.map((item) => {
+          const pct =
+            stats.totalIncidents > 0
+              ? ((item.count / stats.totalIncidents) * 100).toFixed(1)
+              : '0';
+          return { label: item.level, value: `${item.count} registros (${pct}%)` };
+        })
+      );
+
+      doc.drawSectionTitle('Faltas más frecuentes');
+      doc.drawTable(
+        [
+          { header: '#', dataKey: 'rank', width: 10, align: 'center' },
+          { header: 'Tipo de falta', dataKey: 'fault' },
+          { header: 'Cantidad', dataKey: 'count', width: 22, align: 'center' },
+          { header: '% del total', dataKey: 'pct', width: 22, align: 'right' },
+        ],
+        stats.topFaults.slice(0, 15).map((fault, index) => {
+          const pct =
+            stats.totalIncidents > 0
+              ? `${((fault.count / stats.totalIncidents) * 100).toFixed(1)}%`
+              : '0%';
+          return {
+            rank: String(index + 1),
+            fault: fault.faultType,
+            count: String(fault.count),
+            pct,
+          };
+        })
+      );
+
+      doc.drawSectionTitle('Detalle de incidencias');
+      doc.drawParagraph(
+        `Listado de ${incidentsList.length} registro(s). Se muestran hasta 80 filas en este documento.`
+      );
+      doc.drawTable(
+        [
+          { header: 'ID', dataKey: 'id', width: 12, align: 'center' },
+          { header: 'Estudiante', dataKey: 'student', width: 42 },
+          { header: 'Grado', dataKey: 'grade', width: 18 },
+          { header: 'Falta', dataKey: 'fault', width: 38 },
+          { header: 'Niv.', dataKey: 'level', width: 12, align: 'center' },
+          { header: 'Estado', dataKey: 'status', width: 18 },
+          { header: 'Fecha', dataKey: 'date', width: 22 },
+        ],
+        incidentsList.map((inc) => ({
+          id: String(inc.id),
+          student: inc.student?.fullName ?? '—',
+          grade: inc.student ? `${inc.student.grade} ${inc.student.section}` : '—',
+          fault: inc.faultType?.name ?? '—',
+          level: String(inc.reincidenceLevel),
+          status: inc.status,
+          date: format(new Date(inc.registeredAt), 'dd/MM/yyyy HH:mm', { locale: es }),
+        })),
+        { fontSize: 7.5, maxRows: 80 }
+      );
+
       const fileName = `Reporte_Incidencias_${format(new Date(), 'yyyy_MM_dd', { locale: es })}.pdf`;
-      pdf.save(fileName);
-      
+      await doc.finalize(fileName);
+
       toast.success('PDF generado exitosamente', { id: 'pdf-export' });
-    } catch (error: any) {
-      console.error('Error al generar PDF:', error);
-      toast.error('Error al generar PDF: ' + (error.message || 'Error desconocido'), { id: 'pdf-export' });
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al generar PDF: ${message}`, { id: 'pdf-export' });
     }
   };
 
@@ -428,159 +272,43 @@ export const Reports = () => {
     }
 
     try {
-      toast.loading('Generando Excel...', { id: 'excel-export' });
-      
-      // Obtener todas las incidencias
-      const { incidents: incidentsList } = await incidentsService.getAll({
+      const { incidents: incidentsList, error } = await incidentsService.getAll({
         nivelEducativo: selectedLevel === 'all' ? undefined : selectedLevel,
         grado: selectedGrade === 'all' ? undefined : selectedGrade,
       });
-      
-      const workbook = new ExcelJS.Workbook();
-      
-      // Hoja 1: Resumen
-      const summarySheet = workbook.addWorksheet('Resumen');
-      
-      // Cargar el logo
-      const logoResponse = await fetch('/logo2.png');
-      const logoBuffer = await logoResponse.arrayBuffer();
-      const logoImage = workbook.addImage({
-        buffer: logoBuffer,
-        extension: 'png',
+
+      if (error) {
+        toast.error('Error al cargar incidencias para exportar');
+        return;
+      }
+
+      let filterText = `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`;
+      if (selectedLevel !== 'all') filterText += ` · Nivel: ${selectedLevel}`;
+      if (selectedGrade !== 'all') filterText += ` · Grado: ${selectedGrade}`;
+      if (bimestre !== 'all') {
+        const b = getAllBimestres(añoEscolar).find((x) => x.numero === bimestre);
+        if (b) filterText += ` · ${formatBimestreLabel(b)}`;
+      }
+
+      const levelItemsForExport = stats
+        ? [
+            { level: 'Nivel 0 - Sin reincidencias', count: stats.levelDistribution.level0 },
+            { level: 'Nivel 1 - Primera reincidencia', count: stats.levelDistribution.level1 },
+            { level: 'Nivel 2 - Reincidencia moderada', count: stats.levelDistribution.level2 },
+            { level: 'Nivel 3 - Reincidencia alta', count: stats.levelDistribution.level3 },
+            { level: 'Nivel 4 - Reincidencia crítica', count: stats.levelDistribution.level4 },
+          ]
+        : [];
+
+      await exportIncidentsReportExcel(stats, incidentsList, {
+        filterText,
+        levelItems: levelItemsForExport,
       });
-      
-      // Agregar logo
-      summarySheet.addImage(logoImage, {
-        tl: { col: 0, row: 0 },
-        ext: { width: 100, height: 50 },
-      });
-      
-      // Encabezado
-      summarySheet.getRow(4).height = 25;
-      summarySheet.getCell('A4').value = 'REPORTE DE INCIDENCIAS';
-      summarySheet.getCell('A4').font = { size: 16, bold: true };
-      summarySheet.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
-      summarySheet.mergeCells('A4:D4');
-      
-      // Filtros aplicados
-      let filterText = `Fecha: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`;
-      if (selectedLevel !== 'all') filterText += ` | Nivel: ${selectedLevel}`;
-      if (selectedGrade !== 'all') filterText += ` | Grado: ${selectedGrade}`;
-      summarySheet.getCell('A5').value = filterText;
-      summarySheet.getCell('A5').font = { size: 10 };
-      summarySheet.mergeCells('A5:D5');
-      
-      // Resumen de estadísticas
-      summarySheet.getRow(7).height = 20;
-      summarySheet.getCell('A7').value = 'RESUMEN GENERAL';
-      summarySheet.getCell('A7').font = { size: 12, bold: true };
-      
-      const summaryRows = [
-        ['Total Incidencias', stats.totalIncidents],
-        ['Estudiantes Involucrados', stats.studentsWithIncidents],
-        ['Nivel Promedio', stats.averageReincidenceLevel.toFixed(1)],
-        ['Casos Críticos', stats.levelDistribution.level3 + stats.levelDistribution.level4],
-      ];
-      
-      summaryRows.forEach(([label, value], index) => {
-        const row = summarySheet.getRow(8 + index);
-        row.getCell(1).value = label;
-        row.getCell(2).value = value;
-        row.getCell(1).font = { bold: true };
-        row.getCell(2).font = { bold: true, size: 11 };
-      });
-      
-      // Distribución por nivel
-      summarySheet.getRow(13).height = 20;
-      summarySheet.getCell('A13').value = 'DISTRIBUCIÓN POR NIVEL DE REINCIDENCIA';
-      summarySheet.getCell('A13').font = { size: 12, bold: true };
-      
-      levelItems.forEach((item, index) => {
-        const row = summarySheet.getRow(14 + index);
-        const percentage = stats.totalIncidents > 0 ? (item.count / stats.totalIncidents) * 100 : 0;
-        row.getCell(1).value = item.level;
-        row.getCell(2).value = item.count;
-        row.getCell(3).value = `${percentage.toFixed(1)}%`;
-      });
-      
-      // Faltas más frecuentes
-      const faultsRow = 20;
-      summarySheet.getRow(faultsRow).height = 20;
-      summarySheet.getCell(`A${faultsRow}`).value = 'FALTAS MÁS FRECUENTES';
-      summarySheet.getCell(`A${faultsRow}`).font = { size: 12, bold: true };
-      
-      stats.topFaults.forEach((fault, index) => {
-        const row = summarySheet.getRow(faultsRow + 1 + index);
-        const percentage = stats.totalIncidents > 0 ? (fault.count / stats.totalIncidents) * 100 : 0;
-        row.getCell(1).value = `${index + 1}. ${fault.faultType}`;
-        row.getCell(2).value = fault.count;
-        row.getCell(3).value = `${percentage.toFixed(1)}%`;
-      });
-      
-      // Ajustar ancho de columnas
-      summarySheet.columns.forEach((column) => {
-        column.width = 30;
-      });
-      
-      // Hoja 2: Detalle de incidencias
-      const detailsSheet = workbook.addWorksheet('Detalle de Incidencias');
-      
-      // Encabezados
-      const headers = ['ID', 'Estudiante', 'Nivel', 'Grado', 'Sección', 'Tipo de Falta', 'Categoría', 'Nivel Reincidencia', 'Fecha', 'Hora', 'Observaciones'];
-      const headerRow = detailsSheet.addRow(headers);
-      headerRow.font = { bold: true, size: 10 };
-      headerRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF3B82F6' },
-      };
-      headerRow.font = { ...headerRow.font, color: { argb: 'FFFFFFFF' } };
-      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-      
-      // Datos
-      incidentsList.forEach((incident) => {
-        const row = detailsSheet.addRow([
-          incident.id,
-          incident.student?.fullName || 'N/A',
-          incident.student?.level || 'N/A',
-          incident.student?.grade || 'N/A',
-          incident.student?.section || 'N/A',
-          incident.faultType?.name || 'N/A',
-          incident.faultType?.category || 'N/A',
-          incident.reincidenceLevel,
-          format(new Date(incident.registeredAt), 'dd/MM/yyyy', { locale: es }),
-          format(new Date(incident.registeredAt), 'HH:mm', { locale: es }),
-          incident.observations || '',
-        ]);
-        row.font = { size: 9 };
-        row.alignment = { vertical: 'middle' };
-      });
-      
-      // Ajustar ancho de columnas
-      detailsSheet.columns.forEach((column, index) => {
-        if (index === 0) column.width = 8; // ID
-        else if (index === 1) column.width = 30; // Estudiante
-        else if (index === 7) column.width = 12; // Nivel Reincidencia
-        else if (index === 10) column.width = 40; // Observaciones
-        else column.width = 15;
-      });
-      
-      // Descargar archivo
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Reporte_Incidencias_${format(new Date(), 'yyyy_MM_dd', { locale: es })}.xlsx`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('Excel generado exitosamente', { id: 'excel-export' });
-    } catch (error: any) {
-      console.error('Error al generar Excel:', error);
-      toast.error('Error al generar Excel: ' + (error.message || 'Error desconocido'), { id: 'excel-export' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      if (message.includes('No hay')) {
+        toast.error(message);
+      }
     }
   };
 
@@ -613,22 +341,26 @@ export const Reports = () => {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="app-page">
+        <div className="app-page-state">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
 
   if (!stats) {
     return (
-      <div className="container mx-auto p-6">
-        <p className="text-muted-foreground">Error al cargar las estadísticas</p>
+      <div className="app-page">
+        <div className="app-page-state">
+          <p className="text-muted-foreground">Error al cargar las estadísticas</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app-page w-full">
+    <div className="app-page app-page-shell w-full">
       <AnimatedDiv style={headerAnimation}>
         <PageHeader
           icon={BarChart3}
@@ -638,9 +370,30 @@ export const Reports = () => {
           accent="primary"
         />
       </AnimatedDiv>
-      <div className="flex flex-wrap gap-3 items-center bg-card p-4 rounded-xl shadow-md border border-primary/15">
+      <StaffToolbar
+        title="Período y filtros"
+        description="Ajuste el alcance del análisis y exporte"
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={loadStats} variant="outline" size="sm">
+              <Calendar className="mr-2 h-4 w-4" />
+              Actualizar
+            </Button>
+            <Button onClick={exportToPDF} disabled={!stats} variant="outline" size="sm">
+              <FileDown className="mr-2 h-4 w-4" />
+              PDF
+            </Button>
+            <Button onClick={exportToExcel} disabled={!stats} variant="outline" size="sm">
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Excel
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-2">
+          <Label>Nivel</Label>
         <Select value={selectedLevel} onValueChange={(value) => setSelectedLevel(value as 'all' | EducationalLevel)}>
-          <SelectTrigger className="w-[170px] bg-white border-gray-300">
+          <SelectTrigger>
             <SelectValue placeholder="Todos los niveles" />
           </SelectTrigger>
           <SelectContent>
@@ -649,8 +402,11 @@ export const Reports = () => {
             <SelectItem value="Secundaria">Secundaria</SelectItem>
           </SelectContent>
         </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Grado</Label>
         <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-          <SelectTrigger className="w-[170px] bg-white border-gray-300">
+          <SelectTrigger>
             <SelectValue placeholder="Todos los grados" />
           </SelectTrigger>
           <SelectContent>
@@ -663,18 +419,24 @@ export const Reports = () => {
             <SelectItem value="6to">6to</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={severityFilter} onValueChange={(value: any) => setSeverityFilter(value)}>
-          <SelectTrigger className="w-[190px] bg-white border-gray-300">
+        </div>
+        <div className="space-y-2">
+          <Label>Enfoque</Label>
+        <Select value={severityFilter} onValueChange={(value: 'all' | 'moderate' | 'critical') => setSeverityFilter(value)}>
+          <SelectTrigger>
             <SelectValue placeholder="Enfoque" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los niveles</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             <SelectItem value="moderate">Reincidencias moderadas</SelectItem>
             <SelectItem value="critical">Casos críticos</SelectItem>
           </SelectContent>
         </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Año escolar</Label>
         <Select value={String(añoEscolar)} onValueChange={(value) => setAñoEscolar(Number(value))}>
-          <SelectTrigger className="w-[140px] bg-white border-gray-300">
+          <SelectTrigger>
             <SelectValue placeholder="Año escolar" />
           </SelectTrigger>
           <SelectContent>
@@ -685,8 +447,11 @@ export const Reports = () => {
             ))}
           </SelectContent>
         </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Bimestre</Label>
         <Select value={bimestre === 'all' ? 'all' : String(bimestre)} onValueChange={(value) => setBimestre(value === 'all' ? 'all' : (Number(value) as Bimestre))}>
-          <SelectTrigger className="w-[200px] bg-white border-gray-300">
+          <SelectTrigger>
             <SelectValue placeholder="Bimestre" />
           </SelectTrigger>
           <SelectContent>
@@ -698,81 +463,41 @@ export const Reports = () => {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={loadStats} variant="outline" className="bg-white border-gray-300">
-          <Calendar className="w-4 h-4 mr-2" />
-          Actualizar
-        </Button>
-        <Button onClick={exportToPDF} disabled={!stats} variant="outline" className="bg-white border-gray-300">
-          <FileDown className="w-4 h-4 mr-2" />
-          PDF
-        </Button>
-        <Button onClick={exportToExcel} disabled={!stats} variant="outline" className="bg-white border-gray-300">
-          <FileSpreadsheet className="w-4 h-4 mr-2" />
-          Excel
-        </Button>
-      </div>
+        </div>
+      </StaffToolbar>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="app-card">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Total Incidencias</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalIncidents}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Estudiantes Involucrados</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.studentsWithIncidents}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Nivel Promedio</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.averageReincidenceLevel.toFixed(1)}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Casos Críticos</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.levelDistribution.level3 + stats.levelDistribution.level4}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="app-kpi-grid">
+        <StaffKpiStat
+          label="Total incidencias"
+          value={stats.totalIncidents}
+          icon={TrendingUp}
+          tone="primary"
+        />
+        <StaffKpiStat
+          label="Estudiantes"
+          value={stats.studentsWithIncidents}
+          icon={Users}
+          tone="accent"
+        />
+        <StaffKpiStat
+          label="Nivel promedio"
+          value={stats.averageReincidenceLevel.toFixed(1)}
+          icon={AlertTriangle}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Casos críticos"
+          value={stats.levelDistribution.level3 + stats.levelDistribution.level4}
+          icon={AlertTriangle}
+          tone="secondary"
+        />
       </div>
 
       {/* Charts y detalle */}
       {/* Tendencia mensual a ancho completo */}
-      <Card className="bg-white border-0 shadow-sm">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">Tendencia Mensual</CardTitle>
+      <Card className="app-card">
+        <CardHeader className="app-card-header">
+          <CardTitle className="app-section-title">Tendencia Mensual</CardTitle>
         </CardHeader>
           <CardContent className="pt-6">
           <ResponsiveContainer width="100%" height={320}>
@@ -805,9 +530,9 @@ export const Reports = () => {
 
       {/* Fila: Incidencias por día vs por grado */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Incidencias por Día (Esta Semana)</CardTitle>
+        <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">Incidencias por Día (Esta Semana)</CardTitle>
           </CardHeader>
             <CardContent className="pt-6">
             <ResponsiveContainer width="100%" height={300}>
@@ -828,9 +553,9 @@ export const Reports = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">
+        <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">
               Incidencias por Nivel / Grado
               {(selectedLevel !== 'all' || selectedGrade !== 'all') && (
                 <>
@@ -869,9 +594,9 @@ export const Reports = () => {
 
       {/* Fila: Distribución de niveles vs faltas más frecuentes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Distribución por Nivel de Reincidencia</CardTitle>
+        <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">Distribución por Nivel de Reincidencia</CardTitle>
           </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-5">
@@ -901,9 +626,9 @@ export const Reports = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Faltas Más Frecuentes</CardTitle>
+        <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">Faltas Más Frecuentes</CardTitle>
           </CardHeader>
             <CardContent className="pt-6">
             {stats.topFaults.length === 0 ? (
@@ -961,9 +686,9 @@ export const Reports = () => {
         </h2>
 
         {/* Comparativa por Grados */}
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Comparativa por Grados</CardTitle>
+        <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">Comparativa por Grados</CardTitle>
           </CardHeader>
             <CardContent className="pt-6">
               {comparisonByGrade.length > 0 ? (
@@ -1074,9 +799,9 @@ export const Reports = () => {
           </Card>
 
           {/* Comparativa por Secciones */}
-          <Card className="bg-white border-0 shadow-sm">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Comparativa por Secciones</CardTitle>
+          <Card className="app-card">
+          <CardHeader className="app-card-header">
+            <CardTitle className="app-section-title">Comparativa por Secciones</CardTitle>
           </CardHeader>
             <CardContent className="pt-6">
               {comparisonBySection.length > 0 ? (

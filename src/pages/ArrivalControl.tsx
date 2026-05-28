@@ -20,9 +20,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2, LogOut, AlertTriangle } from 'lucide-react';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
+import { Label } from '@/components/ui/label';
 import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
+import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
 
 export const ArrivalControl = () => {
@@ -110,7 +119,7 @@ export const ArrivalControl = () => {
     if (error) {
       toast.error(error);
     } else {
-      toast.success('Salida registrada exitosamente');
+      staffNotify.success('¡Salida registrada!', 'El registro de asistencia quedó actualizado');
       loadArrivals(); // Recargar los registros
     }
   };
@@ -126,8 +135,11 @@ export const ArrivalControl = () => {
     return matchesSearch && matchesStatus && matchesLevel;
   });
 
+  const onTimePct =
+    stats && stats.total > 0 ? Math.round((stats.onTime / stats.total) * 100) : 0;
+
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={Clock}
         eyebrow="Asistencia"
@@ -136,71 +148,70 @@ export const ArrivalControl = () => {
         accent="success"
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="app-card border-l-4 border-l-primary">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Llegadas</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.total || 0}</div>
-          </CardContent>
-        </Card>
-        <Card className="app-card border-l-4 border-l-success">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">A Tiempo</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats?.onTime || 0}</div>
-          </CardContent>
-        </Card>
-        <Card className="app-card border-l-4 border-l-warning">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tarde</CardTitle>
-            <AlertCircle className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats?.late || 0}</div>
-          </CardContent>
-        </Card>
+      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+        <StaffKpiStat
+          label="Total llegadas"
+          value={stats?.total || 0}
+          icon={Users}
+          tone="primary"
+        />
+        <StaffKpiStat
+          label="A tiempo"
+          value={stats?.onTime || 0}
+          hint={`${onTimePct}% del total`}
+          hintIcon={CheckCircle}
+          icon={CheckCircle}
+          tone="success"
+        />
+        <StaffKpiStat
+          label="Tarde"
+          value={stats?.late || 0}
+          hint="Requieren seguimiento"
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
+          tone="warning"
+        />
       </div>
 
-      <Card className="app-card">
-        <CardHeader className="app-card-header">
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 md:flex-row">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Fecha</p>
+      <StaffToolbar title="Filtros del día" description="Fecha, estudiante y estado">
+        <div className="space-y-2">
+          <Label>Fecha</Label>
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            max={getTodayDate()}
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Buscar estudiante</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              max={getTodayDate()}
-            />
-          </div>
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar estudiante..."
+              placeholder="Nombre del estudiante..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Nivel</Label>
           <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>
-            <SelectTrigger className="w-full md:w-[200px]">
+            <SelectTrigger>
               <SelectValue placeholder="Nivel educativo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos los niveles</SelectItem>
+              <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="Primaria">Primaria</SelectItem>
               <SelectItem value="Secundaria">Secundaria</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
-            <SelectTrigger className="w-[200px]">
+        </div>
+        <div className="space-y-2">
+          <Label>Estado</Label>
+          <Select value={statusFilter} onValueChange={(value: 'all' | 'A tiempo' | 'Tarde') => setStatusFilter(value)}>
+            <SelectTrigger>
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -209,28 +220,33 @@ export const ArrivalControl = () => {
               <SelectItem value="Tarde">Tarde</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={loadArrivals} variant="outline">
-            Actualizar
-          </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </StaffToolbar>
 
-      {/* Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Registros del Día</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          title="Registros del día"
+          description={`${filteredRecords.length} visibles · actualice para refrescar`}
+          action={
+            <Button onClick={loadArrivals} variant="outline" size="sm" disabled={loading}>
+              Actualizar
+            </Button>
+          }
+        />
+        <div className="p-4 pt-0 sm:p-5 sm:pt-0">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span>Cargando registros de llegada...</span>
+              <span>Cargando registros...</span>
             </div>
           ) : filteredRecords.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No hay registros para mostrar
-            </div>
+            <StaffEmptyState
+              icon={Users}
+              title="Sin registros"
+              description="No hay llegadas para la fecha o filtros seleccionados"
+            />
           ) : (
+            <div className="app-table-wrap">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -311,9 +327,10 @@ export const ArrivalControl = () => {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </StaffDataPanel>
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { Layout } from "./components/layout/Layout";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PageLoader } from "./components/ui/page-loader";
+import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
 
@@ -25,7 +26,9 @@ const AuditLogs = lazy(() => import("./pages/AuditLogs").then(m => ({ default: m
 const SystemConfig = lazy(() => import("./pages/SystemConfig").then(m => ({ default: m.SystemConfig })));
 const ArrivalControl = lazy(() => import("./pages/ArrivalControl").then(m => ({ default: m.ArrivalControl })));
 const ParentMeetings = lazy(() => import("./pages/ParentMeetings").then(m => ({ default: m.ParentMeetings })));
-const ParentPortal = lazy(() => import("./pages/ParentPortal").then(m => ({ default: m.ParentPortal })));
+const ParentPortalRoute = lazy(() =>
+  import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
+);
 const JustifyFaults = lazy(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -192,7 +195,7 @@ const AppContent = () => {
                 path="/parent-portal" 
                 element={
                   <ProtectedRoute requiredRole={['Padre', 'Supervisor', 'Director', 'Admin']}>
-                    <Layout><ParentPortal /></Layout>
+                    <ParentPortalRoute />
                   </ProtectedRoute>
                 } 
               />
@@ -223,6 +226,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <SuccessFlashOverlay />
         <BrowserRouter>
           <AppWithSessionMonitor />
         </BrowserRouter>

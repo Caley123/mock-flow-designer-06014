@@ -26,32 +26,32 @@ const accentStyles: Record<
 > = {
   primary: {
     border: 'border-l-primary',
-    icon: 'bg-primary/12 text-primary',
+    icon: 'bg-primary/10 text-primary',
     eyebrow: 'text-primary',
   },
   secondary: {
     border: 'border-l-secondary',
-    icon: 'bg-secondary/12 text-secondary',
+    icon: 'bg-secondary/10 text-secondary',
     eyebrow: 'text-secondary',
   },
   success: {
     border: 'border-l-success',
-    icon: 'bg-success/12 text-success',
+    icon: 'bg-success/10 text-success',
     eyebrow: 'text-success',
   },
   warning: {
     border: 'border-l-warning',
-    icon: 'bg-warning/12 text-warning',
+    icon: 'bg-warning/10 text-warning',
     eyebrow: 'text-warning',
   },
   info: {
     border: 'border-l-info',
-    icon: 'bg-info/12 text-info',
+    icon: 'bg-info/10 text-info',
     eyebrow: 'text-info',
   },
   accent: {
     border: 'border-l-accent',
-    icon: 'bg-accent/12 text-accent',
+    icon: 'bg-accent/10 text-accent',
     eyebrow: 'text-accent',
   },
 };
@@ -70,52 +70,48 @@ export const PageHeader = ({
   return (
     <header
       className={cn(
-        'rounded-[28px] border border-border bg-card',
+        'rounded-2xl border border-border bg-card shadow-sm',
         'border-l-[3px]',
         styles.border,
         className
       )}
     >
-      <div className="px-5 py-5 md:px-7 md:py-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-start gap-4">
-            {Icon && (
-              <div
-                className={cn(
-                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
-                  styles.icon
-                )}
-              >
-                <Icon className="h-5 w-5" strokeWidth={2} />
-              </div>
-            )}
-            <div className="min-w-0 space-y-1">
-              {eyebrow && (
-                <p
-                  className={cn(
-                    'font-mono text-[11px] font-medium uppercase tracking-[0.08em]',
-                    styles.eyebrow
-                  )}
-                >
-                  {eyebrow}
-                </p>
+      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3.5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {Icon && (
+            <div
+              className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                styles.icon
               )}
-              <h1 className="text-xl font-semibold leading-tight tracking-[-0.02em] text-foreground md:text-[28px] md:leading-[1.14]">
-                {title}
-              </h1>
-              {description && (
-                <p className="max-w-2xl pt-0.5 text-[15px] leading-relaxed text-muted-foreground">
-                  {description}
-                </p>
-              )}
-            </div>
-          </div>
-          {children && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4 sm:border-t-0 sm:pt-1">
-              {children}
+            >
+              <Icon className="h-4 w-4" strokeWidth={2} aria-hidden />
             </div>
           )}
+          <div className="min-w-0">
+            {eyebrow && (
+              <p
+                className={cn(
+                  'mb-0.5 text-[10px] font-medium uppercase tracking-wider',
+                  styles.eyebrow
+                )}
+              >
+                {eyebrow}
+              </p>
+            )}
+            <h1 className="truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
+              {title}
+            </h1>
+            {description && (
+              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{description}</p>
+            )}
+          </div>
         </div>
+        {children && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+            {children}
+          </div>
+        )}
       </div>
     </header>
   );

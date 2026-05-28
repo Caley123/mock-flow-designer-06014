@@ -84,16 +84,16 @@ export default {
           foreground: COLORS.textPrimary,
         },
         
-        // Barra lateral
+        // Barra lateral (variables CSS para opacidad y tema)
         sidebar: {
-          DEFAULT: COLORS.primaryDark,
-          foreground: COLORS.textOnPrimary,
-          primary: COLORS.primary,
-          'primary-foreground': COLORS.textOnPrimary,
-          accent: COLORS.primaryDark,
-          'accent-foreground': COLORS.textOnPrimary,
-          border: 'hsl(222 18% 22%)',
-          ring: COLORS.primaryLight,
+          DEFAULT: 'hsl(var(--sidebar-background) / <alpha-value>)',
+          foreground: 'hsl(var(--sidebar-foreground) / <alpha-value>)',
+          primary: 'hsl(var(--sidebar-primary) / <alpha-value>)',
+          'primary-foreground': 'hsl(var(--sidebar-primary-foreground) / <alpha-value>)',
+          accent: 'hsl(var(--sidebar-accent) / <alpha-value>)',
+          'accent-foreground': 'hsl(var(--sidebar-accent-foreground) / <alpha-value>)',
+          border: 'hsl(var(--sidebar-border) / <alpha-value>)',
+          ring: 'hsl(var(--sidebar-ring) / <alpha-value>)',
         },
         
         // Bordes y divisiones

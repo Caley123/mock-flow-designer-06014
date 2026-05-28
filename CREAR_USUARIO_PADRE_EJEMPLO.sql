@@ -16,7 +16,7 @@ INSERT INTO public.usuarios (
   'padre.humani@colegio.local',
   'Padre'::rol_usuario,
   true,
-  '{"studentIds":[32]}'::jsonb
+  '{"studentIds":[32,31]}'::jsonb
 )
 ON CONFLICT (username) DO UPDATE SET
   rol = EXCLUDED.rol,

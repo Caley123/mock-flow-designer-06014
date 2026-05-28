@@ -16,6 +16,41 @@ export const getReincidenceLevelColor = (level: ReincidenceLevel): string => {
   }
 };
 
+/** Clase CSS semáforo por nivel (0 = verde → 5 = rojo) */
+export function getReincidenceLevelPillClass(level: number): string {
+  const n = Math.min(5, Math.max(0, Math.round(level)));
+  return `app-level-pill app-level-pill--${n}`;
+}
+
+/** Color de barra / indicador según nivel (semáforo) */
+export function getReincidenceLevelBarColor(level: number): string {
+  const colors: Record<number, string> = {
+    0: 'hsl(152, 55%, 45%)',
+    1: 'hsl(142, 48%, 44%)',
+    2: 'hsl(45, 85%, 50%)',
+    3: 'hsl(32, 88%, 52%)',
+    4: 'hsl(12, 78%, 50%)',
+    5: 'hsl(0, 70%, 48%)',
+  };
+  const n = Math.min(5, Math.max(0, Math.round(level)));
+  return colors[n];
+}
+
+const LEVEL_SUMMARY_LABELS: Record<ReincidenceLevel, string> = {
+  0: 'Sin reincidencia',
+  1: 'Primera falta',
+  2: 'Moderada',
+  3: 'Alta',
+  4: 'Crítica',
+  5: 'Crítica máxima',
+};
+
+export function getReincidenceLevelSummaryLabel(level: ReincidenceLevel): string {
+  return LEVEL_SUMMARY_LABELS[level] ?? `Nivel ${level}`;
+}
+
+export const REINCIDENCE_LEVELS: ReincidenceLevel[] = [0, 1, 2, 3, 4, 5];
+
 export const getReincidenceLevelLabel = (level: ReincidenceLevel): string => {
   return `Nivel ${level}`;
 };

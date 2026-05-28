@@ -12,10 +12,13 @@ function mapAuditLog(log: AuditoriaLogDB): AuditLog {
   return {
     id: log.id_log,
     table: log.tabla_afectada,
+    recordId: log.id_registro,
     operation: log.accion,
     previousData: log.datos_anteriores,
     newData: log.datos_nuevos,
     userId: log.id_usuario || undefined,
+    actionDescription: log.descripcion_accion || undefined,
+    ipAddress: log.ip_address || undefined,
     timestamp: log.fecha_hora,
   };
 }

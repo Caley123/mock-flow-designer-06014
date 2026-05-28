@@ -29,7 +29,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, CheckCircle2, XCircle, FileText, Calendar, User, AlertCircle } from 'lucide-react';
+import { Search, CheckCircle2, FileText, AlertCircle } from 'lucide-react';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
 import { getLimaDayRangeISO } from '@/lib/utils/limaDateTime';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { incidentsService, studentsService, authService } from '@/lib/services';
@@ -174,121 +181,98 @@ export const JustifyFaults = () => {
   const justifiedCount = incidents.filter(i => i.status === 'Justificada').length;
 
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={CheckCircle2}
         eyebrow="Incidencias"
         title="Justificar Faltas"
-        description="Revise incidencias pendientes y registre la justificación con su documentación"
+        description="Gestione incidencias activas y registre justificaciones con motivo documentado"
         accent="success"
       />
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Incidencias</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{incidents.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes de Justificar</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{activeCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Justificadas</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{justifiedCount}</div>
-          </CardContent>
-        </Card>
+      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+        <StaffKpiStat label="Total" value={incidents.length} icon={FileText} tone="primary" />
+        <StaffKpiStat
+          label="Pendientes"
+          value={activeCount}
+          hint="Por justificar"
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Justificadas"
+          value={justifiedCount}
+          hint="Cerradas"
+          hintIcon={CheckCircle2}
+          icon={CheckCircle2}
+          tone="success"
+        />
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros de Búsqueda</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Buscar</Label>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="ID, estudiante o falta..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Nivel Educativo</Label>
-              <Select value={levelFilter} onValueChange={(value: any) => setLevelFilter(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="Primaria">Primaria</SelectItem>
-                  <SelectItem value="Secundaria">Secundaria</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="Activa">Activas</SelectItem>
-                  <SelectItem value="Justificada">Justificadas</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Fecha</Label>
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-              />
-            </div>
+      <StaffToolbar title="Filtros" description="Estado, nivel y fecha">
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Buscar</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="ID, estudiante o falta..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="space-y-2">
+          <Label>Nivel</Label>
+          <Select value={levelFilter} onValueChange={(value: 'all' | EducationalLevel) => setLevelFilter(value)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="Primaria">Primaria</SelectItem>
+              <SelectItem value="Secundaria">Secundaria</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Estado</Label>
+          <Select value={statusFilter} onValueChange={(value: 'all' | 'Activa' | 'Justificada') => setStatusFilter(value)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="Activa">Activas</SelectItem>
+              <SelectItem value="Justificada">Justificadas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Fecha</Label>
+          <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+        </div>
+      </StaffToolbar>
 
-      {/* Incidents Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Incidencias {filteredIncidents.length > 0 && `(${filteredIncidents.length})`}
-          </CardTitle>
-          <CardDescription>
-            {statusFilter === 'Activa' 
-              ? 'Seleccione una incidencia para justificarla'
-              : 'Vista de incidencias justificadas'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          title={`Incidencias (${filteredIncidents.length})`}
+          description={
+            statusFilter === 'Activa'
+              ? 'Seleccione una fila para justificar'
+              : 'Historial de incidencias justificadas'
+          }
+        />
+        <div className="p-4 pt-0 sm:p-5 sm:pt-0">
           {filteredIncidents.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No se encontraron incidencias
-            </div>
+            <StaffEmptyState
+              icon={FileText}
+              title="Sin resultados"
+              description="Ajuste los filtros o el término de búsqueda"
+            />
           ) : (
+            <div className="app-table-wrap">
             <Table role="table" aria-label="Lista de incidencias para justificar">
               <TableHeader>
                 <TableRow>
@@ -469,9 +453,10 @@ export const JustifyFaults = () => {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </StaffDataPanel>
     </div>
   );
 };

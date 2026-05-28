@@ -1,32 +1,24 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Users, 
-  BookOpen, 
-  BarChart3,
+import {
   LogOut,
   Menu,
   X,
   User,
-  Settings,
-  Clock,
   ChevronRight,
-  CalendarDays
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSpring, animated } from '@react-spring/web';
-interface NavItem {
-  path: string;
-  label: string;
-  icon: any;
-  roles: string[];
-  subItems?: { path: string; label: string }[];
-}
+import { ParentSidebarNav } from '@/components/parent/ParentSidebarNav';
+import {
+  getStaffNavDefaultPath,
+  getStaffNavItems,
+  isStaffNavItemActive,
+  type StaffNavItem,
+} from '@/config/staffNavigation';
 
 export const Sidebar = () => {
   const location = useLocation();
@@ -35,22 +27,16 @@ export const Sidebar = () => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const user = authService.getCurrentUser();
 
-  const handleNavigation = useCallback((path: string) => {
-    navigate(path);
-    setMobileMenuOpen(false);
-  }, [navigate]);
-
   const handleLogout = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    
+
     try {
       await authService.logout();
       toast.success('Sesión cerrada');
       navigate('/login', { replace: true });
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
-      // Asegurar redirección incluso si hay error
       navigate('/login', { replace: true });
     }
   };
@@ -65,139 +51,62 @@ export const Sidebar = () => {
     setExpandedItems(newExpanded);
   };
 
-  const getNavItems = (): NavItem[] => {
-    if (user?.role === 'Tutor') {
-      return [];
+  const navItems = getStaffNavItems(user?.role);
+  const isParentRole = user?.role === 'Padre';
+
+  const isActive = (item: StaffNavItem) => isStaffNavItemActive(location.pathname, item);
+
+  useEffect(() => {
+    const group = navItems.find((item) => isStaffNavItemActive(location.pathname, item));
+    if (group?.subItems?.length) {
+      setExpandedItems((prev) => new Set(prev).add(group.path));
     }
-
-    if (user?.role === 'Padre') {
-      return [
-        {
-          path: '/parent-portal',
-          label: 'Mis hijos',
-          icon: User,
-          roles: ['Padre'],
-        },
-      ];
-    }
-
-    const allItems: NavItem[] = [
-      {
-        path: '/',
-        label: 'Inicio',
-        icon: LayoutDashboard,
-        roles: ['Supervisor', 'Director', 'Admin'],
-      },
-      {
-        path: '/arrival-control',
-        label: 'Asistencia',
-        icon: Clock,
-        roles: ['Supervisor', 'Director', 'Admin'],
-      },
-      {
-        path: '/incidents',
-        label: 'Incidencias',
-        icon: FileText,
-        roles: ['Supervisor', 'Director', 'Admin'],
-        subItems: [
-          { path: '/incidents', label: 'Lista de Incidencias' },
-          { path: '/register', label: 'Registrar Incidencia' },
-          { path: '/justify-faults', label: 'Justificar Faltas' },
-        ],
-      },
-      {
-        path: '/students',
-        label: 'Estudiantes',
-        icon: Users,
-        roles: ['Supervisor', 'Director', 'Admin'],
-      },
-      {
-        path: '/parent-meetings',
-        label: 'Citas con Padres',
-        icon: CalendarDays,
-        roles: ['Supervisor', 'Director', 'Admin'],
-      },
-      {
-        path: '/faults',
-        label: 'Catálogos',
-        icon: BookOpen,
-        roles: ['Director', 'Admin'],
-        subItems: [{ path: '/faults', label: 'Catálogo de Faltas' }],
-      },
-      {
-        path: '/reports',
-        label: 'Reportes',
-        icon: BarChart3,
-        roles: ['Supervisor', 'Director', 'Admin'],
-        subItems: [
-          { path: '/reports', label: 'Reportes de Incidencias' },
-          { path: '/attendance-report', label: 'Reporte de Asistencias' },
-        ],
-      },
-      {
-        path: '/system-config',
-        label: 'Administración',
-        icon: Settings,
-        roles: ['Admin'],
-        subItems: [
-          { path: '/audit', label: 'Auditoría' },
-          { path: '/system-config', label: 'Configuración' },
-        ],
-      },
-    ];
-
-    return allItems.filter(item => item.roles.includes(user?.role || ''));
-  };
-
-  const navItems = getNavItems();
-
-  const isActive = (path: string) => {
-    if (location.pathname === path) return true;
-    const item = navItems.find(item => item.path === path);
-    return item?.subItems?.some(sub => location.pathname === sub.path) || false;
-  };
+  }, [location.pathname, navItems]);
 
   const sidebarAnimation = useSpring({
     from: { opacity: 0, transform: 'translateX(-20px)' },
     to: { opacity: 1, transform: 'translateX(0)' },
-    config: { tension: 300, friction: 30 }
+    config: { tension: 300, friction: 30 },
   });
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="fixed top-4 left-4 z-50 md:hidden bg-primary-dark text-white shadow-lg"
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-      >
-        {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </Button>
-
-      {/* Mobile Overlay */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
+      {!isParentRole && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="fixed left-4 top-4 z-50 border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg md:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+          {mobileMenuOpen && (
+            <div
+              className="fixed inset-0 bg-black/50 z-40 md:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+          )}
+        </>
       )}
 
-      {/* Sidebar */}
       <animated.aside
         style={sidebarAnimation}
         className={cn(
-          'fixed left-0 top-0 h-full z-40 transition-transform duration-300',
-          'w-64 flex flex-col bg-primary-dark',
-          'border-r border-white/10 shadow-xl',
-          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          'staff-sidebar fixed left-0 top-0 z-40 flex h-full w-64 flex-col transition-transform duration-300',
+          'border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl',
+          isParentRole
+            ? 'hidden md:flex -translate-x-0'
+            : mobileMenuOpen
+              ? 'translate-x-0'
+              : '-translate-x-full md:translate-x-0'
         )}
       >
-        {/* Logo Section — escudo SVG (sin mancha del PNG) y más arriba */}
-        <div className="flex w-full justify-center border-b border-white/15 px-4 pb-4 pt-3 md:pt-4">
+        <div className="flex w-full justify-center border-b border-sidebar-border px-4 pb-4 pt-4">
           <Link
-            to="/"
+            to={user?.role === 'Padre' ? '/parent-portal' : '/'}
             className="group flex flex-col items-center justify-center gap-2 text-center"
+            onClick={() => setMobileMenuOpen(false)}
           >
             <img
               src="/favicon.svg"
@@ -208,47 +117,70 @@ export const Sidebar = () => {
               draggable={false}
             />
             <div className="flex flex-col items-center gap-0.5">
-              <span className="text-lg font-bold leading-none tracking-wide text-white">SIE</span>
-              <p className="text-[11px] leading-snug text-white/70">Incidencias Escolares</p>
+              <span className="text-lg font-bold leading-none tracking-wide text-sidebar-foreground">
+                SIE
+              </span>
+              <p className="text-[11px] leading-snug text-sidebar-foreground/70">
+                Incidencias Escolares
+              </p>
             </div>
           </Link>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {user?.role === 'Padre' ? (
+            <ParentSidebarNav onNavigate={() => setMobileMenuOpen(false)} />
+          ) : null}
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = isActive(item.path);
+            const active = isActive(item);
             const hasSubItems = item.subItems && item.subItems.length > 0;
             const isExpanded = expandedItems.has(item.path);
 
             if (hasSubItems) {
+              const defaultPath = getStaffNavDefaultPath(item);
+              const showSubItems = isExpanded || active;
               return (
                 <div key={item.path}>
-                  <button
-                    onClick={() => toggleExpanded(item.path)}
-                    className={cn(
-                      'w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200',
-                      'text-sm font-medium',
-                      active
-                        ? 'bg-white/10 text-white border-l-2 border-l-primary pl-[14px]'
-                        : 'text-white/75 hover:bg-white/10 hover:text-white'
-                    )}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Icon className={cn('w-5 h-5', active ? 'text-primary' : 'text-white/55')} />
-                      <span>{item.label}</span>
-                    </div>
-                    <ChevronRight
+                  <div className="flex items-stretch gap-0.5">
+                    <Link
+                      to={defaultPath}
+                      onClick={() => setMobileMenuOpen(false)}
                       className={cn(
-                        'w-4 h-4 transition-transform duration-200',
-                        isExpanded && 'rotate-90',
-                        active ? 'text-primary' : 'text-white/45'
+                        'flex min-w-0 flex-1 items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+                        active
+                          ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent pl-[14px] text-sidebar-foreground'
+                          : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                       )}
-                    />
-                  </button>
-                  {isExpanded && (
-                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-white/20 pl-4">
+                    >
+                      <Icon
+                        className={cn(
+                          'h-5 w-5 shrink-0',
+                          active ? 'text-sidebar-primary' : 'text-sidebar-foreground/55'
+                        )}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      aria-expanded={showSubItems}
+                      aria-label={`Ver opciones de ${item.label}`}
+                      onClick={() => toggleExpanded(item.path)}
+                      className={cn(
+                        'shrink-0 rounded-lg px-2 py-3 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                        active && 'text-sidebar-primary'
+                      )}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          'h-4 w-4 transition-transform duration-200',
+                          showSubItems && 'rotate-90'
+                        )}
+                      />
+                    </button>
+                  </div>
+                  {showSubItems && (
+                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-sidebar-border pl-4">
                       {item.subItems?.map((subItem) => {
                         const subActive = location.pathname === subItem.path;
                         return (
@@ -257,13 +189,13 @@ export const Sidebar = () => {
                             to={subItem.path}
                             onClick={() => setMobileMenuOpen(false)}
                             className={cn(
-                              'flex items-center px-4 py-2 rounded-lg text-sm transition-all duration-200',
+                              'flex items-center rounded-lg px-4 py-2 text-sm transition-all duration-200',
                               subActive
-                                ? 'bg-white/10 text-white font-medium border-l-2 border-l-primary'
-                                : 'text-white/65 hover:bg-white/10 hover:text-white'
+                                ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent font-medium text-sidebar-foreground'
+                                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                             )}
                           >
-                            <ChevronRight className="w-3 h-3 mr-2" />
+                            <ChevronRight className="mr-2 h-3 w-3" />
                             {subItem.label}
                           </Link>
                         );
@@ -280,36 +212,42 @@ export const Sidebar = () => {
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
                 className={cn(
-                  'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium',
+                  'flex items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                   active
-                    ? 'bg-white/10 text-white border-l-2 border-l-primary pl-[14px]'
-                    : 'text-white/75 hover:bg-white/10 hover:text-white'
+                    ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent pl-[14px] text-sidebar-foreground'
+                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                 )}
               >
-                <Icon className={cn('w-5 h-5', active ? 'text-primary' : 'text-white/55')} />
+                <Icon
+                  className={cn(
+                    'h-5 w-5',
+                    active ? 'text-sidebar-primary' : 'text-sidebar-foreground/55'
+                  )}
+                />
                 <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* User Section */}
-        <div className="p-4 border-t border-white/15 space-y-3">
-          <div className="flex items-center space-x-3 px-4 py-3 bg-white/10 rounded-lg border border-white/10">
-            <div className="w-10 h-10 rounded-full bg-info flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
+        <div className="space-y-3 border-t border-sidebar-border p-4">
+          <div className="flex items-center space-x-3 rounded-xl border border-sidebar-border bg-sidebar-accent px-4 py-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info">
+              <User className="h-5 w-5 text-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.fullName}</p>
-              <p className="text-xs text-white/65 truncate">{user?.role}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-sidebar-foreground">
+                {user?.fullName}
+              </p>
+              <p className="truncate text-xs text-sidebar-foreground/65">{user?.role}</p>
             </div>
           </div>
           <Button
             variant="ghost"
-            className="w-full justify-start text-white/90 hover:bg-white/10 hover:text-white"
+            className="w-full justify-start text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             onClick={handleLogout}
           >
-            <LogOut className="w-4 h-4 mr-3" />
+            <LogOut className="mr-3 h-4 w-4" />
             Cerrar Sesión
           </Button>
         </div>
@@ -317,4 +255,3 @@ export const Sidebar = () => {
     </>
   );
 };
-

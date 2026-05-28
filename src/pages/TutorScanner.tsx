@@ -227,13 +227,13 @@ export const TutorScanner = () => {
         return next.slice(0, 6);
       });
 
+      /* Sin animación ni toast en escaneo: la tarjeta y el feed lateral ya confirman la llegada */
+
       if (record && whatsappService.isEnabled()) {
         void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
           if (!isMountedRef.current) return;
-          if (wa.ok) {
-            toast.success('WhatsApp enviado al apoderado');
-          } else if (wa.error) {
-            toast.warning(`WhatsApp: ${wa.error}`);
+          if (!wa.ok && wa.error) {
+            toast.warning(`WhatsApp: ${wa.error}`, { duration: 2800 });
           }
         });
       }
@@ -276,18 +276,17 @@ export const TutorScanner = () => {
       }
 
       const { error } = await incidentsService.create({
-        id_estudiante: student.id,
-        id_falta: parseInt(selectedFault),
-        id_usuario_registro: currentUser.id,
-        observaciones: observations.trim() || null,
+        studentId: student.id,
+        faultTypeId: parseInt(selectedFault, 10),
+        registeredBy: currentUser.id,
+        observations: observations.trim() || undefined,
       });
 
       if (!isMountedRef.current) return;
 
       if (error) {
-        toast.error(error);
+        toast.error(error, { duration: 3200 });
       } else {
-        toast.success('Incidencia registrada exitosamente');
         setShowIncidentDialog(false);
         setSelectedFault('');
         setObservations('');

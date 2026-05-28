@@ -14,8 +14,20 @@ import { EducationalLevel, MonthlyAttendanceRow } from '@/types';
 import { Loader2, Printer, FileDown, FileSpreadsheet, Calendar } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import ExcelJS from 'exceljs';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import {
+  addBrandedExcelHeader,
+  addExcelWatermark,
+  createWorkbook,
+  defaultExportFilename,
+  runExcelExport,
+  saveWorkbook,
+  setColumnWidths,
+} from '@/lib/utils/excelExport';
+import { buildAttendanceDetailSheet } from '@/lib/utils/excelListExports';
+import { PdfReportDocument, buildFilterSubtitle } from '@/lib/utils/pdfReportBuilder';
+import { REPORT_LOGO_PATH } from '@/lib/utils/reportLogo';
 import { getCurrentSchoolYear, getAllBimestres, formatBimestreLabel, type Bimestre } from '@/lib/utils/bimestreUtils';
 
 const LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
@@ -151,7 +163,7 @@ export const AttendanceReport = () => {
 
   const exportToPDF = async () => {
     if (!isMountedRef.current) return;
-    
+
     if (rows.length === 0) {
       toast.error('No hay datos para exportar');
       return;
@@ -159,524 +171,189 @@ export const AttendanceReport = () => {
 
     try {
       toast.loading('Generando PDF...', { id: 'pdf-export' });
-      
-      // Cargar el logo
-      const logoImg = new Image();
-      logoImg.crossOrigin = 'anonymous';
-      logoImg.src = '/logo2.png';
-      
-      await new Promise((resolve, reject) => {
-        logoImg.onload = resolve;
-        logoImg.onerror = () => {
-          console.warn('No se pudo cargar el logo, continuando sin él');
-          resolve(null);
-        };
-      });
 
-      // Crear PDF en formato landscape
-      const pdf = new jsPDF('landscape', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      // Configuración de márgenes y espaciado
-      const margin = 10;
-      let currentY = margin + 5;
-      const lineHeight = 7;
-      const cellHeight = 7;
-      const fontSize = 8;
-      const headerFontSize = 14;
-      
-      // Función para agregar nueva página (sin logo)
-      const addNewPage = () => {
-        pdf.addPage();
-        currentY = margin + 5;
-      };
-      
-      // Agregar logo pequeño en la parte superior izquierda (solo primera página)
-      if (logoImg.complete && logoImg.naturalWidth > 0) {
-        const logoSize = 18; // Logo pequeño (18mm) - más profesional
-        const logoHeight = (logoImg.height * logoSize) / logoImg.width;
-        pdf.addImage(logoImg.src, 'PNG', margin, margin, logoSize, logoHeight);
-        // Ajustar posición inicial para dejar espacio al logo
-        currentY = margin + logoHeight + 3;
-      } else {
-        currentY = margin + 8;
-      }
-      
-      // Encabezado con mejor diseño
-      pdf.setFontSize(headerFontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 58, 138); // Azul oscuro
-      pdf.text('REPORTE MENSUAL DE ASISTENCIAS', pdfWidth / 2, currentY, { align: 'center' });
-      currentY += lineHeight + 3;
-      
-      // Información del mes y filtros con mejor formato
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(75, 85, 99); // Gris oscuro
-      let filterText = `Mes: ${monthValue}`;
-      if (levelFilter !== 'all') filterText += ` | Nivel: ${levelFilter}`;
-      if (gradeFilter !== 'all') filterText += ` | Grado: ${gradeFilter}`;
-      if (sectionFilter !== 'all') filterText += ` | Sección: ${sectionFilter}`;
-      pdf.text(filterText, pdfWidth / 2, currentY, { align: 'center' });
-      currentY += lineHeight + 8;
-      
-      // Resetear color a negro
-      pdf.setTextColor(0, 0, 0);
-      
-      // Calcular ancho de columnas
-      const studentColWidth = 50;
-      const dayColWidth = (pdfWidth - margin * 2 - studentColWidth - 20) / (daysArray.length + 4); // +4 para columnas de totales
-      const dayColWidthAdjusted = Math.min(dayColWidth, 4); // Máximo 4mm por día
-      const totalColWidth = 8;
-      
-      // Encabezados de la tabla con mejor diseño
-      pdf.setFontSize(fontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(255, 255, 255); // Texto blanco en encabezados
-      pdf.setFillColor(59, 130, 246); // Azul para encabezados
-      
-      // Encabezado "Estudiante"
-      pdf.rect(margin, currentY, studentColWidth, cellHeight, 'F');
-      pdf.text('Estudiante', margin + studentColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-      
-      let xPos = margin + studentColWidth;
-      // Encabezados de días
-      daysArray.forEach((day) => {
-        pdf.rect(xPos, currentY, dayColWidthAdjusted, cellHeight, 'F');
-        pdf.text(day.toString(), xPos + dayColWidthAdjusted / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        xPos += dayColWidthAdjusted;
-      });
-      
-      // Columnas de totales
-      const totalLabels = ['A', 'T', 'J', 'I'];
-      totalLabels.forEach((label) => {
-        pdf.rect(xPos, currentY, totalColWidth, cellHeight, 'F');
-        pdf.text(label, xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        xPos += totalColWidth;
-      });
-      
-      // Resetear color
-      pdf.setTextColor(0, 0, 0);
-      currentY += cellHeight;
-      
-      // Datos de los estudiantes con mejor diseño
-      pdf.setFont('helvetica', 'normal');
-      rows.forEach((row, rowIndex) => {
-        // Verificar si necesitamos nueva página
-        if (currentY + cellHeight > pdfHeight - margin) {
-          addNewPage();
-          // Redibujar encabezados
-          pdf.setFont('helvetica', 'bold');
-          pdf.setTextColor(255, 255, 255);
-          pdf.setFillColor(59, 130, 246);
-          pdf.rect(margin, currentY, studentColWidth, cellHeight, 'F');
-          pdf.text('Estudiante', margin + studentColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-          xPos = margin + studentColWidth;
-          daysArray.forEach((day) => {
-            pdf.rect(xPos, currentY, dayColWidthAdjusted, cellHeight, 'F');
-            pdf.text(day.toString(), xPos + dayColWidthAdjusted / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-            xPos += dayColWidthAdjusted;
-          });
-          totalLabels.forEach((label) => {
-            pdf.rect(xPos, currentY, totalColWidth, cellHeight, 'F');
-            pdf.text(label, xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-            xPos += totalColWidth;
-          });
-          pdf.setTextColor(0, 0, 0);
-          currentY += cellHeight;
-          pdf.setFont('helvetica', 'normal');
-        }
-        
-        // Alternar color de fondo para filas
-        const isEven = rowIndex % 2 === 0;
-        if (isEven) {
-          pdf.setFillColor(249, 250, 251); // Gris muy claro
-        } else {
-          pdf.setFillColor(255, 255, 255); // Blanco
-        }
-        pdf.rect(margin, currentY, pdfWidth - margin * 2, cellHeight, 'F');
-        
-        // Nombre del estudiante
-        pdf.setFontSize(fontSize);
-        pdf.setTextColor(0, 0, 0); // Asegurar color negro
-        pdf.setFont('helvetica', 'bold');
-        const nameText = row.student.fullName.length > 28 
-          ? row.student.fullName.substring(0, 25) + '...' 
-          : row.student.fullName;
-        pdf.text(nameText, margin + 2, currentY + 3.5);
-        
-        pdf.setFontSize(fontSize - 1);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(107, 114, 128); // Gris medio
-        pdf.text(
-          `${row.student.level} • ${row.student.grade} ${row.student.section}`,
-          margin + 2,
-          currentY + 6
+      const monthLabel = format(
+        new Date(`${monthValue}-01T12:00:00`),
+        "MMMM yyyy",
+        { locale: es }
+      );
+
+      const subtitle = buildFilterSubtitle([
+        `Período: ${monthLabel}`,
+        `Generado ${format(new Date(), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}`,
+        levelFilter !== 'all' && `Nivel: ${levelFilter}`,
+        gradeFilter !== 'all' && `Grado: ${gradeFilter}`,
+        sectionFilter !== 'all' && `Sección: ${sectionFilter}`,
+      ]);
+
+      const doc = new PdfReportDocument(
+        'landscape',
+        'REPORTE MENSUAL DE ASISTENCIAS',
+        subtitle
+      );
+      await doc.drawCoverHeader();
+
+      doc.drawKpiCards([
+        { label: 'A tiempo', value: totalsGlobal.onTime, tone: 'success' },
+        { label: 'Tardanzas', value: totalsGlobal.late, tone: 'warning' },
+        { label: 'Justificadas', value: totalsGlobal.justified, tone: 'info' },
+        { label: 'Injustificadas', value: totalsGlobal.unjustified, tone: 'error' },
+      ]);
+
+      doc.drawParagraph(
+        'Leyenda de estados: A = A tiempo · T = Tardanza · J = Justificada · I = Injustificada · — = Sin registro'
+      );
+
+      doc.drawSectionTitle('Resumen por estudiante');
+      doc.drawTable(
+        [
+          { header: 'Estudiante', dataKey: 'student', width: 52 },
+          { header: 'Nivel', dataKey: 'level', width: 22 },
+          { header: 'Grado', dataKey: 'grade', width: 16 },
+          { header: 'Sec.', dataKey: 'section', width: 12, align: 'center' },
+          { header: 'A tiempo', dataKey: 'onTime', width: 16, align: 'center' },
+          { header: 'Tardanzas', dataKey: 'late', width: 16, align: 'center' },
+          { header: 'Justif.', dataKey: 'justified', width: 14, align: 'center' },
+          { header: 'Injustif.', dataKey: 'unjustified', width: 14, align: 'center' },
+          {
+            header: '% Puntualidad',
+            dataKey: 'punctuality',
+            width: 22,
+            align: 'right',
+          },
+        ],
+        rows.map((row) => {
+          const totalMarked =
+            row.totals.onTime + row.totals.late + row.totals.justified + row.totals.unjustified;
+          const punctuality =
+            totalMarked > 0 ? Math.round((row.totals.onTime / totalMarked) * 100) : 0;
+          return {
+            student: row.student.fullName,
+            level: row.student.level,
+            grade: row.student.grade,
+            section: row.student.section,
+            onTime: String(row.totals.onTime),
+            late: String(row.totals.late),
+            justified: String(row.totals.justified),
+            unjustified: String(row.totals.unjustified),
+            punctuality: `${punctuality}%`,
+          };
+        }),
+        { fontSize: 8 }
+      );
+
+      if (daysArray.length <= 28) {
+        doc.drawSectionTitle('Registro diario del mes');
+        doc.drawParagraph(
+          'Matriz de asistencia por día. Para el detalle completo exporte también el archivo Excel.'
         );
-        pdf.setTextColor(0, 0, 0); // Resetear a negro
-        pdf.setFontSize(fontSize);
-        
-        // Dibujar borde de celda de estudiante
-        pdf.setDrawColor(209, 213, 219); // Gris claro para bordes
-        pdf.rect(margin, currentY, studentColWidth, cellHeight);
-        
-        // Días de asistencia con colores
-        xPos = margin + studentColWidth;
-        row.days.forEach((day) => {
-          const info = statusMap[day.status] || statusMap.Sin_registro;
-          // Cambiar "-" por "F" para faltas sin registro
-          const displayText = info.label === '—' ? 'F' : info.label;
-          
-          // Colorear fondo según estado
-          if (day.status === 'A_tiempo') {
-            pdf.setFillColor(209, 250, 229); // Verde claro
-          } else if (day.status === 'Tarde') {
-            pdf.setFillColor(254, 243, 199); // Amarillo claro
-          } else if (day.status === 'Justificada') {
-            pdf.setFillColor(219, 234, 254); // Azul claro
-          } else if (day.status === 'Injustificada') {
-            pdf.setFillColor(254, 226, 226); // Rojo claro
-          } else {
-            pdf.setFillColor(255, 255, 255); // Blanco para sin registro
-          }
-          
-          pdf.rect(xPos, currentY, dayColWidthAdjusted, cellHeight, 'F');
-          pdf.rect(xPos, currentY, dayColWidthAdjusted, cellHeight);
-          
-          // Color del texto según estado
-          if (day.status === 'A_tiempo') {
-            pdf.setTextColor(5, 150, 105); // Verde oscuro
-          } else if (day.status === 'Tarde') {
-            pdf.setTextColor(146, 64, 14); // Naranja oscuro
-          } else if (day.status === 'Justificada') {
-            pdf.setTextColor(30, 64, 175); // Azul oscuro
-          } else if (day.status === 'Injustificada') {
-            pdf.setTextColor(153, 27, 27); // Rojo oscuro
-          } else {
-            pdf.setTextColor(0, 0, 0); // Negro para faltas
-          }
-          
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(displayText, xPos + dayColWidthAdjusted / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-          pdf.setTextColor(0, 0, 0); // Resetear color
-          pdf.setFont('helvetica', 'normal');
-          xPos += dayColWidthAdjusted;
-        });
-        
-        // Totales con mejor formato
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(5, 150, 105); // Verde para A tiempo
-        pdf.text(row.totals.onTime.toString(), xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        xPos += totalColWidth;
-        
-        pdf.setTextColor(146, 64, 14); // Naranja para Tardanzas
-        pdf.text(row.totals.late.toString(), xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        xPos += totalColWidth;
-        
-        pdf.setTextColor(30, 64, 175); // Azul para Justificadas
-        pdf.text(row.totals.justified.toString(), xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        xPos += totalColWidth;
-        
-        pdf.setTextColor(153, 27, 27); // Rojo para Injustificadas
-        pdf.text(row.totals.unjustified.toString(), xPos + totalColWidth / 2, currentY + cellHeight / 2 + 1, { align: 'center' });
-        pdf.setTextColor(0, 0, 0); // Resetear color
-        pdf.setFont('helvetica', 'normal');
-        
-        currentY += cellHeight;
-      });
-      
-      // Resumen al final con diseño profesional mejorado
-      if (currentY + 30 > pdfHeight - margin) {
-        addNewPage();
-        // Si hay nueva página, agregar título del resumen centrado
-        pdf.setFontSize(headerFontSize - 2);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(30, 58, 138);
-        pdf.text('RESUMEN GENERAL', pdfWidth / 2, currentY, { align: 'center' });
-        currentY += lineHeight + 5;
+
+        const dayLabel = (d: number) => String(d);
+        const dayColumns = daysArray.map((day) => ({
+          header: dayLabel(day),
+          dataKey: `d${day}`,
+          width: 6,
+          align: 'center' as const,
+        }));
+
+        const statusChar = (status: string) => {
+          const info = statusMap[status] || statusMap.Sin_registro;
+          return info.label === '—' ? '·' : info.label;
+        };
+
+        doc.drawTable(
+          [
+            { header: 'Estudiante', dataKey: 'student', width: 40 },
+            ...dayColumns,
+            { header: 'A', dataKey: 'onTime', width: 8, align: 'center' },
+            { header: 'T', dataKey: 'late', width: 8, align: 'center' },
+          ],
+          rows.map((row) => {
+            const record: Record<string, string> = {
+              student:
+                row.student.fullName.length > 22
+                  ? `${row.student.fullName.slice(0, 20)}…`
+                  : row.student.fullName,
+              onTime: String(row.totals.onTime),
+              late: String(row.totals.late),
+            };
+            row.days.forEach((day) => {
+              record[`d${day.day}`] = statusChar(day.status);
+            });
+            return record;
+          }),
+          { fontSize: 6 }
+        );
       } else {
-        currentY += 8;
-        // Línea separadora elegante
-        pdf.setDrawColor(209, 213, 219);
-        pdf.setLineWidth(0.5);
-        pdf.line(margin, currentY, pdfWidth - margin, currentY);
-        currentY += 5;
-        
-        pdf.setFontSize(headerFontSize - 2);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(30, 58, 138);
-        pdf.text('RESUMEN GENERAL', pdfWidth / 2, currentY, { align: 'center' });
-        currentY += lineHeight + 4;
+        doc.drawParagraph(
+          'El mes tiene muchos días para mostrar la matriz diaria en PDF. Use Exportar Excel para el calendario completo.'
+        );
       }
-      
-      // Resumen en formato de tarjetas profesionales horizontales
-      pdf.setFontSize(fontSize + 1);
-      pdf.setFont('helvetica', 'normal');
-      const summaryData = [
-        { label: 'A tiempo', value: totalsGlobal.onTime, color: [5, 150, 105], bgColor: [209, 250, 229] },
-        { label: 'Tardanzas', value: totalsGlobal.late, color: [146, 64, 14], bgColor: [254, 243, 199] },
-        { label: 'Justificadas', value: totalsGlobal.justified, color: [30, 64, 175], bgColor: [219, 234, 254] },
-        { label: 'Injustificadas', value: totalsGlobal.unjustified, color: [153, 27, 27], bgColor: [254, 226, 226] },
-      ];
-      
-      // Calcular ancho de cada tarjeta (4 tarjetas con espacio entre ellas)
-      const cardSpacing = 3;
-      const totalCardWidth = pdfWidth - margin * 2;
-      const cardWidth = (totalCardWidth - cardSpacing * 3) / 4;
-      const cardHeight = 15;
-      let cardX = margin;
-      
-      summaryData.forEach(({ label, value, color, bgColor }, index) => {
-        // Fondo de tarjeta con bordes redondeados
-        pdf.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
-        pdf.roundedRect(cardX, currentY, cardWidth, cardHeight, 3, 3, 'F');
-        
-        // Borde sutil
-        pdf.setDrawColor(200, 200, 200);
-        pdf.setLineWidth(0.3);
-        pdf.roundedRect(cardX, currentY, cardWidth, cardHeight, 3, 3);
-        
-        // Texto de la etiqueta
-        pdf.setTextColor(75, 85, 99);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(fontSize);
-        pdf.text(label.toUpperCase(), cardX + cardWidth / 2, currentY + 5, { align: 'center' });
-        
-        // Valor destacado
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(fontSize + 4);
-        pdf.setTextColor(color[0], color[1], color[2]);
-        pdf.text(value.toString(), cardX + cardWidth / 2, currentY + 11, { align: 'center' });
-        
-        // Espacio entre tarjetas
-        if (index < summaryData.length - 1) {
-          cardX += cardWidth + cardSpacing;
-        }
-      });
-      
-      // Resetear color y grosor de línea
-      pdf.setTextColor(0, 0, 0);
-      pdf.setLineWidth(0.5);
-      
+
       const fileName = `Reporte_Asistencias_${monthValue.replace('-', '_')}.pdf`;
-      pdf.save(fileName);
-      
+      await doc.finalize(fileName);
+
       if (!isMountedRef.current) return;
       toast.success('PDF generado exitosamente', { id: 'pdf-export' });
-    } catch (error: any) {
+    } catch (err) {
       if (!isMountedRef.current) return;
-      console.error('Error al generar PDF:', error);
-      toast.error('Error al generar PDF: ' + (error.message || 'Error desconocido'), { id: 'pdf-export' });
+      console.error('Error al generar PDF:', err);
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al generar PDF: ${message}`, { id: 'pdf-export' });
     }
   };
 
   const exportToExcel = async () => {
     if (!isMountedRef.current) return;
-    
     if (rows.length === 0) {
       toast.error('No hay datos para exportar');
       return;
     }
 
-    try {
-      toast.loading('Generando Excel...', { id: 'excel-export' });
-      
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet('Asistencias');
-      
-      // Cargar el logo
-      const logoResponse = await fetch('/logo2.png');
-      const logoBuffer = await logoResponse.arrayBuffer();
-      const logoImage = workbook.addImage({
-        buffer: logoBuffer,
-        extension: 'png',
-      });
-      
-      // Configurar encabezado
-      const headerRow = worksheet.addRow(['REPORTE MENSUAL DE ASISTENCIAS']);
-      headerRow.font = { size: 16, bold: true };
-      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-      const totalCols = daysArray.length + 5;
-      worksheet.mergeCells(1, 1, 1, totalCols);
-      
-      // Ajustar altura de la primera fila para el logo
-      worksheet.getRow(1).height = 80;
-      
-      const monthRow = worksheet.addRow([
-        `Mes: ${monthValue}`,
-        levelFilter !== 'all' ? `Nivel: ${levelFilter}` : '',
-        gradeFilter !== 'all' ? `Grado: ${gradeFilter}` : '',
-        sectionFilter !== 'all' ? `Sección: ${sectionFilter}` : '',
-      ]);
-      monthRow.font = { size: 12 };
-      worksheet.mergeCells(2, 1, 2, daysArray.length + 5);
-      
-      worksheet.addRow([]); // Fila vacía
-      
-      // Encabezados de la tabla
-      const tableHeaders = [
-        'Estudiante',
-        'Nivel',
-        'Grado',
-        'Sección',
-        ...daysArray.map((day) => `Día ${day}`),
-        'A tiempo',
-        'Tardanzas',
-        'Justificadas',
-        'Injustificadas',
-      ];
-      
-      const headerRowTable = worksheet.addRow(tableHeaders);
-      headerRowTable.font = { bold: true, size: 10 };
-      headerRowTable.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE5E7EB' },
-      };
-      headerRowTable.alignment = { horizontal: 'center', vertical: 'middle' };
-      
-      // Datos de los estudiantes
-      rows.forEach((row) => {
-        const rowData = [
-          row.student.fullName,
-          row.student.level,
-          row.student.grade,
-          row.student.section,
-          ...row.days.map((day) => {
-            const info = statusMap[day.status] || statusMap.Sin_registro;
-            return info.label;
-          }),
-          row.totals.onTime,
-          row.totals.late,
-          row.totals.justified,
-          row.totals.unjustified,
-        ];
-        
-        const dataRow = worksheet.addRow(rowData);
-        dataRow.font = { size: 9 };
-        dataRow.alignment = { vertical: 'middle' };
-        
-        // Colorear celdas según el estado
-        row.days.forEach((day, index) => {
-          const info = statusMap[day.status] || statusMap.Sin_registro;
-          const cell = dataRow.getCell(index + 5); // +5 porque las primeras 4 columnas son estudiante, nivel, grado, sección
-          
-          if (day.status === 'A_tiempo') {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFD1FAE5' },
-            };
-            cell.font = { color: { argb: 'FF065F46' } };
-          } else if (day.status === 'Tarde') {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFEF3C7' },
-            };
-            cell.font = { color: { argb: 'FF92400E' } };
-          } else if (day.status === 'Justificada') {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFDBEAFE' },
-            };
-            cell.font = { color: { argb: 'FF1E40AF' } };
-          } else if (day.status === 'Injustificada') {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFEE2E2' },
-            };
-            cell.font = { color: { argb: 'FF991B1B' } };
-          }
-        });
-      });
-      
-      // Agregar fila de resumen
-      worksheet.addRow([]);
-      const summaryRow = worksheet.addRow([
-        'RESUMEN',
-        '',
-        '',
-        '',
-        ...Array(daysArray.length).fill(''),
-        totalsGlobal.onTime,
-        totalsGlobal.late,
-        totalsGlobal.justified,
-        totalsGlobal.unjustified,
-      ]);
-      summaryRow.font = { bold: true, size: 10 };
-      summaryRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFF3F4F6' },
-      };
-      
-      // Agregar logo como marca de agua en el centro de la hoja
-      // Calcular posición central basada en el número de columnas y filas
-      const centerCol = Math.floor(totalCols / 2) - 2;
-      const centerRow = Math.floor((rows.length + 5) / 2);
-      worksheet.addImage(logoImage, {
-        tl: { col: centerCol, row: centerRow },
-        ext: { width: 200, height: 100 },
-      });
-      
-      // Ajustar ancho de columnas
-      worksheet.columns.forEach((column, index) => {
-        if (index === 0) {
-          column.width = 30; // Estudiante
-        } else if (index >= 1 && index <= 3) {
-          column.width = 10; // Nivel, Grado, Sección
-        } else if (index >= 4 && index < 4 + daysArray.length) {
-          column.width = 5; // Días
-        } else {
-          column.width = 12; // Totales
-        }
-      });
-      
-      // Agregar hoja de resumen
+    const filterParts = [`Mes: ${monthValue}`];
+    if (levelFilter !== 'all') filterParts.push(`Nivel: ${levelFilter}`);
+    if (gradeFilter !== 'all') filterParts.push(`Grado: ${gradeFilter}`);
+    if (sectionFilter !== 'all') filterParts.push(`Sección: ${sectionFilter}`);
+
+    await runExcelExport('reporte de asistencias', async () => {
+      const workbook = createWorkbook('Reporte de asistencias');
+      await buildAttendanceDetailSheet(
+        workbook,
+        'Asistencias',
+        'REPORTE MENSUAL DE ASISTENCIAS',
+        filterParts.join(' · '),
+        daysArray,
+        rows,
+        totalsGlobal
+      );
+
       const summarySheet = workbook.addWorksheet('Resumen');
-      summarySheet.addRow(['RESUMEN MENSUAL DE ASISTENCIAS']);
-      summarySheet.mergeCells(1, 1, 1, 2);
-      summarySheet.getRow(1).font = { size: 14, bold: true };
-      summarySheet.addRow([]);
-      
+      await addBrandedExcelHeader(
+        workbook,
+        summarySheet,
+        'RESUMEN GLOBAL',
+        filterParts.join(' · '),
+        2
+      );
+      summarySheet.addRow(['Concepto', 'Cantidad']);
       summarySheet.addRow(['A tiempo', totalsGlobal.onTime]);
       summarySheet.addRow(['Tardanzas', totalsGlobal.late]);
       summarySheet.addRow(['Justificadas', totalsGlobal.justified]);
       summarySheet.addRow(['Injustificadas', totalsGlobal.unjustified]);
-      
-      summarySheet.columns.forEach((column) => {
-        column.width = 20;
-      });
-      
-      // Descargar archivo
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Reporte_Asistencias_${monthValue.replace('-', '_')}.xlsx`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      
-      if (!isMountedRef.current) return;
-      toast.success('Excel generado exitosamente', { id: 'excel-export' });
-    } catch (error: any) {
-      if (!isMountedRef.current) return;
-      console.error('Error al generar Excel:', error);
-      toast.error('Error al generar Excel: ' + (error.message || 'Error desconocido'), { id: 'excel-export' });
-    }
+      setColumnWidths(summarySheet, [22, 14]);
+      await addExcelWatermark(workbook, summarySheet, { mergeCols: 2, centerRow: 10 });
+
+      await saveWorkbook(
+        workbook,
+        defaultExportFilename(`Asistencias_${monthValue.replace('-', '_')}`)
+      );
+    });
   };
 
   return (
     <div className="relative">
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-5 print:opacity-15">
-        <img src="/logo2.png" alt="Logo institucional" className="max-w-[60%]" />
+        <img src={REPORT_LOGO_PATH} alt="Guardy" className="max-w-[50%] rounded-2xl opacity-10" />
       </div>
       <style>
         {`@media print {
@@ -699,7 +376,7 @@ export const AttendanceReport = () => {
             }
           }`}
       </style>
-      <div id="attendance-report" className="app-page relative z-10">
+      <div id="attendance-report" className="app-page app-page-shell relative z-10">
         <div className="print-hidden space-y-6">
         <PageHeader
           icon={Calendar}
@@ -888,7 +565,7 @@ export const AttendanceReport = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="app-card">
           <CardHeader>
             <CardTitle>Planilla mensual</CardTitle>
           </CardHeader>
@@ -949,7 +626,7 @@ export const AttendanceReport = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="app-card">
           <CardHeader>
             <CardTitle>Resumen</CardTitle>
           </CardHeader>
@@ -973,7 +650,7 @@ export const AttendanceReport = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="app-card">
           <CardHeader>
             <CardTitle>Leyenda</CardTitle>
           </CardHeader>

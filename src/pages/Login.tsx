@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
 import { ErrorDialog } from '@/components/ui/error-dialog';
 import { useErrorDialog } from '@/hooks/useErrorDialog';
@@ -87,7 +88,7 @@ export const Login = () => {
       }
 
       if (user) {
-        toast.success('Inicio de sesión exitoso');
+        staffNotify.success('¡Bienvenido!', `Hola, ${user.fullName}`);
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         }

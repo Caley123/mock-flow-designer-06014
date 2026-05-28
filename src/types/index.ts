@@ -206,6 +206,7 @@ export interface DashboardStats {
     level2: number;
     level3: number;
     level4: number;
+    level5: number;
   };
   topFaults: Array<{
     faultType: string;
@@ -226,6 +227,35 @@ export interface ConfiguracionSistemaDB {
   valor: string;
   descripcion: string | null;
   fecha_actualizacion: string;
+}
+
+export interface ConfiguracionReincidenciaDB {
+  id_configuracion_reincidencia?: number;
+  id_config_reincidencia?: number;
+  ventana_dias: number;
+  puntos_falta_leve: number;
+  puntos_falta_grave: number;
+  umbral_nivel_1: number;
+  umbral_nivel_2: number;
+  umbral_nivel_3: number;
+  umbral_nivel_4: number;
+  umbral_nivel_5: number;
+  activo: boolean;
+  fecha_vigencia?: string | null;
+}
+
+/** Configuración activa del algoritmo de reincidencia (frontend) */
+export interface ReincidenceSettings {
+  id: number | null;
+  windowDays: number;
+  thresholds: {
+    level1: number;
+    level2: number;
+    level3: number;
+    level4: number;
+    level5: number;
+  };
+  active: boolean;
 }
 
 export interface RegistroLlegadaDB {
@@ -294,10 +324,13 @@ export interface MonthlyAttendanceRow {
 export interface AuditLog {
   id: number;
   table: string;
+  recordId?: number;
   operation: 'INSERT' | 'UPDATE' | 'DELETE';
   previousData: any;
   newData: any;
   userId?: number;
+  actionDescription?: string;
+  ipAddress?: string;
   timestamp: string;
 }
 

@@ -1,62 +1,67 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  FileText, 
-  Users, 
-  AlertCircle, 
+import {
+  FileText,
+  Users,
+  AlertCircle,
   TrendingUp,
   TrendingDown,
-  Calendar,
   Clock,
   CheckCircle2,
   XCircle,
   ArrowUpRight,
-  ArrowDownRight,
   Activity,
-  Award,
-  Target
+  Target,
+  LayoutDashboard,
+  BarChart3,
+  List,
+  UserPlus,
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  TooltipProps,
   ComposedChart,
   Line,
-  Area,
-  LineChart
 } from 'recharts';
 import { useEffect, useState, useRef } from 'react';
 import { PageLoader } from '@/components/ui/page-loader';
 import { dashboardService, arrivalService, incidentsService } from '@/lib/services';
 import { DashboardStats, Incident } from '@/types';
 import { toast } from 'sonner';
-import { useSpring, animated } from '@react-spring/web';
-import { COLORS } from '@/lib/constants/colors';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { LayoutDashboard } from 'lucide-react';
+import {
+  StaffKpiStat,
+  StaffQuickActions,
+  StaffSection,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffDataPanelBody,
+  StaffActivityItem,
+  StaffEmptyState,
+} from '@/components/staff';
+import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
+import {
+  getReincidenceLevelBarColor,
+  getReincidenceLevelSummaryLabel,
+  REINCIDENCE_LEVELS,
+} from '@/lib/utils/reincidenceUtils';
+import { cn } from '@/lib/utils';
+import type { ReincidenceLevel } from '@/types';
 
-// Colores para los niveles de incidencia
-const LEVEL_COLORS = {
-  level0: COLORS.success,
-  level1: COLORS.accentLight,
-  level2: COLORS.warning,
-  level3: COLORS.secondaryLight,
-  level4: COLORS.secondary,
-  level5: COLORS.error,
+/** Paleta ejecutiva para gráficos (azul pizarra, sin acentos chillones) */
+const CHART = {
+  bar: 'hsl(217, 48%, 42%)',
+  line: 'hsl(262, 45%, 52%)',
+  grid: 'hsl(214, 16%, 90%)',
+  axis: 'hsl(215, 14%, 48%)',
 };
 
 export const Dashboard = () => {
@@ -72,15 +77,7 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const isMountedRef = useRef(true);
   
-  // Métricas de rendimiento
   usePerformanceMetrics('Dashboard');
-  
-  // Animaciones
-  const fadeIn = useSpring({
-    from: { opacity: 0, transform: 'translateY(20px)' },
-    to: { opacity: 1, transform: 'translateY(0)' },
-    config: { tension: 300, friction: 30 }
-  });
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -160,8 +157,8 @@ export const Dashboard = () => {
 
   if (!stats) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r">
+      <div className="app-page">
+        <div className="app-page-state border-l-4 border-l-destructive bg-destructive/5">
           <div className="flex">
             <div className="flex-shrink-0">
               <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
@@ -177,14 +174,19 @@ export const Dashboard = () => {
     );
   }
   
-  // Preparar datos para gráficos
-  const levelData = [
-    { name: 'Nivel 0', value: stats.levelDistribution.level0, color: LEVEL_COLORS.level0 },
-    { name: 'Nivel 1', value: stats.levelDistribution.level1, color: LEVEL_COLORS.level1 },
-    { name: 'Nivel 2', value: stats.levelDistribution.level2, color: LEVEL_COLORS.level2 },
-    { name: 'Nivel 3', value: stats.levelDistribution.level3, color: LEVEL_COLORS.level3 },
-    { name: 'Nivel 4', value: stats.levelDistribution.level4, color: LEVEL_COLORS.level4 },
-  ].filter(item => item.value > 0);
+  const levelDistributionRows = REINCIDENCE_LEVELS.map((level) => {
+    const key = `level${level}` as keyof typeof stats.levelDistribution;
+    return {
+      level,
+      value: stats.levelDistribution[key] ?? 0,
+      label: getReincidenceLevelSummaryLabel(level),
+      color: getReincidenceLevelBarColor(level),
+    };
+  });
+
+  const levelTotal = levelDistributionRows.reduce((sum, item) => sum + item.value, 0);
+  const maxTrend = Math.max(1, ...monthlyTrend.map((d) => d.incidents));
+  const yAxisMax = Math.max(4, Math.ceil(maxTrend * 1.15));
 
   // Calcular porcentajes de cambio
   const calculatePercentageChange = (current: number, previous: number) => {
@@ -205,390 +207,343 @@ export const Dashboard = () => {
       )
     : 0;
 
+  const quickActions = [
+    {
+      label: 'Nueva incidencia',
+      description: 'Registrar falta con escaneo',
+      icon: UserPlus,
+      to: '/register',
+      tone: 'warning' as const,
+    },
+    {
+      label: 'Lista de incidencias',
+      description: 'Historial y detalle',
+      icon: List,
+      to: '/incidents',
+      tone: 'primary' as const,
+    },
+    {
+      label: 'Control de asistencia',
+      description: 'Llegadas y salidas',
+      icon: Clock,
+      to: '/arrival-control',
+      tone: 'success' as const,
+    },
+    {
+      label: 'Reportes',
+      description: 'Indicadores y exportación',
+      icon: BarChart3,
+      to: '/reports',
+      tone: 'info' as const,
+    },
+  ];
+
   return (
-    <div className="app-page w-full">
-      <animated.div style={fadeIn}>
-        <PageHeader
-          icon={LayoutDashboard}
-          eyebrow="Resumen general"
-          title="Panel de Inicio"
-          description="Indicadores del día, tendencias y accesos rápidos a las tareas más frecuentes"
-          accent="primary"
-        >
-          <div className="flex gap-2">
-            <Button variant="outline-warning" onClick={() => navigate('/register')}>
-              <FileText className="w-4 h-4 mr-2" />
-              Nueva Incidencia
-            </Button>
-            <Button variant="success" onClick={() => navigate('/arrival-control')}>
-              <Clock className="w-4 h-4 mr-2" />
-              Control de Asistencia
-            </Button>
-          </div>
-        </PageHeader>
-      </animated.div>
+    <div className="app-page app-page-shell w-full">
+      <PageHeader icon={LayoutDashboard} title="Inicio" accent="primary" />
 
-      {/* Stats Cards - Top Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Incidencias */}
-        <Card className="app-card border-l-4 border-l-primary">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Total Incidencias</p>
-                <p className="text-3xl font-bold text-foreground">{stats.totalIncidents}</p>
-                <div className="flex items-center mt-2">
-                  <TrendingUp className="w-4 h-4 text-success mr-1" />
-                  <span className="text-sm text-success font-medium">
-                    +{stats.incidentsThisMonth} este mes
-                  </span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <StaffQuickActions actions={quickActions} />
 
-        {/* Incidencias Hoy */}
-        <Card className="app-card border-l-4 border-l-warning">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Incidencias Hoy</p>
-                <p className="text-3xl font-bold text-foreground">{stats.incidentsToday}</p>
-                <div className="flex items-center mt-2">
-                  {stats.incidentsToday > 0 ? (
-                    <>
-                      <AlertCircle className="w-4 h-4 text-warning mr-1" />
-                      <span className="text-sm text-warning font-medium">
-                        {stats.incidentsToday} {stats.incidentsToday === 1 ? 'incidencia' : 'incidencias'}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-success mr-1" />
-                      <span className="text-sm text-success font-medium">Sin incidencias</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-warning" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Estudiantes Afectados */}
-        <Card className="app-card border-l-4 border-l-accent">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Estudiantes Afectados</p>
-                <p className="text-3xl font-bold text-foreground">{stats.studentsWithIncidents}</p>
-                <div className="flex items-center mt-2">
-                  <Activity className="w-4 h-4 text-accent mr-1" />
-                  <span className="text-sm text-accent font-medium">
-                    {stats.incidentsThisWeek} esta semana
-                  </span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
-                <Users className="w-6 h-6 text-accent" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tasa de Resolución */}
-        <Card className="app-card border-l-4 border-l-success">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Tasa de Resolución</p>
-                <p className="text-3xl font-bold text-foreground">{resolutionRate}%</p>
-                <div className="flex items-center mt-2">
-                  {resolutionRate > 80 ? (
-                    <>
-                      <TrendingUp className="w-4 h-4 text-success mr-1" />
-                      <span className="text-sm text-success font-medium">Excelente</span>
-                    </>
-                  ) : (
-                    <>
-                      <TrendingDown className="w-4 h-4 text-warning mr-1" />
-                      <span className="text-sm text-warning font-medium">Mejorable</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
-                <Target className="w-6 h-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="app-kpi-grid">
+        <StaffKpiStat
+          label="Total incidencias"
+          value={stats.totalIncidents}
+          hint={`+${stats.incidentsThisMonth} este mes`}
+          hintIcon={TrendingUp}
+          icon={AlertCircle}
+          tone="primary"
+        />
+        <StaffKpiStat
+          label="Incidencias hoy"
+          value={stats.incidentsToday}
+          hint={
+            stats.incidentsToday > 0
+              ? `${stats.incidentsToday} registrada${stats.incidentsToday === 1 ? '' : 's'}`
+              : 'Sin incidencias hoy'
+          }
+          hintIcon={stats.incidentsToday > 0 ? AlertCircle : CheckCircle2}
+          icon={FileText}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Estudiantes afectados"
+          value={stats.studentsWithIncidents}
+          hint={`${stats.incidentsThisWeek} esta semana`}
+          hintIcon={Activity}
+          icon={Users}
+          tone="accent"
+        />
+        <StaffKpiStat
+          label="Tasa de resolución"
+          value={`${resolutionRate}%`}
+          hint={resolutionRate > 80 ? 'Excelente' : 'Mejorable'}
+          hintIcon={resolutionRate > 80 ? TrendingUp : TrendingDown}
+          icon={Target}
+          tone="success"
+        />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Total Revenue Chart - Incidencias Mensuales */}
-        <Card className="lg:col-span-2 app-card">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-foreground">Tendencia de Incidencias</CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">Últimos 5 meses</CardDescription>
-              </div>
-              <Badge variant="success">
-                <ArrowUpRight className="w-3 h-3 mr-1" />
-                {growthPercentage > 0 ? '+' : ''}{growthPercentage.toFixed(1)}%
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={monthlyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="hsl(var(--muted-foreground))"
+      <div className="app-analytics-grid">
+        <StaffDataPanel>
+          <StaffDataPanelHeader
+            compact
+            accent="primary"
+            title="Tendencia de incidencias"
+            description="Últimos 5 meses"
+            action={
+              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary shadow-sm">
+                <ArrowUpRight className="mr-1 h-3 w-3" />
+                {growthPercentage > 0 ? '+' : ''}
+                {growthPercentage.toFixed(1)}%
+              </span>
+            }
+          />
+          <StaffDataPanelBody compact className="app-chart-surface !p-0">
+            <ResponsiveContainer width="100%" height={320}>
+              <ComposedChart data={monthlyTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
+                <XAxis
+                  dataKey="month"
+                  stroke={CHART.axis}
                   fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART.grid }}
                 />
-                <YAxis 
-                  stroke="hsl(var(--muted-foreground))"
+                <YAxis
+                  stroke={CHART.axis}
                   fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART.grid }}
+                  allowDecimals={false}
+                  domain={[0, yAxisMax]}
                 />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.08)'
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    fontSize: '12px',
                   }}
                 />
-                <Bar dataKey="incidents" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
-                <Line type="monotone" dataKey="incidents" stroke="hsl(var(--accent))" strokeWidth={2} />
+                <Bar
+                  dataKey="incidents"
+                  fill={CHART.bar}
+                  radius={[8, 8, 0, 0]}
+                  maxBarSize={48}
+                  barSize={32}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="incidents"
+                  stroke={CHART.line}
+                  strokeWidth={2}
+                  dot={{
+                    r: 5,
+                    fill: 'hsl(var(--card))',
+                    stroke: CHART.line,
+                    strokeWidth: 2,
+                  }}
+                  activeDot={{ r: 6, fill: CHART.line, stroke: 'hsl(var(--card))', strokeWidth: 2 }}
+                />
               </ComposedChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          </StaffDataPanelBody>
+        </StaffDataPanel>
 
-        {/* Growth Card */}
-        <Card className="app-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-foreground">Crecimiento</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="text-center">
-              <div className="relative w-32 h-32 mx-auto">
-                <svg className="transform -rotate-90 w-32 h-32">
+        <StaffDataPanel>
+          <StaffDataPanelHeader
+            compact
+            accent="info"
+            title="Gravedad por reincidencia"
+            description="Escala 0 (leve) → 5 (máxima) · incidencias activas"
+          />
+          <StaffDataPanelBody compact className="space-y-4">
+            <div className="grid grid-cols-[auto_1fr] items-center gap-4 border-b border-border/70 pb-4">
+              <div className="app-stat-ring">
+                <svg className="h-[88px] w-[88px] -rotate-90" aria-hidden>
+                  <circle cx="44" cy="44" r="36" stroke="hsl(var(--border))" strokeWidth="6" fill="none" />
                   <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="hsl(var(--border))"
-                    strokeWidth="8"
+                    cx="44"
+                    cy="44"
+                    r="36"
+                    stroke={CHART.bar}
+                    strokeWidth="6"
                     fill="none"
-                  />
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="8"
-                    fill="none"
-                    strokeDasharray={`${(stats.incidentsThisMonth / Math.max(stats.totalIncidents, 1)) * 352} 352`}
+                    strokeDasharray={`${(stats.incidentsThisMonth / Math.max(stats.totalIncidents, 1)) * 226} 226`}
                     strokeLinecap="round"
                   />
                 </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div>
-                    <p className="text-2xl font-bold text-foreground">{stats.incidentsThisMonth}</p>
-                    <p className="text-xs text-muted-foreground">Este mes</p>
-                  </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xl font-bold tabular-nums leading-none">{stats.incidentsThisMonth}</span>
+                  <span className="text-[10px] text-muted-foreground">mes</span>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground mt-4">Incidencias del mes actual</p>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Promedio nivel</dt>
+                  <dd className="font-semibold tabular-nums">{stats.averageReincidenceLevel.toFixed(1)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Esta semana</dt>
+                  <dd className="font-semibold tabular-nums">{stats.incidentsThisWeek}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Total histórico</dt>
+                  <dd className="font-semibold tabular-nums">{stats.totalIncidents}</dd>
+                </div>
+              </dl>
             </div>
-            <div className="space-y-3 pt-4 border-t border-border">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Promedio Nivel</span>
-                <span className="text-sm font-semibold text-foreground">
-                  {stats.averageReincidenceLevel.toFixed(1)}
-                </span>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-1.5">
+                {REINCIDENCE_LEVELS.map((level) => (
+                  <span
+                    key={level}
+                    className={cn('app-level-pill', `app-level-pill--${level}`)}
+                    title={getReincidenceLevelSummaryLabel(level as ReincidenceLevel)}
+                  >
+                    {level}
+                  </span>
+                ))}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Esta Semana</span>
-                <span className="text-sm font-semibold text-foreground">{stats.incidentsThisWeek}</span>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Cuántas incidencias activas hay en cada nivel de gravedad. A mayor número, mayor
+                seguimiento disciplinario requerido.
+              </p>
+              <div className="space-y-2">
+                {levelDistributionRows.map((item) => {
+                  const pct = levelTotal > 0 ? Math.round((item.value / levelTotal) * 100) : 0;
+                  const barWidth = levelTotal > 0 ? Math.max(pct, item.value > 0 ? 4 : 0) : 0;
+                  return (
+                    <div
+                      key={item.level}
+                      className={cn('rounded-lg border border-border/60 px-2 py-1.5', item.value === 0 && 'opacity-60')}
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className={cn('app-level-pill shrink-0', `app-level-pill--${item.level}`)}
+                          >
+                            Nv. {item.level}
+                          </span>
+                          <span className="truncate text-muted-foreground">{item.label}</span>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums text-foreground">
+                          {item.value}
+                          {levelTotal > 0 && (
+                            <span className="ml-1 font-normal text-muted-foreground">({pct}%)</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="app-level-bar-track">
+                        <div
+                          className="app-level-bar-fill"
+                          style={{ width: `${barWidth}%`, backgroundColor: item.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </StaffDataPanelBody>
+        </StaffDataPanel>
       </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Distribution Chart */}
-        <Card className="app-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-foreground">Distribución por Nivel</CardTitle>
-            <CardDescription className="text-sm text-muted-foreground">Niveles de reincidencia</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={levelData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="hsl(var(--accent))"
-                  dataKey="value"
-                >
-                  {levelData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.color} 
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend 
-                  wrapperStyle={{ fontSize: '12px' }}
-                  formatter={(value) => value}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Top Faults */}
-        <Card className="app-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-semibold text-foreground">Faltas Más Frecuentes</CardTitle>
-            <CardDescription className="text-sm text-muted-foreground">Top 5 faltas registradas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+      <div className="app-section-grid-2">
+        <StaffDataPanel className="h-full">
+          <StaffDataPanelHeader
+            compact
+            accent="warning"
+            title="Faltas más frecuentes"
+            description="Top 5 del periodo"
+          />
+          <StaffDataPanelBody compact>
+            <div className="app-rank-list">
               {stats.topFaults.slice(0, 5).map((fault, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                      <span className="text-xs font-bold text-accent">#{index + 1}</span>
-                    </div>
-                    <span className="text-sm font-medium text-foreground/85 flex-1 truncate">
-                      {fault.faultType}
-                    </span>
-                  </div>
-                  <span className="text-sm font-bold text-foreground ml-2">{fault.count}</span>
+                <div key={index} className="app-rank-row">
+                  <span className="app-rank-badge">{index + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{fault.faultType}</span>
+                  <span className="text-sm font-semibold tabular-nums text-foreground">{fault.count}</span>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </StaffDataPanelBody>
+        </StaffDataPanel>
 
-        {/* Recent Incidents */}
-        <Card className="app-card">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-foreground">Incidencias Recientes</CardTitle>
-                <CardDescription className="text-sm text-muted-foreground">Últimas 6 incidencias</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/incidents')}>
+        <StaffDataPanel>
+          <StaffDataPanelHeader
+            compact
+            accent="accent"
+            title="Actividad reciente"
+            description="Últimas incidencias"
+            action={
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => navigate('/incidents')}>
                 Ver todas
               </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {recentIncidents.length > 0 ? (
-                recentIncidents.map((incident) => (
-                  <div
-                    key={incident.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/incidents`)}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-5 h-5 text-warning" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {incident.student?.fullName || 'Estudiante desconocido'}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {incident.faultType?.name || 'Falta desconocida'}
-                      </p>
-                      <p className="text-xs text-muted-foreground/80 mt-1">
-                        {format(new Date(incident.registeredAt), "dd MMM, HH:mm", { locale: es })}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        incident.reincidenceLevel >= 3
-                          ? 'destructive'
-                          : incident.reincidenceLevel >= 2
-                            ? 'warning'
-                            : 'success'
-                      }
-                    >
-                      Nivel {incident.reincidenceLevel}
-                    </Badge>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No hay incidencias recientes</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Alertas de Salidas */}
-      {departureAlerts.length > 0 && (
-        <Card className="app-card border-l-4 border-l-warning">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-warning">
-              <AlertCircle className="h-5 w-5" />
-              Alertas: Estudiantes sin Salida Registrada
-              <Badge variant="destructive" className="ml-2">{departureAlerts.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {departureAlerts.slice(0, 6).map((alert) => (
-                <div
-                  key={alert.record.id}
-                  className="flex items-center justify-between p-3 bg-warning/10 rounded-lg border border-warning/20 hover:border-warning/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`w-2 h-2 rounded-full ${alert.isCritical ? 'bg-destructive' : 'bg-warning'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {alert.record.student?.fullName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {alert.hoursSinceArrival.toFixed(1)}h sin salida
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline-warning"
-                    onClick={() => navigate('/arrival-control')}
-                    className="ml-2 flex-shrink-0"
-                  >
-                    Ver
-                  </Button>
-                </div>
+            }
+          />
+          {recentIncidents.length > 0 ? (
+            <div className="app-activity-scroll divide-y divide-border/70">
+              {recentIncidents.map((incident) => (
+                <StaffActivityItem
+                  key={incident.id}
+                  title={incident.student?.fullName || 'Estudiante desconocido'}
+                  subtitle={incident.faultType?.name || 'Falta desconocida'}
+                  meta={format(new Date(incident.registeredAt), "dd MMM yyyy, HH:mm", { locale: es })}
+                  onClick={() => navigate('/incidents')}
+                    icon={<FileText className="h-4 w-4" />}
+                    trailing={
+                    <ReincidenceBadge level={incident.reincidenceLevel} short />
+                  }
+                />
               ))}
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <StaffEmptyState
+              icon={FileText}
+              title="Sin incidencias recientes"
+              description="Cuando se registren nuevas faltas aparecerán aquí"
+              action={
+                <Button size="sm" onClick={() => navigate('/register')}>
+                  Registrar incidencia
+                </Button>
+              }
+            />
+          )}
+        </StaffDataPanel>
+      </div>
+
+      {departureAlerts.length > 0 && (
+        <StaffSection
+          title="Alertas de salida"
+          description="Estudiantes con llegada sin salida registrada"
+          icon={AlertCircle}
+          action={<Badge variant="destructive">{departureAlerts.length}</Badge>}
+        >
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+            {departureAlerts.slice(0, 6).map((alert) => (
+              <div
+                key={alert.record.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-warning/25 bg-warning/5 px-3 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{alert.record.student?.fullName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {alert.hoursSinceArrival.toFixed(1)} h sin salida
+                    {alert.isCritical && (
+                      <span className="ml-1 font-medium text-destructive">· Crítico</span>
+                    )}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline-warning" onClick={() => navigate('/arrival-control')}>
+                  Ir
+                </Button>
+              </div>
+            ))}
+          </div>
+        </StaffSection>
       )}
     </div>
   );

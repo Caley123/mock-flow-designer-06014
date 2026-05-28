@@ -185,6 +185,7 @@ export const dashboardService = {
           level2: levelDistribution.level2,
           level3: levelDistribution.level3,
           level4: levelDistribution.level4,
+          level5: levelDistribution.level5,
         },
         topFaults,
         incidentsByGrade,

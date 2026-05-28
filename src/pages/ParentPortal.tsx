@@ -1,16 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useParentPortal } from '@/contexts/ParentPortalContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -20,16 +12,14 @@ import {
 } from '@/components/ui/select';
 import {
   Clock,
-  LogOut,
   AlertTriangle,
   CheckCircle,
   Calendar,
   Phone,
   Mail,
   FileText,
-  BarChart3,
-  User as UserIcon,
   GraduationCap,
+  ChevronRight,
 } from 'lucide-react';
 import { PageLoader } from '@/components/ui/page-loader';
 import {
@@ -37,315 +27,327 @@ import {
   authService,
   incidentsService,
   parentMeetingsService,
-  parentPortalService,
 } from '@/lib/services';
 import type { ArrivalRecord, Incident, ParentMeeting, Student } from '@/types';
-import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
-import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
-import { getReincidenceLevelDescription } from '@/lib/utils/reincidenceUtils';
+import { ParentBottomNav, type ParentTab } from '@/components/parent/ParentBottomNav';
+import { ParentMobileHeader } from '@/components/parent/ParentMobileHeader';
+import { ParentChildrenSwitcher } from '@/components/parent/ParentChildrenSwitcher';
+import { cn } from '@/lib/utils';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
+function parentFriendlyLevel(level: number): string {
+  if (level === 0) return 'Sin observaciones recientes';
+  if (level <= 2) return 'Seguimiento leve del colegio';
+  return 'Requiere atención del colegio';
+}
+
 export const ParentPortal = () => {
   const currentUser = authService.getCurrentUser();
-  const userId = currentUser?.id;
   const isParentRole = currentUser?.role === 'Padre';
 
-  const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [student, setStudent] = useState<Student | null>(null);
+  const {
+    students,
+    selectedStudentId,
+    setSelectedStudentId,
+    student,
+    tab,
+    setTab,
+    loading,
+  } = useParentPortal();
   const [arrivalRecords, setArrivalRecords] = useState<ArrivalRecord[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [meetings, setMeetings] = useState<ParentMeeting[]>([]);
-  const [loading, setLoading] = useState(true);
   const [loadingTab, setLoadingTab] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => getLimaTodayDate());
   const [reportMonth, setReportMonth] = useState(() => String(new Date().getMonth()));
   const [reportYear, setReportYear] = useState(() => String(new Date().getFullYear()));
 
-  // userId estable: getCurrentUser() devuelve objeto nuevo cada render y causaba bucle infinito
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadStudents() {
-      const user = authService.getCurrentUser();
-      if (!user) {
-        if (!cancelled) setLoading(false);
-        return;
-      }
-
-      if (!cancelled) setLoading(true);
-
-      const { students: list, error } = await parentPortalService.getLinkedStudents(user);
-      if (cancelled) return;
-
-      if (error && list.length === 0) {
-        toast.error(error);
-        setStudents([]);
-        setStudent(null);
-        setSelectedStudentId('');
-      } else {
-        setStudents(list);
-        if (list.length > 0) {
-          setSelectedStudentId((prev) => {
-            if (prev && list.some((s) => String(s.id) === prev)) return prev;
-            return String(list[0].id);
-          });
-        }
-      }
-      setLoading(false);
-    }
-
-    void loadStudents();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    if (!selectedStudentId) {
-      setStudent(null);
-      return;
-    }
-    const found = students.find((s) => String(s.id) === selectedStudentId);
-    setStudent(found ?? null);
-  }, [selectedStudentId, students]);
-
   useEffect(() => {
     const studentId = Number(selectedStudentId);
     if (!studentId) return;
-
     let cancelled = false;
-
-    async function loadStudentDetails() {
+    async function load() {
       setLoadingTab(true);
       try {
-        const [arrivalsRes, incidentsRes, meetingsRes] = await Promise.all([
+        const [a, i, m] = await Promise.all([
           arrivalService.getArrivals({ studentId, limit: 120 }),
           incidentsService.getAll({ estudianteId: studentId, limit: 40 }),
           parentMeetingsService.getAll({ estudianteId: studentId }),
         ]);
-
         if (cancelled) return;
-
-        if (arrivalsRes.error) toast.error('No se pudo cargar asistencia');
-        else setArrivalRecords(arrivalsRes.records);
-
-        if (!incidentsRes.error) setIncidents(incidentsRes.incidents);
-        if (!meetingsRes.error) setMeetings(meetingsRes.meetings);
+        if (!a.error) setArrivalRecords(a.records);
+        if (!i.error) setIncidents(i.incidents);
+        if (!m.error) setMeetings(m.meetings);
       } finally {
         if (!cancelled) setLoadingTab(false);
       }
     }
-
-    void loadStudentDetails();
+    void load();
     return () => {
       cancelled = true;
     };
   }, [selectedStudentId]);
 
-  const filteredArrivalsByDay = useMemo(() => {
-    return arrivalRecords.filter((r) => r.date?.slice(0, 10) === selectedDate);
-  }, [arrivalRecords, selectedDate]);
+  const today = getLimaTodayDate();
+  const todayArrival = useMemo(
+    () => arrivalRecords.find((r) => r.date?.slice(0, 10) === today),
+    [arrivalRecords, today]
+  );
+
+  const filteredArrivalsByDay = useMemo(
+    () => arrivalRecords.filter((r) => r.date?.slice(0, 10) === selectedDate),
+    [arrivalRecords, selectedDate]
+  );
 
   const monthlyReport = useMemo(() => {
     const month = Number(reportMonth);
     const year = Number(reportYear);
     const start = startOfMonth(new Date(year, month, 1));
     const end = endOfMonth(start);
-
     const inMonth = arrivalRecords.filter((r) => {
       try {
         if (!r.date) return false;
-        const d = parseISO(r.date.slice(0, 10));
-        return isWithinInterval(d, { start, end });
+        return isWithinInterval(parseISO(r.date.slice(0, 10)), { start, end });
       } catch {
         return false;
       }
     });
-
     const onTime = inMonth.filter((r) => r.status === 'A tiempo').length;
-    const late = inMonth.filter((r) => r.status === 'Tarde').length;
-    const withDeparture = inMonth.filter((r) => r.departureTime).length;
-
     return {
       total: inMonth.length,
       onTime,
-      late,
-      withDeparture,
+      late: inMonth.filter((r) => r.status === 'Tarde').length,
       punctuality: inMonth.length > 0 ? Math.round((onTime / inMonth.length) * 100) : 0,
-      rows: inMonth.sort((a, b) => b.date.localeCompare(a.date)),
+      rows: inMonth.sort((a, b) => (b.date || '').localeCompare(a.date || '')),
     };
   }, [arrivalRecords, reportMonth, reportYear]);
 
-  const departureAlerts = useMemo(() => {
-    const today = getLimaTodayDate();
-    return arrivalRecords.filter(
-      (r) => r.date === today && r.arrivalTime && !r.departureTime
-    );
-  }, [arrivalRecords]);
+  const activeIncidents = incidents.filter((i) => i.status === 'Activa');
+  const pendingMeetings = meetings.filter((m) => m.estado === 'Pendiente' || m.estado === 'Confirmada');
 
-  const activeIncidents = useMemo(
-    () => incidents.filter((i) => i.status === 'Activa'),
-    [incidents]
-  );
+  const navBadges: Partial<Record<ParentTab, number>> = {
+    incidencias: activeIncidents.length,
+    citas: pendingMeetings.length,
+  };
 
   if (loading) {
-    return <PageLoader message="Cargando portal familiar..." />;
+    return (
+      <div className="parent-portal-page flex min-h-[50vh] items-center justify-center p-6">
+        <PageLoader message="Cargando información de su hijo/a..." />
+      </div>
+    );
   }
 
   if (!currentUser || students.length === 0) {
     return (
-      <div className="app-page max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-8 pb-8 text-center">
-            <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Sin estudiantes vinculados</h2>
-            <p className="text-muted-foreground text-sm">
-              {isParentRole
-                ? 'Su cuenta de apoderado aún no está asociada a un alumno. Solicite el vínculo en secretaría.'
-                : 'No hay estudiantes para mostrar. Use el script CREAR_PADRES_ESTUDIANTES.sql o asigne studentIds en grados_asignados.'}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="parent-portal-page p-4 sm:p-6">
+      <Card className="parent-empty-card border-dashed">
+        <CardContent className="py-10 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-amber-500" />
+          <h2 className="text-lg font-semibold">Aún no hay alumno vinculado</h2>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {isParentRole
+              ? 'Comuníquese con secretaría del colegio para asociar su cuenta con el DNI de su hijo o hija.'
+              : 'Vista de prueba sin estudiantes vinculados.'}
+          </p>
+        </CardContent>
+      </Card>
       </div>
     );
   }
 
   return (
-    <div className="app-page space-y-6">
-      {/* Cabecera */}
-      <Card className="border-0 shadow-lg overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground">
-        <CardContent className="p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-4">
-              {student && (
-                <StudentPhoto
-                  src={student.profilePhoto}
-                  name={student.fullName}
-                  className="h-20 w-20 border-2 border-white/30"
-                  imageClassName="object-cover"
-                />
-              )}
-              <div>
-                <p className="text-xs uppercase tracking-wide text-white/70 mb-1">
-                  Portal de padres de familia
-                </p>
-                <h1 className="text-2xl font-bold">{student?.fullName ?? '—'}</h1>
-                <p className="text-white/85 flex items-center gap-2 mt-1">
-                  <GraduationCap className="h-4 w-4" />
-                  {student?.level} · {student?.grade} {student?.section}
-                </p>
-                <p className="text-sm text-white/70 mt-1">DNI / código: {student?.barcode}</p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 min-w-[200px]">
-              {students.length > 1 && (
-                <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                    <SelectValue placeholder="Seleccionar hijo/a" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.fullName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {student && student.reincidenceLevel !== undefined && (
-                <div className="flex items-center gap-2">
-                  <ReincidenceBadge level={student.reincidenceLevel} />
-                  <span className="text-xs text-white/80">
-                    {getReincidenceLevelDescription(student.reincidenceLevel)}
-                  </span>
-                </div>
-              )}
-              {!isParentRole && (
-                <Badge variant="secondary" className="w-fit">
-                  Vista personal (prueba)
-                </Badge>
-              )}
-            </div>
-          </div>
-          {(student?.contactPhone || student?.contactEmail || student?.responsibleName) && (
-            <div className="mt-4 pt-4 border-t border-white/20 flex flex-wrap gap-4 text-sm text-white/85">
-              {student.responsibleName && (
-                <span className="flex items-center gap-1">
-                  <UserIcon className="h-4 w-4" />
-                  {student.responsibleName}
-                  {student.responsibleRelationship ? ` (${student.responsibleRelationship})` : ''}
-                </span>
-              )}
-              {student.contactPhone && (
-                <span className="flex items-center gap-1">
-                  <Phone className="h-4 w-4" />
-                  {student.contactPhone}
-                </span>
-              )}
-              {student.contactEmail && (
-                <span className="flex items-center gap-1">
-                  <Mail className="h-4 w-4" />
-                  {student.contactEmail}
-                </span>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {departureAlerts.length > 0 && (
-        <Card className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20">
-          <CardContent className="py-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              Hoy llegó a las {departureAlerts[0].arrivalTime} y aún no se registró su salida.
-            </p>
-          </CardContent>
-        </Card>
+    <div className="parent-portal-page">
+      <ParentMobileHeader />
+      <div className="parent-portal space-y-5 sm:space-y-6">
+      {!isParentRole && (
+        <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
+          Vista de personal — así verá el apoderado
+        </p>
       )}
 
-      <Tabs defaultValue="resumen" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
-          <TabsTrigger value="resumen">Resumen</TabsTrigger>
-          <TabsTrigger value="asistencia">Asistencia</TabsTrigger>
-          <TabsTrigger value="incidencias">Incidencias</TabsTrigger>
-          <TabsTrigger value="citas">Citas</TabsTrigger>
-        </TabsList>
+      {/* Hijo/a activo */}
+      <section className="parent-student-hero overflow-hidden rounded-2xl border border-border/80 bg-card p-4 sm:p-5">
+        {isParentRole && students.length > 1 && (
+          <ParentChildrenSwitcher className="mb-4" />
+        )}
+        {student && (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
+            <div className="flex min-w-0 items-start gap-3.5 sm:gap-4">
+              <StudentPhoto
+                src={student.profilePhoto}
+                name={student.fullName}
+                className="h-[4.25rem] w-[4.25rem] shrink-0 rounded-2xl border-2 border-primary/15 shadow-sm sm:h-20 sm:w-20"
+              />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-bold leading-snug tracking-tight sm:text-2xl">
+                  {student.fullName}
+                </h1>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground">
+                  <GraduationCap className="h-4 w-4 shrink-0 text-primary/70" />
+                  <span>{student.level}</span>
+                  <span className="text-border">·</span>
+                  <span>{student.grade}</span>
+                  <span className="text-border">·</span>
+                  <span>Sección {student.section}</span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/90">
+                  Código <span className="font-mono font-medium text-foreground/80">{student.barcode}</span>
+                </p>
+              </div>
+            </div>
+            <div className="w-full rounded-xl border border-border/60 bg-muted/40 px-3.5 py-2.5 text-sm lg:max-w-[14rem] lg:shrink-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Estado
+              </p>
+              <p className="mt-0.5 font-medium leading-snug text-foreground">
+                {parentFriendlyLevel(student.reincidenceLevel ?? 0)}
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
 
-        <TabsContent value="resumen" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              title="Asistencias (mes actual)"
-              value={monthlyReport.total}
-              sub={`${monthlyReport.punctuality}% a tiempo`}
-              icon={Calendar}
-            />
-            <StatCard title="A tiempo" value={monthlyReport.onTime} icon={CheckCircle} accent="text-emerald-600" />
-            <StatCard title="Tardanzas" value={monthlyReport.late} icon={Clock} accent="text-orange-600" />
-            <StatCard title="Incidencias activas" value={activeIncidents.length} icon={FileText} accent="text-destructive" />
+      {!isParentRole && students.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {students.map((s) => (
+            <Button
+              key={s.id}
+              type="button"
+              size="sm"
+              variant={String(s.id) === selectedStudentId ? 'default' : 'outline'}
+              onClick={() => setSelectedStudentId(String(s.id))}
+            >
+              {s.fullName}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      <ParentBottomNav
+        value={tab}
+        onChange={setTab}
+        badges={navBadges}
+        hideDesktop={isParentRole}
+      />
+
+      {loadingTab ? (
+        <div className="flex min-h-[12rem] items-center justify-center py-10">
+          <PageLoader message="Actualizando datos..." />
+        </div>
+      ) : (
+        <div key={`${selectedStudentId}-${tab}`} className="parent-tab-panel space-y-4 sm:space-y-5">
+      {tab === 'resumen' && (
+        <div className="space-y-4 sm:space-y-5">
+          <Card className="overflow-hidden border-primary/15 shadow-sm">
+            <CardContent className="p-0">
+              <div className="bg-primary/10 px-4 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Hoy</p>
+              </div>
+              <div className="p-4 sm:p-5">
+                {todayArrival ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <TodayItem label="Llegada" value={todayArrival.arrivalTime || '—'} />
+                    <TodayItem
+                      label="Salida"
+                      value={todayArrival.departureTime || 'Sin registrar'}
+                      warn={!todayArrival.departureTime}
+                    />
+                    <TodayItem
+                      label="Estado"
+                      value={todayArrival.status || '—'}
+                      ok={todayArrival.status === 'A tiempo'}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Todavía no hay registro de llegada para hoy.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+            <ParentStat label="Registros del mes" shortLabel="Registros" value={monthlyReport.total} />
+            <ParentStat label="A tiempo" value={monthlyReport.onTime} tone="ok" />
+            <ParentStat label="Tardanzas" value={monthlyReport.late} tone="warn" />
+            <ParentStat label="Incidencias activas" shortLabel="Incidencias" value={activeIncidents.length} tone="alert" />
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Reporte mensual de asistencia
-              </CardTitle>
-              <CardDescription>Llegadas y salidas del mes seleccionado</CardDescription>
+          {activeIncidents.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Avisos del colegio</CardTitle>
+                <CardDescription>Toque Incidencias para ver el detalle</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {incidents.slice(0, 2).map((inc) => (
+                  <IncidentCard key={inc.id} incident={inc} />
+                ))}
+                <Button type="button" variant="ghost" className="w-full gap-1" onClick={() => setTab('incidencias')}>
+                  Ver todas <ChevronRight className="h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {tab === 'asistencia' && (
+        <div className="space-y-4 sm:space-y-5">
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">¿Qué pasó un día?</CardTitle>
+              <CardDescription>Elija la fecha y vea llegada y salida</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-3">
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="flex-1">
+                <label className="mb-1.5 block text-sm font-medium">Fecha</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="parent-date-input flex h-12 w-full rounded-xl border border-input bg-background px-4 text-base"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-12 rounded-xl px-6 sm:min-w-[8rem]"
+                onClick={() => setSelectedDate(today)}
+              >
+                Ver hoy
+              </Button>
+            </CardContent>
+          </Card>
+
+          {filteredArrivalsByDay.length === 0 ? (
+            <EmptyBlock text="No hay registro de asistencia en esa fecha" />
+          ) : (
+            <div className="space-y-2">
+              {filteredArrivalsByDay.map((r) => (
+                <ArrivalCard key={r.id} record={r} />
+              ))}
+            </div>
+          )}
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Resumen del mes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
                 <Select value={reportMonth} onValueChange={setReportMonth}>
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="h-11 rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -357,7 +359,7 @@ export const ParentPortal = () => {
                   </SelectContent>
                 </Select>
                 <Select value={reportYear} onValueChange={setReportYear}>
-                  <SelectTrigger className="w-[100px]">
+                  <SelectTrigger className="h-11 rounded-xl sm:w-28">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -370,266 +372,215 @@ export const ParentPortal = () => {
                 </Select>
               </div>
               {monthlyReport.rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  Sin registros en {MONTH_NAMES[Number(reportMonth)]} {reportYear}
-                </p>
+                <p className="text-center text-sm text-muted-foreground py-4">Sin datos en ese mes</p>
               ) : (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Llegada</TableHead>
-                        <TableHead>Salida</TableHead>
-                        <TableHead>Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {monthlyReport.rows.map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell>
-                            {r.date
-                              ? format(parseISO(r.date.slice(0, 10)), 'dd/MM/yyyy', { locale: es })
-                              : '—'}
-                          </TableCell>
-                          <TableCell>{r.arrivalTime || '—'}</TableCell>
-                          <TableCell>{r.departureTime || '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant={r.status === 'A tiempo' ? 'default' : 'destructive'}>
-                              {r.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {monthlyReport.rows.map((r) => (
+                    <ArrivalCard key={r.id} record={r} compact />
+                  ))}
                 </div>
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
 
-          {incidents.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Últimas incidencias</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {incidents.slice(0, 3).map((inc) => (
-                  <IncidentRow key={inc.id} incident={inc} />
-                ))}
-              </CardContent>
-            </Card>
+      {tab === 'incidencias' && (
+        <div className="space-y-3 sm:space-y-4">
+          <p className="text-sm text-muted-foreground px-1">
+            Registro de conducta, uniforme y otras observaciones del colegio.
+          </p>
+          {incidents.length === 0 ? (
+            <EmptyBlock text="No hay incidencias registradas. ¡Buenas noticias!" icon={CheckCircle} />
+          ) : (
+            incidents.map((inc) => <IncidentCard key={inc.id} incident={inc} detailed />)
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="asistencia" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Consulta por día</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3 items-end">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Fecha</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <Button type="button" variant="secondary" onClick={() => setSelectedDate(getLimaTodayDate())}>
-                Hoy
-              </Button>
-            </CardContent>
-          </Card>
+      {tab === 'citas' && (
+        <div className="space-y-3 sm:space-y-4">
+          <p className="text-sm text-muted-foreground px-1">
+            Citas programadas con profesores o dirección.
+          </p>
+          {meetings.length === 0 ? (
+            <EmptyBlock text="No tiene citas programadas por ahora" icon={Calendar} />
+          ) : (
+            meetings.map((m) => <MeetingCard key={m.id} meeting={m} />)
+          )}
+        </div>
+      )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Registros del día</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingTab ? (
-                <PageLoader message="Cargando..." />
-              ) : filteredArrivalsByDay.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground text-sm">
-                  Sin registros para esta fecha
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Llegada</TableHead>
-                      <TableHead>Salida</TableHead>
-                      <TableHead>Estado</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredArrivalsByDay.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell>{r.arrivalTime}</TableCell>
-                        <TableCell>
-                          {r.departureTime ? (
-                            r.departureTime
-                          ) : (
-                            <Badge variant="outline" className="text-amber-600">
-                              Sin salida
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={r.status === 'A tiempo' ? 'default' : 'destructive'}>
-                            {r.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="incidencias" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Historial de incidencias</CardTitle>
-              <CardDescription>
-                Conducta, uniforme, puntualidad y otras faltas registradas en el colegio
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {incidents.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground text-sm">
-                  No hay incidencias registradas
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {incidents.map((inc) => (
-                    <IncidentRow key={inc.id} incident={inc} detailed />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="citas" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Citas con la institución</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {meetings.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground text-sm">
-                  No tiene citas programadas
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {meetings.map((m) => (
-                    <div
-                      key={m.id}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 rounded-lg border"
-                    >
-                      <div className="flex gap-3">
-                        <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-medium">{m.motivo}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {format(new Date(m.fecha), 'dd/MM/yyyy', { locale: es })} · {m.hora}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant={
-                          m.estado === 'Completada'
-                            ? 'default'
-                            : m.estado === 'Cancelada'
-                              ? 'destructive'
-                              : 'outline'
-                        }
-                      >
-                        {m.estado}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <p className="text-xs text-center text-muted-foreground pb-4">
-        Bienvenido, {currentUser.fullName}. Ante dudas contacte a secretaría del colegio.
-      </p>
+      <footer className="border-t border-border/50 pt-4 text-center text-xs leading-relaxed text-muted-foreground">
+        ¿Consultas? Comuníquese con secretaría
+        {student?.contactPhone ? (
+          <span className="mt-1 block font-medium text-foreground/80 sm:mt-0 sm:inline">
+            {' '}
+            · <Phone className="mb-0.5 inline h-3 w-3" aria-hidden /> {student.contactPhone}
+          </span>
+        ) : null}
+      </footer>
+      </div>
     </div>
   );
 };
 
-function StatCard({
-  title,
+function TodayItem({
+  label,
   value,
-  sub,
-  icon: Icon,
-  accent,
+  ok,
+  warn,
 }: {
-  title: string;
-  value: number;
-  sub?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent?: string;
+  label: string;
+  value: string;
+  ok?: boolean;
+  warn?: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className={`h-4 w-4 ${accent ?? 'text-muted-foreground'}`} />
-      </CardHeader>
-      <CardContent>
-        <div className={`text-2xl font-bold ${accent ?? ''}`}>{value}</div>
-        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
-      </CardContent>
-    </Card>
+    <div className="parent-metric">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          'mt-1 text-lg font-bold',
+          ok && 'text-emerald-600',
+          warn && 'text-amber-600'
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
-function IncidentRow({ incident, detailed }: { incident: Incident; detailed?: boolean }) {
-  const faultName = incident.faultType?.name ?? 'Falta registrada';
-  const dateStr = incident.registeredAt
-    ? format(new Date(incident.registeredAt), 'dd/MM/yyyy HH:mm', { locale: es })
+function ParentStat({
+  label,
+  shortLabel,
+  value,
+  tone,
+}: {
+  label: string;
+  shortLabel?: string;
+  value: number;
+  tone?: 'ok' | 'warn' | 'alert';
+}) {
+  return (
+    <div
+      className={cn(
+        'parent-stat border',
+        tone === 'ok' && 'border-emerald-200/90 bg-emerald-50/90',
+        tone === 'warn' && 'border-amber-200/90 bg-amber-50/90',
+        tone === 'alert' && value > 0 && 'border-red-200/90 bg-red-50/90',
+        !tone && 'border-border/80 bg-card'
+      )}
+    >
+      <p className="text-[10px] font-medium leading-snug text-muted-foreground sm:text-[11px]">
+        <span className="sm:hidden">{shortLabel ?? label}</span>
+        <span className="hidden sm:inline">{label}</span>
+      </p>
+      <p className="mt-1 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{value}</p>
+    </div>
+  );
+}
+
+function ArrivalCard({ record, compact }: { record: ArrivalRecord; compact?: boolean }) {
+  const fecha = record.date
+    ? format(parseISO(record.date.slice(0, 10)), compact ? 'dd/MM' : 'EEEE d MMM', { locale: es })
     : '—';
+  return (
+    <div className="parent-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className={cn('font-medium capitalize', compact && 'text-sm')}>{fecha}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Llegada <strong className="text-foreground">{record.arrivalTime || '—'}</strong>
+          {' · '}
+          Salida{' '}
+          <strong className={cn(!record.departureTime && 'text-amber-600')}>
+            {record.departureTime || 'pendiente'}
+          </strong>
+        </p>
+      </div>
+      <Badge
+        variant={record.status === 'A tiempo' ? 'default' : 'destructive'}
+        className="w-fit shrink-0"
+      >
+        {record.status}
+      </Badge>
+    </div>
+  );
+}
+
+function IncidentCard({ incident, detailed }: { incident: Incident; detailed?: boolean }) {
+  const name = incident.faultType?.name ?? 'Observación registrada';
+  const dateStr = incident.registeredAt
+    ? format(new Date(incident.registeredAt), "d 'de' MMMM, HH:mm", { locale: es })
+    : '';
+  const statusLabel =
+    incident.status === 'Activa'
+      ? 'Pendiente'
+      : incident.status === 'Justificada'
+        ? 'Justificada'
+        : incident.status;
 
   return (
-    <div className="p-4 rounded-lg border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="font-medium">{faultName}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{dateStr}</p>
-          {detailed && incident.faultType?.category && (
-            <Badge variant="outline" className="mt-2">
-              {incident.faultType.category}
-            </Badge>
-          )}
+    <div className="parent-card p-4 sm:p-5">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold leading-snug tracking-tight">{name}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{dateStr}</p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <Badge
-            variant={
-              incident.status === 'Activa'
-                ? 'destructive'
-                : incident.status === 'Justificada'
-                  ? 'default'
-                  : 'secondary'
-            }
-          >
-            {incident.status}
-          </Badge>
-          <ReincidenceBadge level={incident.reincidenceLevel ?? 0} />
-        </div>
+        <Badge
+          variant={
+            incident.status === 'Activa' ? 'destructive' : incident.status === 'Justificada' ? 'default' : 'secondary'
+          }
+          className="w-fit shrink-0"
+        >
+          {statusLabel}
+        </Badge>
       </div>
       {detailed && incident.observations && (
-        <p className="text-sm text-muted-foreground mt-2 border-t pt-2">{incident.observations}</p>
+        <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground leading-relaxed">
+          {incident.observations}
+        </p>
       )}
+    </div>
+  );
+}
+
+function MeetingCard({ meeting }: { meeting: ParentMeeting }) {
+  return (
+    <div className="parent-card p-4 sm:p-5">
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary sm:h-12 sm:w-12">
+          <Calendar className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{meeting.motivo}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {format(new Date(meeting.fecha), "EEEE d 'de' MMMM", { locale: es })} · {meeting.hora}
+          </p>
+          <Badge className="mt-2" variant={meeting.estado === 'Cancelada' ? 'destructive' : 'outline'}>
+            {meeting.estado}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyBlock({
+  text,
+  icon: Icon = FileText,
+}: {
+  text: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border/80 bg-muted/25 py-14 text-center px-5 sm:py-16">
+      <Icon className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
+      <p className="text-sm text-muted-foreground">{text}</p>
     </div>
   );
 }

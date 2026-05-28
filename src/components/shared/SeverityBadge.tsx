@@ -1,5 +1,5 @@
-import { Badge } from '@/components/ui/badge';
 import { FaultSeverity } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface SeverityBadgeProps {
   severity: FaultSeverity;
@@ -7,12 +7,16 @@ interface SeverityBadgeProps {
 }
 
 export const SeverityBadge = ({ severity, className }: SeverityBadgeProps) => {
+  const isGrave = severity === 'Grave';
   return (
-    <Badge 
-      variant={severity === 'Grave' ? 'destructive' : 'secondary'}
-      className={className}
+    <span
+      className={cn(
+        'app-level-pill',
+        isGrave ? 'app-level-pill--5' : 'app-level-pill--1',
+        className
+      )}
     >
       {severity}
-    </Badge>
+    </span>
   );
 };

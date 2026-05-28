@@ -18,7 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Filter, Eye, Edit, FileX, Camera, Download, FileText } from 'lucide-react';
+import { Search, Eye, Edit, FileX, Camera, FileSpreadsheet, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
+import { Label } from '@/components/ui/label';
+import { exportIncidentsListExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
@@ -79,6 +88,12 @@ export const IncidentsList = () => {
     incident.faultType?.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleExportExcel = () => {
+    const filters =
+      levelFilter !== 'all' ? `Filtro: nivel ${levelFilter}` : undefined;
+    void exportIncidentsListExcel(filteredIncidents, filters);
+  };
+
   useEffect(() => {
     loadIncidents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,87 +103,120 @@ export const IncidentsList = () => {
     return <PageLoader message="Cargando incidencias..." />;
   }
 
+  const activeCount = incidents.filter((i) => i.status === 'Activa').length;
+  const withEvidence = incidents.filter((i) => i.hasEvidence).length;
+
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={FileText}
         eyebrow="Incidencias"
         title="Lista de Incidencias"
-        description="Consulta el historial, filtra por nivel educativo y gestiona el estado de cada registro"
+        description="Historial completo con filtros por nivel y exportación a Excel"
         accent="warning"
       >
-        <Button variant="outline-primary" onClick={loadIncidents}>
-          <Download className="w-4 h-4 mr-2" />
-          Exportar
+        <Button
+          variant="outline-primary"
+          onClick={handleExportExcel}
+          disabled={filteredIncidents.length === 0}
+        >
+          <FileSpreadsheet className="w-4 h-4 mr-2" />
+          Exportar Excel
         </Button>
       </PageHeader>
 
-      <Card className="app-card">
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por ID, estudiante o tipo de falta..."
-                className="pl-10"
-              />
-            </div>
-            <Select
-              value={levelFilter}
-              onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
-            >
-              <SelectTrigger className="md:w-[220px]">
-                <SelectValue placeholder="Nivel educativo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los niveles</SelectItem>
-                <SelectItem value="Primaria">Primaria</SelectItem>
-                <SelectItem value="Secundaria">Secundaria</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" className="md:w-auto">
-              <span className="flex items-center">
-                <Filter className="w-4 h-4 mr-2" />
-                Filtros Avanzados
-              </span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+        <StaffKpiStat
+          label="En listado"
+          value={filteredIncidents.length}
+          hint={`${incidents.length} cargadas`}
+          icon={FileText}
+          tone="primary"
+        />
+        <StaffKpiStat
+          label="Activas"
+          value={activeCount}
+          hint="Pendientes de gestión"
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Con evidencia"
+          value={withEvidence}
+          hint="Registros documentados"
+          hintIcon={CheckCircle2}
+          icon={Camera}
+          tone="success"
+        />
+      </div>
 
-      {/* Incidents Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado de Incidencias ({filteredIncidents.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <StaffToolbar title="Buscar y filtrar" description="Refine por texto o nivel educativo">
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="incidents-search">Buscar</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="incidents-search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ID, estudiante o tipo de falta..."
+              className="pl-10"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Nivel educativo</Label>
+          <Select
+            value={levelFilter}
+            onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Nivel educativo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los niveles</SelectItem>
+              <SelectItem value="Primaria">Primaria</SelectItem>
+              <SelectItem value="Secundaria">Secundaria</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </StaffToolbar>
+
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          title={`Registros (${filteredIncidents.length})`}
+          description="Detalle, evidencia y estado de cada incidencia"
+        />
+        <div className="p-4 pt-0 sm:p-5 sm:pt-0">
           {filteredIncidents.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No se encontraron incidencias
-            </div>
+            <StaffEmptyState
+              icon={FileText}
+              title="No hay incidencias"
+              description="Prueba otro término de búsqueda o cambia el filtro de nivel"
+            />
           ) : (
-            <Table role="table" aria-label="Lista de incidencias">
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">ID</TableHead>
-                  <TableHead scope="col">Estudiante</TableHead>
-                  <TableHead scope="col">Falta</TableHead>
-                  <TableHead scope="col">Fecha/Hora</TableHead>
-                  <TableHead scope="col">Nivel</TableHead>
-                  <TableHead scope="col">Evidencia</TableHead>
-                  <TableHead scope="col">Estado</TableHead>
-                  <TableHead scope="col">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredIncidents.map((incident) => (
-                  <TableRow 
-                    key={incident.id}
-                    role="row"
-                    aria-label={`Incidencia ${incident.id} - ${incident.student?.fullName || 'N/A'}`}
-                  >
+            <div className="app-table-wrap">
+              <Table role="table" aria-label="Lista de incidencias">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">ID</TableHead>
+                    <TableHead scope="col">Estudiante</TableHead>
+                    <TableHead scope="col">Falta</TableHead>
+                    <TableHead scope="col">Fecha/Hora</TableHead>
+                    <TableHead scope="col">Nivel</TableHead>
+                    <TableHead scope="col">Evidencia</TableHead>
+                    <TableHead scope="col">Estado</TableHead>
+                    <TableHead scope="col">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredIncidents.map((incident) => (
+                    <TableRow 
+                      key={incident.id}
+                      role="row"
+                      aria-label={`Incidencia ${incident.id} - ${incident.student?.fullName || 'N/A'}`}
+                    >
                     <TableCell className="font-mono text-sm">{incident.id}</TableCell>
                     <TableCell>
                       <div>
@@ -314,13 +362,14 @@ export const IncidentsList = () => {
                         </Button>
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </StaffDataPanel>
     </div>
   );
 };
