@@ -1,14 +1,14 @@
-import { Layout } from '@/components/layout/Layout';
+import { ParentLayout } from '@/components/parent/ParentLayout';
 import { ParentPortalProvider } from '@/contexts/ParentPortalContext';
 import { ParentPortal } from '@/pages/ParentPortal';
 
-/** Portal familiar con barra lateral (hijos + secciones en el menú) */
+/** Portal familiar en layout dedicado (sin sidebar de staff) */
 export function ParentPortalRoute() {
   return (
     <ParentPortalProvider>
-      <Layout>
+      <ParentLayout>
         <ParentPortal />
-      </Layout>
+      </ParentLayout>
     </ParentPortalProvider>
   );
 }

@@ -1334,6 +1334,10 @@
 
 .parent-portal-page {
   min-height: 100%;
+  background:
+    radial-gradient(1200px 500px at 5% -10%, hsl(var(--primary) / 0.1), transparent 60%),
+    radial-gradient(900px 420px at 95% 0%, hsl(var(--accent) / 0.07), transparent 55%),
+    linear-gradient(180deg, hsl(var(--background-alt) / 0.55) 0%, hsl(var(--background)) 30%);
 }
 
 .parent-portal {
@@ -1370,13 +1374,18 @@
 }
 
 .parent-student-hero {
-  box-shadow: 0 1px 3px hsl(0 0% 0% / 0.04), 0 4px 20px hsl(var(--primary) / 0.06);
+  background:
+    linear-gradient(145deg, hsl(var(--primary) / 0.14), hsl(var(--accent) / 0.08) 45%, hsl(var(--card)) 100%);
+  box-shadow:
+    0 1px 3px hsl(0 0% 0% / 0.04),
+    0 4px 20px hsl(var(--primary) / 0.1);
 }
 
 .parent-card {
   border-radius: 1rem;
   border: 1px solid hsl(var(--border) / 0.8);
-  background: hsl(var(--card));
+  background:
+    linear-gradient(170deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.35) 130%);
   box-shadow: 0 1px 2px hsl(0 0% 0% / 0.03);
   transition: box-shadow 0.2s ease;
 }
@@ -1388,7 +1397,8 @@
 .parent-metric {
   border-radius: 0.875rem;
   border: 1px solid hsl(var(--border) / 0.7);
-  background: hsl(var(--card));
+  background:
+    linear-gradient(160deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.05) 140%);
   padding: 0.875rem 1rem;
 }
 
@@ -1396,6 +1406,8 @@
   border-radius: 1rem;
   padding: 0.875rem 0.75rem;
   text-align: center;
+  background:
+    linear-gradient(170deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.45) 130%);
   transition: transform 0.15s ease;
 }
 
@@ -1476,6 +1488,12 @@
 .parent-empty-card {
   margin: 2rem auto;
   max-width: 24rem;
+}
+
+.parent-surface-card {
+  border-color: hsl(var(--primary) / 0.15);
+  background:
+    linear-gradient(170deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.05) 150%);
 }
 
 @media (min-width: 768px) {

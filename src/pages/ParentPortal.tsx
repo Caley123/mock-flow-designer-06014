@@ -204,11 +204,11 @@ export const ParentPortal = () => {
                 </p>
               </div>
             </div>
-            <div className="w-full rounded-xl border border-border/60 bg-muted/40 px-3.5 py-2.5 text-sm lg:max-w-[14rem] lg:shrink-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="w-full rounded-xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card to-accent/10 px-3.5 py-2.5 text-sm shadow-sm lg:max-w-[14rem] lg:shrink-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/80">
                 Estado
               </p>
-              <p className="mt-0.5 font-medium leading-snug text-foreground">
+              <p className="mt-0.5 font-semibold leading-snug text-foreground">
                 {parentFriendlyLevel(student.reincidenceLevel ?? 0)}
               </p>
             </div>
@@ -247,7 +247,7 @@ export const ParentPortal = () => {
         <div key={`${selectedStudentId}-${tab}`} className="parent-tab-panel space-y-4 sm:space-y-5">
       {tab === 'resumen' && (
         <div className="space-y-4 sm:space-y-5">
-          <Card className="overflow-hidden border-primary/15 shadow-sm">
+          <Card className="parent-surface-card overflow-hidden shadow-sm">
             <CardContent className="p-0">
               <div className="bg-primary/10 px-4 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">Hoy</p>
@@ -284,7 +284,7 @@ export const ParentPortal = () => {
           </div>
 
           {activeIncidents.length > 0 && (
-            <Card>
+            <Card className="parent-surface-card">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Avisos del colegio</CardTitle>
                 <CardDescription>Toque Incidencias para ver el detalle</CardDescription>
@@ -304,7 +304,7 @@ export const ParentPortal = () => {
 
       {tab === 'asistencia' && (
         <div className="space-y-4 sm:space-y-5">
-          <Card className="border-border/80 shadow-sm">
+          <Card className="parent-surface-card shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">¿Qué pasó un día?</CardTitle>
               <CardDescription>Elija la fecha y vea llegada y salida</CardDescription>
@@ -340,7 +340,7 @@ export const ParentPortal = () => {
             </div>
           )}
 
-          <Card>
+          <Card className="parent-surface-card">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Resumen del mes</CardTitle>
             </CardHeader>
