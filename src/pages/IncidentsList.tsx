@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSpring, useTrail, animated, config } from '@react-spring/web';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Eye, Edit, FileX, Camera, FileSpreadsheet, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Eye, Edit, FileX, Camera, FileSpreadsheet, FileText, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 import {
   StaffKpiStat,
   StaffToolbar,
@@ -40,6 +41,8 @@ import { incidentsService } from '@/lib/services';
 import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 
+const AnimatedDiv = animated('div');
+
 export const IncidentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -47,7 +50,26 @@ export const IncidentsList = () => {
   const [loading, setLoading] = useState(true);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const isMountedRef = useRef(true);
-  
+
+  // Animaciones (hooks deben ir antes de cualquier return condicional)
+  const headerSpring = useSpring({
+    from: { opacity: 0, transform: 'translateY(-16px)' },
+    to: { opacity: 1, transform: 'translateY(0px)' },
+    config: config.gentle,
+  });
+  const kpiTrail = useTrail(3, {
+    from: { opacity: 0, transform: 'translateY(20px) scale(0.96)' },
+    to: { opacity: 1, transform: 'translateY(0px) scale(1)' },
+    config: config.gentle,
+    delay: 120,
+  });
+  const panelSpring = useSpring({
+    from: { opacity: 0, transform: 'translateY(24px)' },
+    to: { opacity: 1, transform: 'translateY(0px)' },
+    delay: 260,
+    config: config.gentle,
+  });
+
   // Métricas de rendimiento
   usePerformanceMetrics('IncidentsList');
 
