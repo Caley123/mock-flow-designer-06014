@@ -749,8 +749,10 @@
 
   .login-carnet-replica__face--front {
     z-index: 2;
-    background: hsl(var(--login-deep));
-    box-shadow: inset 0 1px 0 hsl(var(--login-foreground) / 0.06);
+    background: #f3ead4;
+    box-shadow:
+      inset 0 0 0 1px rgba(120, 60, 40, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   .login-carnet-replica__face--back {
@@ -898,77 +900,89 @@
   }
 
   .login-carnet-replica__head {
-    @apply relative flex items-center gap-2.5 border-b px-3.5 py-3 pl-4;
-    border-color: hsl(var(--login-border) / 0.35);
+    @apply relative flex flex-col items-center justify-center border-b px-3.5 pt-7 pb-2.5 text-center;
+    border-color: rgba(120, 60, 40, 0.25);
     background:
-      linear-gradient(180deg, hsl(var(--login-foreground) / 0.04) 0%, transparent 100%),
-      linear-gradient(
-        135deg,
-        hsl(var(--login-accent) / 0.42) 0%,
-        hsl(var(--login-elevated) / 0.96) 52%,
-        hsl(var(--login-surface) / 0.92) 100%
-      );
+      radial-gradient(ellipse 70% 60% at 50% 0%, rgba(255, 220, 170, 0.18), transparent 70%),
+      linear-gradient(180deg, #6e1a25 0%, #5a131e 55%, #4a0f18 100%);
+    box-shadow: inset 0 -1px 0 rgba(201, 168, 76, 0.45);
   }
 
   .login-carnet-replica__chip {
-    @apply ml-auto shrink-0 rounded-sm;
-    width: 1.35rem;
-    height: 1rem;
-    background: linear-gradient(145deg, hsl(var(--login-glow) / 0.55), hsl(var(--login-accent) / 0.35));
-    border: 1px solid hsl(var(--login-border) / 0.5);
-    box-shadow: inset 0 0 4px hsl(var(--login-deep) / 0.4);
+    @apply absolute left-1/2 shrink-0 rounded-md;
+    top: -0.55rem;
+    transform: translateX(-50%);
+    width: 1.65rem;
+    height: 1.4rem;
+    background:
+      radial-gradient(ellipse at 50% 30%, #f7dc7b 0%, #c9a84c 55%, #8b6f1f 100%);
+    border: 1px solid rgba(255, 240, 180, 0.7);
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
   .login-carnet-replica__crest {
-    @apply shrink-0 opacity-90;
-    filter: drop-shadow(0 0 6px hsl(var(--login-glow) / 0.45));
+    @apply absolute opacity-95;
+    top: -0.35rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1.25rem;
+    height: 1.25rem;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  }
+
+  .login-carnet-replica__head-text {
+    @apply flex flex-col items-center;
   }
 
   .login-carnet-replica__school {
-    @apply m-0 text-[11px] font-bold uppercase leading-tight tracking-[0.06em];
-    color: hsl(var(--login-foreground));
+    @apply m-0 text-[13px] font-bold uppercase leading-tight tracking-[0.04em];
+    color: #fdf6e3;
     font-family: 'Plus Jakarta Sans', sans-serif;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 
   .login-carnet-replica__school-sub {
-    @apply m-0 mt-0.5 text-[7px] font-medium uppercase tracking-[0.14em];
-    color: hsl(var(--login-caption) / 0.85);
+    @apply m-0 mt-1 text-[7px] font-semibold uppercase tracking-[0.18em];
+    color: rgba(253, 246, 227, 0.8);
   }
 
   .login-carnet-replica__body {
-    @apply flex flex-1 flex-col items-center gap-2.5 px-3.5 py-3.5;
+    @apply flex flex-1 flex-col items-center gap-2.5 px-3.5 pt-4 pb-3;
     background:
-      radial-gradient(ellipse 90% 55% at 50% 12%, hsl(var(--login-accent) / 0.1), transparent 72%),
-      linear-gradient(180deg, hsl(var(--login-surface) / 0.62) 0%, hsl(var(--login-deep) / 0.4) 100%);
+      radial-gradient(ellipse 100% 60% at 50% 100%, rgba(120, 60, 40, 0.1), transparent 70%),
+      linear-gradient(180deg, #f3ead4 0%, #ece1c4 100%);
   }
 
   .login-carnet-replica__photo-wrap {
-    @apply flex flex-col items-center gap-1.5;
+    @apply relative flex flex-col items-center gap-2;
   }
 
   .login-carnet-replica__photo {
-    @apply relative h-[5.75rem] w-[4.75rem] overflow-hidden rounded-xl;
-    background: hsl(var(--login-deep) / 0.65);
-    border: 2px solid hsl(var(--login-glow) / 0.5);
+    @apply relative h-[6.5rem] w-[6.5rem] overflow-hidden rounded-full;
+    background: #fff;
+    border: 3px solid #fdf6e3;
     box-shadow:
-      0 0 0 1px hsl(var(--login-accent) / 0.25) inset,
-      0 10px 24px hsl(var(--login-deep) / 0.55),
-      0 0 24px hsl(var(--login-glow) / 0.25);
+      0 0 0 2px #c9a84c,
+      0 6px 14px rgba(74, 15, 24, 0.28),
+      0 0 0 5px rgba(201, 168, 76, 0.25);
   }
 
   .login-carnet-replica__photo-ring {
-    @apply absolute inset-[-3px] rounded-xl;
+    @apply absolute inset-[-7px] rounded-full;
     background: conic-gradient(
-      from 210deg,
-      hsl(var(--login-glow)),
-      hsl(var(--login-accent)),
-      hsl(var(--login-glow) / 0.4),
-      hsl(var(--login-accent)),
-      hsl(var(--login-glow))
+      from 200deg,
+      #c9a84c,
+      #f7dc7b,
+      #8b6f1f,
+      #c9a84c,
+      #f0d78c,
+      #c9a84c
     );
-    opacity: 0.7;
-    animation: login-photo-ring-spin 10s linear infinite;
-    filter: blur(0.5px);
+    opacity: 0.55;
+    animation: login-photo-ring-spin 14s linear infinite;
+    filter: blur(1px);
   }
 
   @keyframes login-photo-ring-spin {
@@ -977,68 +991,59 @@
 
   .login-carnet-replica__photo-img {
     @apply relative z-[1] h-full w-full object-cover;
-    object-position: center 18%;
+    object-position: center 22%;
   }
 
   .login-carnet-replica__id-badge {
-    @apply rounded-full px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em];
-    color: hsl(var(--login-glow));
-    background: hsl(var(--login-deep) / 0.55);
-    border: 1px solid hsl(var(--login-glow) / 0.25);
+    @apply hidden;
   }
 
   .login-carnet-replica__photo-icon {
     @apply relative z-[1] h-9 w-9;
-    color: hsl(var(--login-caption));
+    color: rgba(74, 15, 24, 0.4);
   }
 
   .login-carnet-replica__info {
-    @apply w-full text-center;
+    @apply relative w-full text-center;
   }
 
   .login-carnet-replica__label {
-    @apply m-0 text-[7px] font-semibold uppercase tracking-[0.24em];
-    color: hsl(var(--login-glow) / 0.85);
+    @apply hidden;
   }
 
   .login-carnet-replica__name {
-    @apply m-0 text-[11px] font-bold uppercase leading-snug tracking-[0.04em];
-    color: hsl(var(--login-foreground));
+    @apply m-0 text-[12px] font-extrabold uppercase leading-tight tracking-[0.02em];
+    color: #4a0f18;
     font-family: 'Plus Jakarta Sans', sans-serif;
   }
 
   .login-carnet-replica__grade {
-    @apply m-0 mt-1 text-[9px] font-medium;
-    color: hsl(var(--login-accent) / 0.95);
+    @apply m-0 mt-1 text-[9px] font-semibold;
+    color: #6e1a25;
   }
 
   .login-carnet-replica__dni {
-    @apply m-0 mt-1 text-[8px] tracking-wider;
-    color: hsl(var(--login-caption));
-    font-family: ui-monospace, monospace;
+    @apply hidden;
   }
 
   .login-carnet-replica__valid {
-    @apply m-0 rounded-full border px-2.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.18em];
-    border-color: hsl(var(--login-border) / 0.45);
-    color: hsl(var(--login-caption) / 0.9);
-    background: hsl(var(--login-deep) / 0.35);
+    @apply hidden;
   }
 
   .login-carnet-replica__foot {
-    @apply relative border-t px-3 py-2.5 text-center;
-    border-color: hsl(var(--login-border) / 0.35);
-    background: linear-gradient(180deg, hsl(var(--login-deep) / 0.45) 0%, hsl(var(--login-surface) / 0.35) 100%);
+    @apply relative border-t px-3 pt-2 pb-2.5 text-center;
+    border-color: rgba(120, 60, 40, 0.18);
+    background: linear-gradient(180deg, #ece1c4 0%, #e3d5b0 100%);
   }
 
   .login-carnet-replica__barcode-wrap {
-    @apply mx-auto overflow-hidden rounded-md border;
-    max-width: 92%;
-    border-color: hsl(var(--login-border) / 0.25);
+    @apply mx-auto overflow-hidden rounded-sm;
+    max-width: 88%;
     background: #ffffff;
+    padding: 3px 4px;
     box-shadow:
-      0 1px 0 hsl(var(--login-foreground) / 0.06) inset,
-      0 4px 14px hsl(var(--login-deep) / 0.35);
+      0 1px 0 rgba(0, 0, 0, 0.04) inset,
+      0 2px 6px rgba(74, 15, 24, 0.15);
   }
 
   .login-carnet-replica__barcode-svg {
@@ -1046,14 +1051,14 @@
   }
 
   .login-carnet-replica__foot-code {
-    @apply m-0 mt-1.5 text-[9px] font-semibold tracking-[0.28em];
-    color: hsl(var(--login-foreground) / 0.88);
+    @apply m-0 mt-1 text-[9px] font-bold tracking-[0.22em];
+    color: #4a0f18;
     font-family: ui-monospace, monospace;
   }
 
   .login-carnet-replica__foot-role {
-    @apply m-0 mt-1.5 text-[7px] font-semibold uppercase tracking-[0.22em];
-    color: hsl(var(--login-caption) / 0.75);
+    @apply m-0 mt-1 text-[8px] font-bold uppercase tracking-[0.32em];
+    color: #6e1a25;
   }
 
   .login-carnet-card__image {
