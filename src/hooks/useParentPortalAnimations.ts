@@ -133,8 +133,7 @@ export function useParentShellAnimation(scopeRef: RefObject<HTMLElement | null>)
       gsap.fromTo(
         '[data-parent-shell-glow]',
         { scaleX: 0.6, autoAlpha: 0 },
-        { scaleX: 1, autoAlpha: 1, duration: 0.65, ease: 'power2.out' },
-        0.05
+        { scaleX: 1, autoAlpha: 1, duration: 0.65, ease: 'power2.out', delay: 0.05 }
       );
     },
     { scope: scopeRef }
