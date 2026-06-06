@@ -196,7 +196,7 @@ export const Login = () => {
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </Link>
 
-            {process.env.NODE_ENV === 'development' && (
+            {import.meta.env.DEV && (
               <p className="login-dev border-t">Dev: admin / admin123</p>
             )}
 
