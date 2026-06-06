@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    target: 'esnext',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -36,6 +37,7 @@ export default defineConfig(({ mode }) => ({
           'chart-vendor': ['recharts'],
           'utils-vendor': ['date-fns', 'zod', 'jspdf', 'exceljs'],
           'spring-vendor': ['@react-spring/web'],
+          'gsap-vendor': ['gsap', '@gsap/react'],
         },
       },
     },
@@ -43,6 +45,6 @@ export default defineConfig(({ mode }) => ({
     sourcemap: mode === 'development',
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js'],
+    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', 'gsap', '@gsap/react'],
   },
 }));

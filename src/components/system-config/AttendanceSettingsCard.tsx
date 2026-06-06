@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Clock, Save } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffDataPanelBody,
+} from '@/components/staff';
 import {
   SYSTEM_SETTINGS,
   normalizeTimeValue,
@@ -60,17 +64,13 @@ export function AttendanceSettingsCard() {
   };
 
   return (
-    <Card className="app-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Clock className="h-5 w-5 text-primary" />
-          Asistencia y horarios
-        </CardTitle>
-        <CardDescription>
-          Reglas de puntualidad para el control de llegadas y alertas de salida sin registrar.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <StaffDataPanel>
+      <StaffDataPanelHeader
+        accent="info"
+        title="Asistencia y horarios"
+        description="Reglas de puntualidad para el control de llegadas y alertas de salida sin registrar."
+      />
+      <StaffDataPanelBody className="space-y-5">
         {loading ? (
           <p className="text-sm text-muted-foreground">Cargando horarios…</p>
         ) : (
@@ -110,7 +110,7 @@ export function AttendanceSettingsCard() {
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </StaffDataPanelBody>
+    </StaffDataPanel>
   );
 }

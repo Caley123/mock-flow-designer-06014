@@ -27,9 +27,8 @@ import {
   ComposedChart,
   Line,
 } from 'recharts';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect } from 'react';
 import { PageLoader } from '@/components/ui/page-loader';
-import { dashboardService, arrivalService, incidentsService } from '@/lib/services';
 import { DashboardStats, Incident } from '@/types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -55,6 +54,12 @@ import {
 } from '@/lib/utils/reincidenceUtils';
 import { cn } from '@/lib/utils';
 import type { ReincidenceLevel } from '@/types';
+import {
+  useDashboardStatsQuery,
+  useDepartureAlertsQuery,
+  useRecentIncidentsQuery,
+  useMonthlyTrendQuery,
+} from '@/hooks/queries/useDashboardQueries';
 
 /** Paleta ejecutiva para gráficos (azul pizarra, sin acentos chillones) */
 const CHART = {
@@ -65,91 +70,36 @@ const CHART = {
 };
 
 export const Dashboard = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [departureAlerts, setDepartureAlerts] = useState<Array<{
-    record: any;
-    hoursSinceArrival: number;
-    isCritical: boolean;
-  }>>([]);
-  const [recentIncidents, setRecentIncidents] = useState<Incident[]>([]);
-  const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; incidents: number }[]>([]);
+  const statsQuery = useDashboardStatsQuery();
+  const alertsQuery = useDepartureAlertsQuery();
+  const recentIncidentsQuery = useRecentIncidentsQuery();
+  const monthlyTrendQuery = useMonthlyTrendQuery();
   const navigate = useNavigate();
-  const isMountedRef = useRef(true);
-  
+
   usePerformanceMetrics('Dashboard');
 
   useEffect(() => {
-    isMountedRef.current = true;
-    
-    const fetchDashboardData = async () => {
-      if (!isMountedRef.current) return;
-      
-      setLoading(true);
-      
-      try {
-        const [
-          statsResult,
-          alertsResult,
-          incidentsResult,
-          trendResult,
-        ] = await Promise.all([
-          dashboardService.getDashboardStats(),
-          arrivalService.getDepartureAlerts(),
-          incidentsService.getAll({ limit: 6, offset: 0 }),
-          dashboardService.getMonthlyTrend(),
-        ]);
+    if (statsQuery.isError) {
+      toast.error('Error al cargar estadísticas del dashboard');
+    }
+  }, [statsQuery.isError]);
 
-        if (!isMountedRef.current) return;
+  useEffect(() => {
+    if (recentIncidentsQuery.isError) {
+      toast.error('Error al cargar incidencias recientes');
+    }
+  }, [recentIncidentsQuery.isError]);
 
-        if (statsResult.error) {
-          console.error('Error fetching dashboard data:', statsResult.error);
-          toast.error('Error al cargar estadísticas del dashboard');
-          setStats(null);
-        } else if (statsResult.stats) {
-          setStats(statsResult.stats);
-        }
+  const loading =
+    statsQuery.isLoading ||
+    alertsQuery.isLoading ||
+    recentIncidentsQuery.isLoading ||
+    monthlyTrendQuery.isLoading;
 
-        if (!alertsResult.error && alertsResult.alerts) {
-          setDepartureAlerts(alertsResult.alerts);
-        }
-
-        if (!incidentsResult.error && incidentsResult.incidents) {
-          setRecentIncidents(incidentsResult.incidents);
-        }
-
-        if (!trendResult.error && trendResult.monthlyTrend) {
-          setMonthlyTrend(trendResult.monthlyTrend);
-        }
-      } catch (error) {
-        if (!isMountedRef.current) return;
-        console.error('Error fetching dashboard data:', error);
-        toast.error('Error al cargar datos del dashboard');
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchDashboardData();
-    
-    // Actualizar alertas cada 5 minutos
-    const interval = setInterval(() => {
-      if (isMountedRef.current) {
-        arrivalService.getDepartureAlerts().then(({ alerts }) => {
-          if (isMountedRef.current && alerts) {
-            setDepartureAlerts(alerts);
-          }
-        });
-      }
-    }, 5 * 60 * 1000);
-
-    return () => {
-      isMountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, []);
+  const stats: DashboardStats | null = statsQuery.data ?? null;
+  const departureAlerts = alertsQuery.data ?? [];
+  const recentIncidents: Incident[] = recentIncidentsQuery.data ?? [];
+  const monthlyTrend = monthlyTrendQuery.data ?? [];
 
   if (loading) {
     return <PageLoader message="Cargando estadísticas del dashboard..." />;

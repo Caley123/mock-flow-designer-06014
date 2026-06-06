@@ -92,15 +92,25 @@ function getNowHHMM(): string {
   return `${hh}:${mm}`;
 }
 
+export type CreateArrivalOptions = {
+  date?: string;
+  arrivalTime?: string;
+  status?: 'A tiempo' | 'Tarde';
+};
+
 /**
  * Registrar una llegada de estudiante
  */
 export async function createArrivalRecord(
   studentId: number,
-  registeredBy?: number
+  registeredBy?: number,
+  options?: CreateArrivalOptions
 ): Promise<{ record: ArrivalRecord | null; error: string | null }> {
   try {
-    const { date: formattedDate, time: formattedTime } = getLimaNow();
+    const { date: formattedDate, time: formattedTime } =
+      options?.date && options?.arrivalTime
+        ? { date: options.date, time: options.arrivalTime }
+        : getLimaNow();
 
     const insertData: Record<string, unknown> = {
       id_estudiante: studentId,
@@ -113,8 +123,12 @@ export async function createArrivalRecord(
       insertData.registrado_por = registeredBy;
     }
 
-    const limitHHMM = await getArrivalLimitTime();
-    insertData.estado = formattedTime <= limitHHMM ? 'A tiempo' : 'Tarde';
+    if (options?.status) {
+      insertData.estado = options.status;
+    } else {
+      const limitHHMM = await getArrivalLimitTime();
+      insertData.estado = formattedTime <= limitHHMM ? 'A tiempo' : 'Tarde';
+    }
 
     const { data, error } = await supabase
       .from('registros_llegada')

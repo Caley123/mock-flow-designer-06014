@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { CalendarRange, Save, Info } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Save, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffDataPanelBody,
+} from '@/components/staff';
 import { reincidenceConfigService } from '@/lib/services';
 import type { ReincidenceLevel, ReincidenceSettings } from '@/types';
 import { toast } from 'sonner';
@@ -82,18 +86,13 @@ export function ReincidenceSettingsCard() {
   const level0Max = Math.max(0, (thresholds.level1 || 1) - 1);
 
   return (
-    <Card className="app-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarRange className="h-5 w-5 text-primary" />
-          Reincidencia
-        </CardTitle>
-        <CardDescription>
-          Suma los puntos de las faltas activas del catálogo dentro de la ventana de días y asigna
-          el nivel de comportamiento (0–5) del estudiante.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <StaffDataPanel>
+      <StaffDataPanelHeader
+        accent="warning"
+        title="Reincidencia"
+        description="Suma los puntos de las faltas activas del catálogo dentro de la ventana de días y asigna el nivel de comportamiento (0–5) del estudiante."
+      />
+      <StaffDataPanelBody className="space-y-6">
         {loading ? (
           <p className="text-sm text-muted-foreground">Cargando reglas de reincidencia…</p>
         ) : (
@@ -185,7 +184,7 @@ export function ReincidenceSettingsCard() {
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </StaffDataPanelBody>
+    </StaffDataPanel>
   );
 }

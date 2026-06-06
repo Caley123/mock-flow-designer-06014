@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -11,8 +11,26 @@ import {
 } from '@/components/ui/select';
 import { arrivalService } from '@/lib/services';
 import { EducationalLevel, MonthlyAttendanceRow } from '@/types';
-import { Loader2, Printer, FileDown, FileSpreadsheet, Calendar } from 'lucide-react';
+import {
+  Loader2,
+  Printer,
+  FileDown,
+  FileSpreadsheet,
+  Calendar,
+  Users,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -376,8 +394,7 @@ export const AttendanceReport = () => {
             }
           }`}
       </style>
-      <div id="attendance-report" className="app-page app-page-shell relative z-10">
-        <div className="print-hidden space-y-6">
+      <div id="attendance-report" className="app-page app-page-shell relative z-10 space-y-6">
         <PageHeader
           icon={Calendar}
           eyebrow="Reportes"
@@ -390,15 +407,16 @@ export const AttendanceReport = () => {
                 : 'Consolidado de asistencia según el bimestre seleccionado.'
           }
           accent="success"
+          className="print-hidden"
         >
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 fetchReport();
-              }} 
+              }}
               disabled={loading}
             >
               {loading ? (
@@ -410,37 +428,37 @@ export const AttendanceReport = () => {
                 'Actualizar'
               )}
             </Button>
-            <Button 
+            <Button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handlePrint();
-              }} 
-              variant="ghost" 
+              }}
+              variant="ghost"
               disabled={rows.length === 0}
             >
               <Printer className="w-4 h-4 mr-2" />
               Imprimir
             </Button>
-            <Button 
+            <Button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 exportToPDF();
-              }} 
-              variant="ghost" 
+              }}
+              variant="ghost"
               disabled={rows.length === 0}
             >
               <FileDown className="w-4 h-4 mr-2" />
               Exportar PDF
             </Button>
-            <Button 
+            <Button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 exportToExcel();
-              }} 
-              variant="ghost" 
+              }}
+              variant="ghost"
               disabled={rows.length === 0}
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
@@ -449,153 +467,216 @@ export const AttendanceReport = () => {
           </div>
         </PageHeader>
 
-        <Card className="print-hidden app-card">
-          <CardHeader className="app-card-header">
-            <CardTitle>Filtros</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-6">
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Tipo de Reporte</p>
-              <Select value={reportType} onValueChange={(value: 'monthly' | 'bimestral') => setReportType(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monthly">Mensual</SelectItem>
-                  <SelectItem value="bimestral">Bimestral</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
+          <StaffKpiStat
+            label="Estudiantes"
+            value={rows.length}
+            hint={reportType === 'monthly' ? `Mes ${monthValue}` : `Año ${añoEscolar}`}
+            icon={Users}
+            tone="info"
+          />
+          <StaffKpiStat
+            label="A tiempo"
+            value={totalsGlobal.onTime}
+            hint="Llegadas puntuales"
+            hintIcon={CheckCircle2}
+            icon={CheckCircle2}
+            tone="success"
+          />
+          <StaffKpiStat
+            label="Tardanzas"
+            value={totalsGlobal.late}
+            hint="Registros con retraso"
+            hintIcon={Clock}
+            icon={Clock}
+            tone="warning"
+          />
+          <StaffKpiStat
+            label="Injustificadas"
+            value={totalsGlobal.unjustified}
+            hint={`${totalsGlobal.justified} justificadas`}
+            hintIcon={XCircle}
+            icon={AlertTriangle}
+            tone="accent"
+          />
+        </div>
+
+        <StaffToolbar
+          className="print-hidden"
+          title="Filtros del reporte"
+          description="Tipo de período, mes o bimestre, y criterios por aula"
+          footer={
+            <div className="flex flex-wrap gap-4 text-sm">
+              {Object.entries(statusMap).map(([key, value]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-semibold ${value.className}`}
+                  >
+                    {value.label}
+                  </span>
+                  <span className="text-muted-foreground">{value.description}</span>
+                </div>
+              ))}
             </div>
-            {reportType === 'monthly' ? (
+          }
+        >
+          <div className="space-y-2">
+            <Label>Tipo de reporte</Label>
+            <Select value={reportType} onValueChange={(value: 'monthly' | 'bimestral') => setReportType(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Mensual</SelectItem>
+                <SelectItem value="bimestral">Bimestral</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {reportType === 'monthly' ? (
+            <div className="space-y-2">
+              <Label htmlFor="attendance-month">Mes</Label>
+              <Input
+                id="attendance-month"
+                type="month"
+                value={monthValue}
+                onChange={(e) => setMonthValue(e.target.value)}
+              />
+            </div>
+          ) : (
+            <>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Mes</p>
+                <Label htmlFor="attendance-year">Año escolar</Label>
                 <Input
-                  type="month"
-                  value={monthValue}
-                  onChange={(e) => setMonthValue(e.target.value)}
+                  id="attendance-year"
+                  type="number"
+                  value={añoEscolar}
+                  onChange={(e) => setAñoEscolar(Number(e.target.value))}
+                  min={2020}
+                  max={2050}
                 />
               </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Año Escolar</p>
-                  <Input
-                    type="number"
-                    value={añoEscolar}
-                    onChange={(e) => setAñoEscolar(Number(e.target.value))}
-                    min={2020}
-                    max={2050}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Bimestre</p>
-                  <Select value={bimestre === 'all' ? 'all' : String(bimestre)} onValueChange={(value) => setBimestre(value === 'all' ? 'all' : (Number(value) as Bimestre))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar bimestre" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los bimestres</SelectItem>
-                      {getAllBimestres(añoEscolar).map((b) => (
-                        <SelectItem key={b.numero} value={String(b.numero)}>
-                          {formatBimestreLabel(b)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Nivel</p>
-              <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {LEVELS.map((level) => (
-                    <SelectItem key={level} value={level}>
-                      {level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Grado</p>
-              <Select value={gradeFilter} onValueChange={(value) => setGradeFilter(value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {GRADES.map((grade) => (
-                    <SelectItem key={grade} value={grade}>
-                      {grade}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Sección</p>
-              <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {SECTIONS.map((section) => (
-                    <SelectItem key={section} value={section}>
-                      {section}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 flex items-end">
-              <Button
-                className="w-full"
-                disabled={loading}
-                onClick={fetchReport}
-              >
-                {loading ? 'Cargando...' : 'Consultar'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="space-y-2">
+                <Label>Bimestre</Label>
+                <Select
+                  value={bimestre === 'all' ? 'all' : String(bimestre)}
+                  onValueChange={(value) =>
+                    setBimestre(value === 'all' ? 'all' : (Number(value) as Bimestre))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar bimestre" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los bimestres</SelectItem>
+                    {getAllBimestres(añoEscolar).map((b) => (
+                      <SelectItem key={b.numero} value={String(b.numero)}>
+                        {formatBimestreLabel(b)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+          <div className="space-y-2">
+            <Label>Nivel</Label>
+            <Select
+              value={levelFilter}
+              onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Grado</Label>
+            <Select value={gradeFilter} onValueChange={(value) => setGradeFilter(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {GRADES.map((grade) => (
+                  <SelectItem key={grade} value={grade}>
+                    {grade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Sección</Label>
+            <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {SECTIONS.map((section) => (
+                  <SelectItem key={section} value={section}>
+                    {section}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button className="w-full" disabled={loading} onClick={fetchReport}>
+              {loading ? 'Cargando...' : 'Consultar'}
+            </Button>
+          </div>
+        </StaffToolbar>
 
-        <Card className="app-card">
-          <CardHeader>
-            <CardTitle>Planilla mensual</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <StaffDataPanel>
+          <StaffDataPanelHeader
+            accent="success"
+            title={reportType === 'monthly' ? 'Planilla mensual' : 'Planilla bimestral'}
+            description={`${rows.length} estudiantes · ${daysInMonth} días en el período`}
+          />
+          <div className="p-4 pt-0 sm:p-5 sm:pt-0">
             {loading ? (
               <div className="flex items-center justify-center py-16 text-muted-foreground">
-                <Loader2 className="w-6 h-6 animate-spin mr-3" />
+                <Loader2 className="mr-3 h-6 w-6 animate-spin" />
                 Cargando asistencias...
               </div>
             ) : rows.length === 0 ? (
-              <div className="text-center text-muted-foreground py-16">No hay datos para los filtros seleccionados</div>
+              <StaffEmptyState
+                icon={Calendar}
+                title="Sin datos para mostrar"
+                description="Ajuste los filtros y pulse Consultar para generar el reporte"
+              />
             ) : (
               <div className="overflow-auto rounded-lg border">
                 <table className="min-w-[960px] text-xs">
                   <thead>
-                    <tr className="bg-muted/50 text-muted-foreground text-center">
-                      <th className="sticky left-0 bg-muted/50 px-3 py-2 text-left align-middle">Estudiante</th>
+                    <tr className="bg-muted/50 text-center text-muted-foreground">
+                      <th className="sticky left-0 bg-muted/50 px-3 py-2 text-left align-middle">
+                        Estudiante
+                      </th>
                       {daysArray.map((day) => (
-                        <th key={day} className="px-2 py-2 min-w-[32px]">{day}</th>
+                        <th key={day} className="min-w-[32px] px-2 py-2">
+                          {day}
+                        </th>
                       ))}
-                      <th className="px-2 py-2 min-w-[48px]">A</th>
-                      <th className="px-2 py-2 min-w-[48px]">T</th>
-                      <th className="px-2 py-2 min-w-[48px]">J</th>
-                      <th className="px-2 py-2 min-w-[48px]">I</th>
+                      <th className="min-w-[48px] px-2 py-2">A</th>
+                      <th className="min-w-[48px] px-2 py-2">T</th>
+                      <th className="min-w-[48px] px-2 py-2">J</th>
+                      <th className="min-w-[48px] px-2 py-2">I</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.student.id} className="border-t">
-                        <td className="sticky left-0 bg-background px-3 py-2 font-medium text-sm">
+                        <td className="sticky left-0 bg-background px-3 py-2 text-sm font-medium">
                           <div>{row.student.fullName}</div>
                           <div className="text-[10px] text-muted-foreground">
                             {row.student.level} • {row.student.grade} {row.student.section}
@@ -613,59 +694,26 @@ export const AttendanceReport = () => {
                             </td>
                           );
                         })}
-                        <td className="px-2 py-2 text-center font-semibold text-emerald-700">{row.totals.onTime}</td>
-                        <td className="px-2 py-2 text-center font-semibold text-amber-700">{row.totals.late}</td>
-                        <td className="px-2 py-2 text-center font-semibold text-blue-700">{row.totals.justified}</td>
-                        <td className="px-2 py-2 text-center font-semibold text-rose-700">{row.totals.unjustified}</td>
+                        <td className="px-2 py-2 text-center font-semibold text-emerald-700">
+                          {row.totals.onTime}
+                        </td>
+                        <td className="px-2 py-2 text-center font-semibold text-amber-700">
+                          {row.totals.late}
+                        </td>
+                        <td className="px-2 py-2 text-center font-semibold text-blue-700">
+                          {row.totals.justified}
+                        </td>
+                        <td className="px-2 py-2 text-center font-semibold text-rose-700">
+                          {row.totals.unjustified}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="app-card">
-          <CardHeader>
-            <CardTitle>Resumen</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-lg border p-4">
-              <p className="text-xs uppercase text-muted-foreground">A tiempo</p>
-              <p className="text-2xl font-bold text-emerald-700">{totalsGlobal.onTime}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs uppercase text-muted-foreground">Tardanzas</p>
-              <p className="text-2xl font-bold text-amber-700">{totalsGlobal.late}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs uppercase text-muted-foreground">Justificadas</p>
-              <p className="text-2xl font-bold text-blue-700">{totalsGlobal.justified}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs uppercase text-muted-foreground">Injustificadas</p>
-              <p className="text-2xl font-bold text-rose-700">{totalsGlobal.unjustified}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="app-card">
-          <CardHeader>
-            <CardTitle>Leyenda</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-4 text-sm">
-            {Object.entries(statusMap).map(([key, value]) => (
-              <div key={key} className="flex items-center gap-2">
-                <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-semibold ${value.className}`}>
-                  {value.label}
-                </span>
-                <span className="text-muted-foreground">{value.description}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        </div>
+          </div>
+        </StaffDataPanel>
       </div>
     </div>
   );

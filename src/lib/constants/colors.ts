@@ -1,3 +1,7 @@
+/**
+ * Colores de marca SIE — reflejan tokens en src/index.css (:root).
+ * Fuente canónica: variables CSS (--primary, --success, etc.).
+ */
 export const COLORS = {
   // Azul corporativo — equilibrio entre sobrio y vivo
   primary: 'hsl(217, 52%, 42%)',

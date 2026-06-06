@@ -1,6 +1,32 @@
 import { supabase } from '../supabaseClient';
 import { Student, EstudianteDB, EducationalLevel } from '@/types';
 import { resolveStudentProfilePhotoUrl } from '@/lib/utils/profilePhoto';
+import { getCached, setCached, invalidateCache } from '@/lib/utils/memoryCache';
+
+const SCANNER_BARCODE_INDEX_KEY = 'students:scanner-barcode-index';
+const SCANNER_BARCODE_INDEX_TTL = 10 * 60 * 1000;
+
+const SCANNER_SELECT =
+  'id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, foto_perfil, activo, telefono_contacto, telefono_emergencia';
+
+let scannerIndexPromise: Promise<Map<string, Student>> | null = null;
+
+function mapScannerRow(data: EstudianteDB): Student {
+  return {
+    id: data.id_estudiante,
+    fullName: data.nombre_completo,
+    grade: data.grado,
+    section: data.seccion,
+    level: data.nivel_educativo as EducationalLevel,
+    barcode: data.codigo_barras,
+    profilePhoto: mapProfilePhoto(data.foto_perfil),
+    reincidenceLevel: 0,
+    faultsLast60Days: 0,
+    active: data.activo,
+    contactPhone: data.telefono_contacto || null,
+    emergencyPhone: data.telefono_emergencia || null,
+  };
+}
 
 function mapProfilePhoto(raw: string | null | undefined): string | null | undefined {
   const resolved = resolveStudentProfilePhotoUrl(raw);
@@ -11,6 +37,50 @@ function mapProfilePhoto(raw: string | null | undefined): string | null | undefi
  * Servicio de estudiantes
  */
 export const studentsService = {
+  /**
+   * Índice en memoria de carnets activos para escaneo instantáneo (tutor).
+   */
+  async prefetchBarcodeIndex(): Promise<Map<string, Student>> {
+    const cached = getCached<Map<string, Student>>(SCANNER_BARCODE_INDEX_KEY);
+    if (cached) return cached;
+
+    if (!scannerIndexPromise) {
+      scannerIndexPromise = (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('estudiantes')
+            .select(SCANNER_SELECT)
+            .eq('activo', true);
+
+          if (error) throw error;
+
+          const map = new Map<string, Student>();
+          for (const row of data || []) {
+            const code = (row as EstudianteDB).codigo_barras?.trim();
+            if (!code) continue;
+            map.set(code, mapScannerRow(row as EstudianteDB));
+          }
+
+          setCached(SCANNER_BARCODE_INDEX_KEY, map, SCANNER_BARCODE_INDEX_TTL);
+          return map;
+        } finally {
+          scannerIndexPromise = null;
+        }
+      })();
+    }
+
+    return scannerIndexPromise;
+  },
+
+  lookupBarcodeInIndex(index: Map<string, Student>, barcode: string): Student | null {
+    return index.get(barcode.trim()) ?? null;
+  },
+
+  /** Invalida caché tras alta/edición de estudiantes (opcional desde admin). */
+  invalidateScannerBarcodeIndex(): void {
+    invalidateCache(SCANNER_BARCODE_INDEX_KEY);
+  },
+
   /**
    * Buscar estudiante por código de barras
    */
@@ -335,6 +405,48 @@ export const studentsService = {
     } catch (error: any) {
       console.error('Error en create:', error);
       return { student: null, error: error.message || 'Error al crear estudiante' };
+    }
+  },
+
+  /**
+   * Subir foto de perfil al bucket fotos-perfil
+   */
+  async uploadProfilePhoto(file: File): Promise<{ url: string | null; error: string | null }> {
+    try {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const normalizedMime =
+        file.type === 'image/jpg' || (ext === 'jpg' && !file.type) ? 'image/jpeg' : file.type;
+
+      if (!normalizedMime.match(/^image\/(jpeg|png)$/)) {
+        return { url: null, error: 'Solo se permiten archivos JPG o PNG' };
+      }
+
+      if (file.size > 5242880) {
+        return { url: null, error: 'El archivo no puede superar los 5MB' };
+      }
+
+      const fileName = `${Date.now()}.${ext || 'jpg'}`;
+      const filePath = `profile/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('fotos-perfil')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: normalizedMime,
+        });
+
+      if (uploadError) {
+        console.error('Error al subir foto de perfil:', uploadError);
+        return { url: null, error: uploadError.message };
+      }
+
+      const { data: urlData } = supabase.storage.from('fotos-perfil').getPublicUrl(filePath);
+      return { url: urlData.publicUrl, error: null };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al subir foto';
+      console.error('Error en uploadProfilePhoto:', error);
+      return { url: null, error: message };
     }
   },
 

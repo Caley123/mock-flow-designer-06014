@@ -23,7 +23,7 @@ const INCIDENTS = [
 export const LoginLaptopMockup = () => {
   return (
     <div className="login-laptop" aria-hidden>
-      <div className="login-laptop__float">
+      <div className="login-laptop__float" data-login-laptop-inner>
         <div className="login-laptop__lid">
           <div className="login-laptop__bezel">
             <div className="login-laptop__screen">

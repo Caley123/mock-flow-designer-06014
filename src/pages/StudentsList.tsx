@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -37,9 +36,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Eye, Edit, UserPlus, Download, Loader2, Upload, Trash2, Users, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  Eye,
+  Edit,
+  UserPlus,
+  Download,
+  Loader2,
+  Upload,
+  Trash2,
+  Users,
+  FileSpreadsheet,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+} from 'lucide-react';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
 import { exportStudentsListExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PageLoader } from '@/components/ui/page-loader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { Badge } from '@/components/ui/badge';
 import { useForm } from 'react-hook-form';
@@ -48,7 +70,7 @@ import * as z from 'zod';
 import { toast } from 'sonner';
 import { studentsService } from '@/lib/services';
 import { Student, EducationalLevel } from '@/types';
-import { supabase } from '@/lib/supabaseClient';
+import { useStudentsQuery, useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
 
 const EDUCATIONAL_LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
 
@@ -76,20 +98,20 @@ type StudentFormValues = z.infer<typeof studentFormSchema>;
 
 export const StudentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
-  const [students, setStudents] = useState<Student[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMountedRef = useRef(true);
-  
-  // Métricas de rendimiento
+  const invalidateStudents = useInvalidateStudents();
+
   usePerformanceMetrics('StudentsList');
   // Estados temporales para Select dentro del Dialog
   const [tempGrado, setTempGrado] = useState<string>('');
@@ -135,100 +157,48 @@ export const StudentsList = () => {
   }, [dialogOpen]);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    loadStudents();
-    
-    return () => {
-      isMountedRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (isMountedRef.current) {
-      loadStudents();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelFilter]);
-
-  const loadStudents = async () => {
-    if (!isMountedRef.current) return;
-    
-    setLoading(true);
-    try {
-      const levelValue = levelFilter === 'all' ? undefined : levelFilter;
-      const { students: studentsList, error } = await studentsService.getAll({
-        search: searchTerm || undefined,
-        level: levelValue,
-        active: true,
-      });
-      
-      if (!isMountedRef.current) return;
-      
-      if (error) {
-        toast.error('Error al cargar estudiantes');
-        setStudents([]);
-      } else {
-        setStudents(studentsList);
-      }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error en loadStudents:', error);
-      toast.error('Error al cargar estudiantes');
-      setStudents([]);
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (isMountedRef.current && searchTerm !== undefined) {
-        loadStudents();
-      }
-    }, 500);
+    const timeoutId = setTimeout(() => setDebouncedSearch(searchTerm), 500);
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
 
-  // Si hay searchTerm, el filtrado ya se hizo en el servidor
-  // Solo aplicamos filtro adicional si searchTerm está vacío (para filtrar localmente)
-  const filteredStudents = searchTerm 
-    ? students // Ya filtrado por el servidor
-    : students.filter(student =>
-        student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.barcode.includes(searchTerm) ||
-        student.grade.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const studentFilters = useMemo(
+    () => ({
+      search: debouncedSearch || undefined,
+      level: levelFilter === 'all' ? undefined : levelFilter,
+    }),
+    [debouncedSearch, levelFilter]
+  );
+
+  const {
+    data: students = [],
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useStudentsQuery(studentFilters);
+
+  useEffect(() => {
+    if (isError) {
+      toast.error('Error al cargar estudiantes');
+    }
+  }, [isError]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const filteredStudents = students;
 
   const uploadProfilePhoto = async (file: File): Promise<string | null> => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `profile/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('fotos-perfil')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Error al subir foto:', uploadError);
-        return null;
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('fotos-perfil')
-        .getPublicUrl(filePath);
-
-      return urlData.publicUrl;
-    } catch (error) {
-      console.error('Error en uploadProfilePhoto:', error);
+    const { url, error } = await studentsService.uploadProfilePhoto(file);
+    if (error) {
+      console.error('Error al subir foto:', error);
       return null;
     }
+    return url;
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,9 +225,9 @@ export const StudentsList = () => {
 
   const onSubmit = async (data: StudentFormValues) => {
     if (!isMountedRef.current) return;
-    
-    setLoading(true);
-    
+
+    setIsSubmitting(true);
+
     try {
       let photoUrl: string | undefined = undefined;
       if (photoFile) {
@@ -293,7 +263,7 @@ export const StudentsList = () => {
         setPhotoFile(null);
         setPhotoPreview('');
         setTempNivel('');
-        loadStudents();
+        invalidateStudents();
       }
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -301,7 +271,7 @@ export const StudentsList = () => {
       toast.error('Error al crear estudiante');
     } finally {
       if (isMountedRef.current) {
-        setLoading(false);
+        setIsSubmitting(false);
       }
     }
   };
@@ -334,9 +304,9 @@ export const StudentsList = () => {
 
   const onEditSubmit = async (data: StudentFormValues) => {
     if (!selectedStudent || !isMountedRef.current) return;
-    
-    setLoading(true);
-    
+
+    setIsSubmitting(true);
+
     try {
       let photoUrl: string | undefined = selectedStudent.profilePhoto;
       if (photoFile) {
@@ -373,7 +343,7 @@ export const StudentsList = () => {
         setPhotoFile(null);
         setPhotoPreview('');
         setTempNivel('');
-        loadStudents();
+        invalidateStudents();
       }
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -381,7 +351,7 @@ export const StudentsList = () => {
       toast.error('Error al actualizar estudiante');
     } finally {
       if (isMountedRef.current) {
-        setLoading(false);
+        setIsSubmitting(false);
       }
     }
   };
@@ -399,14 +369,8 @@ export const StudentsList = () => {
     nivelAlto: students.filter(s => (s.reincidenceLevel || 0) >= 3).length,
   };
 
-  if (loading && students.length === 0) {
-    return (
-      <div className="app-page">
-        <div className="app-page-state">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </div>
-    );
+  if (isLoading && students.length === 0) {
+    return <PageLoader message="Cargando estudiantes..." />;
   }
 
   return (
@@ -681,8 +645,8 @@ export const StudentsList = () => {
                     <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button type="submit" variant="success" disabled={loading || uploadingPhoto}>
-                      {loading ? (
+                    <Button type="submit" variant="success" disabled={isSubmitting || uploadingPhoto}>
+                      {isSubmitting ? (
                         <span className="flex items-center">
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Guardando...
@@ -919,8 +883,8 @@ export const StudentsList = () => {
                     <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button type="submit" variant="success" disabled={loading || uploadingPhoto}>
-                      {loading ? (
+                    <Button type="submit" variant="success" disabled={isSubmitting || uploadingPhoto}>
+                      {isSubmitting ? (
                         <span className="flex items-center">
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Actualizando...
@@ -937,86 +901,93 @@ export const StudentsList = () => {
         </div>
       </PageHeader>
 
-      <Card className="app-toolbar">
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por nombre, código de barras o grado..."
-                className="pl-10"
-              />
-            </div>
-            <Select
-              value={levelFilter}
-              onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
-            >
-              <SelectTrigger className="md:w-[200px]">
-                <SelectValue placeholder="Nivel educativo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los niveles</SelectItem>
-                {EDUCATIONAL_LEVELS.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {level}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" onClick={loadStudents} className="md:w-auto">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Actualizar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Students Stats */}
-      <div className="app-kpi-grid">
-        <Card className="app-card">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-sm text-muted-foreground">Total Estudiantes</p>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">
-              {stats.sinIncidencias}
-            </div>
-            <p className="text-sm text-muted-foreground">Sin Incidencias</p>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-yellow-600">
-              {stats.nivelModerado}
-            </div>
-            <p className="text-sm text-muted-foreground">Nivel Moderado</p>
-          </CardContent>
-        </Card>
-        <Card className="app-card">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600">
-              {stats.nivelAlto}
-            </div>
-            <p className="text-sm text-muted-foreground">Nivel Alto</p>
-          </CardContent>
-        </Card>
+      <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
+        <StaffKpiStat
+          label="En listado"
+          value={filteredStudents.length}
+          hint={`${stats.total} cargados`}
+          icon={Users}
+          tone="info"
+        />
+        <StaffKpiStat
+          label="Sin incidencias"
+          value={stats.sinIncidencias}
+          hint="Reincidencia nivel 0"
+          hintIcon={CheckCircle2}
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StaffKpiStat
+          label="Nivel moderado"
+          value={stats.nivelModerado}
+          hint="Reincidencia 1–2"
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Nivel alto"
+          value={stats.nivelAlto}
+          hint="Reincidencia ≥ 3"
+          hintIcon={AlertTriangle}
+          icon={AlertTriangle}
+          tone="accent"
+        />
       </div>
 
-      {/* Students Table */}
-      <Card className="app-card">
-        <CardHeader>
-          <CardTitle>Listado de Estudiantes</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <StaffToolbar title="Buscar y filtrar" description="Refine por nombre, código o nivel educativo">
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="students-search">Buscar</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="students-search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Nombre, código de barras o grado..."
+              className="pl-10"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Nivel educativo</Label>
+          <Select
+            value={levelFilter}
+            onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Nivel educativo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los niveles</SelectItem>
+              {EDUCATIONAL_LEVELS.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end">
+          <Button variant="outline" onClick={() => refetch()} className="w-full" disabled={isFetching}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+        </div>
+      </StaffToolbar>
+
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          title={`Estudiantes (${filteredStudents.length})`}
+          description="Datos del alumno, contacto familiar y nivel de reincidencia"
+        />
+        <div className="p-4 pt-0 sm:p-5 sm:pt-0">
           {filteredStudents.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No se encontraron estudiantes
-            </div>
+            <StaffEmptyState
+              icon={Users}
+              title="No se encontraron estudiantes"
+              description="Prueba otro término de búsqueda o cambia el filtro de nivel"
+            />
           ) : (
             <div className="app-table-wrap">
             <Table role="table" aria-label="Lista de estudiantes">
@@ -1105,8 +1076,8 @@ export const StudentsList = () => {
             </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </StaffDataPanel>
     </div>
   );
 };

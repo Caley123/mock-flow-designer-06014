@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSpring, useTrail, animated, config } from '@react-spring/web';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -37,21 +37,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { PageLoader } from '@/components/ui/page-loader';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { incidentsService } from '@/lib/services';
 import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
+import { useIncidentsQuery } from '@/hooks/queries/useIncidentsQuery';
 
 const AnimatedDiv = animated('div');
 
 export const IncidentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [loading, setLoading] = useState(true);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
-  const isMountedRef = useRef(true);
 
-  // Animaciones (hooks deben ir antes de cualquier return condicional)
   const headerSpring = useSpring({
     from: { opacity: 0, transform: 'translateY(-16px)' },
     to: { opacity: 1, transform: 'translateY(0px)' },
@@ -70,39 +66,26 @@ export const IncidentsList = () => {
     config: config.gentle,
   });
 
-  // Métricas de rendimiento
   usePerformanceMetrics('IncidentsList');
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    loadIncidents();
-    
-    return () => {
-      isMountedRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const incidentFilters = useMemo(
+    () => ({
+      nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+    }),
+    [levelFilter]
+  );
 
-  const loadIncidents = async () => {
-    if (!isMountedRef.current) return;
-    setLoading(true);
-    try {
-      const { incidents: incidentsList, error } = await incidentsService.getAll({
-        nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
-      });
-      if (!isMountedRef.current) return;
-      if (error) {
-        toast.error('Error al cargar incidencias');
-        setIncidents([]);
-      } else {
-        setIncidents(incidentsList);
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+  const {
+    data: incidents = [],
+    isLoading,
+    isError,
+  } = useIncidentsQuery(incidentFilters);
+
+  useEffect(() => {
+    if (isError) {
+      toast.error('Error al cargar incidencias');
     }
-  };
+  }, [isError]);
 
   const filteredIncidents = incidents.filter(incident =>
     incident.id.toString().includes(searchTerm) ||
@@ -116,12 +99,7 @@ export const IncidentsList = () => {
     void exportIncidentsListExcel(filteredIncidents, filters);
   };
 
-  useEffect(() => {
-    loadIncidents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelFilter]);
-
-  if (loading) {
+  if (isLoading) {
     return <PageLoader message="Cargando incidencias..." />;
   }
 

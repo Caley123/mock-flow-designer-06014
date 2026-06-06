@@ -1,14 +1,31 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-// Reemplazado Select de Radix por <select> nativo para evitar errores de reconciliación
 import { Student, FaultType } from '@/types';
-import { Barcode, Search, AlertTriangle, Upload, Save, X, Loader2, FileText } from 'lucide-react';
+import {
+  Barcode,
+  Search,
+  AlertTriangle,
+  Upload,
+  Save,
+  X,
+  Loader2,
+  FileText,
+  ListChecks,
+  UserCheck,
+  ClipboardList,
+} from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { StaffWorkflowSteps } from '@/components/staff';
+import {
+  StaffWorkflowSteps,
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffEmptyState,
+} from '@/components/staff';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -19,6 +36,10 @@ import { studentsService, faultsService, incidentsService, evidenceService } fro
 import { authService } from '@/lib/services';
 import { ErrorDialog } from '@/components/ui/error-dialog';
 import { useErrorDialog } from '@/hooks/useErrorDialog';
+import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { queryKeys } from '@/lib/query/queryKeys';
+import { useQueryClient } from '@tanstack/react-query';
 
 export const RegisterIncident = () => {
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -35,6 +56,9 @@ export const RegisterIncident = () => {
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const { errorDialog, showError, closeError } = useErrorDialog();
   const isMountedRef = useRef(true);
+  const invalidateIncidents = useInvalidateIncidents();
+  const invalidateStudents = useInvalidateStudents();
+  const queryClient = useQueryClient();
 
   // Cargar faltas al montar el componente
   useEffect(() => {
@@ -241,6 +265,9 @@ export const RegisterIncident = () => {
       setSearchResults([]);
       setEvidenceFiles([]);
       setEvidencePreviews([]);
+      invalidateIncidents();
+      invalidateStudents();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
     } catch (error: any) {
       if (!isMountedRef.current) return;
       showError('Error al registrar incidencia. Por favor, intente nuevamente.', 'Error al Registrar');
@@ -263,6 +290,13 @@ export const RegisterIncident = () => {
   }, [faults]);
 
   const workflowStep = !selectedStudent ? 'identify' : !selectedFault ? 'fault' : 'confirm';
+
+  const workflowStepLabel =
+    workflowStep === 'identify'
+      ? 'Identificar'
+      : workflowStep === 'fault'
+        ? 'Seleccionar falta'
+        : 'Confirmar';
 
   return (
     <div className="app-page app-page-shell">
@@ -287,23 +321,54 @@ export const RegisterIncident = () => {
         ]}
       />
 
-      <Card className="app-card">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Barcode className="w-5 h-5 mr-2" />
-            Escanear Código de Barras
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
+      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+        <StaffKpiStat
+          label="Paso actual"
+          value={workflowStepLabel}
+          hint="Flujo de registro"
+          icon={ClipboardList}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Faltas en catálogo"
+          value={faults.length}
+          hint="Tipos disponibles"
+          hintIcon={ListChecks}
+          icon={ListChecks}
+          tone="info"
+        />
+        <StaffKpiStat
+          label="Estudiante"
+          value={selectedStudent ? selectedStudent.fullName.split(' ')[0] : '—'}
+          hint={
+            selectedStudent
+              ? `${selectedStudent.grade} ${selectedStudent.section}`
+              : 'Sin seleccionar'
+          }
+          hintIcon={UserCheck}
+          icon={UserCheck}
+          tone={selectedStudent ? 'success' : 'secondary'}
+        />
+      </div>
+
+      <StaffToolbar
+        title="Identificar estudiante"
+        description="Escanee el código de barras o busque por nombre"
+      >
+        <form onSubmit={handleBarcodeSubmit} className="flex gap-2 sm:col-span-2">
+          <div className="relative flex-1 space-y-2">
+            <Label htmlFor="incident-barcode">Código de barras</Label>
             <Input
+              id="incident-barcode"
               value={barcodeInput}
               onChange={(e) => setBarcodeInput(e.target.value)}
-              placeholder="Escanee o ingrese el código de barras..."
+              placeholder="Escanee o ingrese el código..."
               autoFocus
               className="font-mono"
               disabled={loading}
             />
+          </div>
+          <div className="flex items-end">
             <Button type="submit" disabled={loading}>
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -314,64 +379,84 @@ export const RegisterIncident = () => {
                 </span>
               )}
             </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Manual Search */}
-      <Card className="app-card">
-        <CardHeader className="app-card-header">
-          <CardTitle className="flex items-center">
-            <Search className="w-5 h-5 mr-2" />
-            Búsqueda Manual
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label>Buscar estudiante por nombre</Label>
-            <div className="relative">
-              <Input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Escriba el nombre del estudiante..."
-                disabled={loading}
-              />
-              {searching && (
-                <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
-              )}
-              {searchResults.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                  {searchResults.map((student) => (
-                    <div
-                      key={student.id}
-                      onClick={() => handleSearchSelect(student.id.toString())}
-                      className="px-4 py-2 hover:bg-accent cursor-pointer"
-                    >
-                      <p className="font-medium">{student.fullName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {student.grade} {student.section} • {student.barcode}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
-        </CardContent>
-      </Card>
+        </form>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="incident-search">Búsqueda por nombre</Label>
+          <div className="relative">
+            <Input
+              id="incident-search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Escriba el nombre del estudiante..."
+              disabled={loading}
+            />
+            {searching && (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
+            {searchResults.length > 0 && (
+              <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                {searchResults.map((student) => (
+                  <div
+                    key={student.id}
+                    onClick={() => handleSearchSelect(student.id.toString())}
+                    className="cursor-pointer px-4 py-2 hover:bg-accent"
+                  >
+                    <p className="font-medium">{student.fullName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {student.grade} {student.section} • {student.barcode}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </StaffToolbar>
 
-      {/* Student Info */}
-      {selectedStudent && (
+      {!selectedStudent ? (
+        <StaffDataPanel>
+          <StaffEmptyState
+            icon={Barcode}
+            title="Sin estudiante seleccionado"
+            description="Escanee un código de barras o busque por nombre para continuar"
+          />
+        </StaffDataPanel>
+      ) : (
         <>
-          <Card className="app-card border-2 border-primary">
-            <CardHeader className="app-card-header">
-              <CardTitle>Información del Estudiante</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {showReincidenceAlert && selectedStudent.reincidenceLevel && selectedStudent.reincidenceLevel >= 2 && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>¡Alerta de Reincidencia!</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">Este estudiante tiene un nivel de reincidencia {selectedStudent.reincidenceLevel}.</p>
+                <p className="font-semibold">Acción sugerida: {getSuggestedAction(selectedStudent.reincidenceLevel)}</p>
+              </AlertDescription>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowReincidenceAlert(false)}
+                className="mt-2"
+              >
+                <span className="flex items-center">
+                  <X className="w-4 h-4 mr-2" />
+                  Cerrar
+                </span>
+              </Button>
+            </Alert>
+          )}
+
+          <StaffDataPanel>
+            <StaffDataPanelHeader
+              accent="info"
+              title="Información del estudiante"
+              description={`${selectedStudent.barcode} • ${selectedStudent.grade} ${selectedStudent.section}`}
+            />
+            <div className="p-4 pt-0 sm:p-5 sm:pt-0">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-muted-foreground">Nombre Completo</Label>
+                    <Label className="text-muted-foreground">Nombre completo</Label>
                     <p className="text-lg font-semibold">{selectedStudent.fullName}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -384,16 +469,12 @@ export const RegisterIncident = () => {
                       <p className="text-lg font-semibold">{selectedStudent.section}</p>
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground">Código</Label>
-                    <p className="font-mono">{selectedStudent.barcode}</p>
-                  </div>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-muted-foreground mb-2 block">Nivel de Reincidencia</Label>
-                    <ReincidenceBadge level={selectedStudent.reincidenceLevel || 0} className="text-lg px-4 py-2" />
-                    <p className="text-sm text-muted-foreground mt-2">
+                    <Label className="text-muted-foreground mb-2 block">Nivel de reincidencia</Label>
+                    <ReincidenceBadge level={selectedStudent.reincidenceLevel || 0} className="px-4 py-2 text-lg" />
+                    <p className="mt-2 text-sm text-muted-foreground">
                       {getReincidenceLevelDescription(selectedStudent.reincidenceLevel || 0)}
                     </p>
                   </div>
@@ -403,38 +484,16 @@ export const RegisterIncident = () => {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </StaffDataPanel>
 
-          {/* Reincidence Alert */}
-          {showReincidenceAlert && selectedStudent.reincidenceLevel && selectedStudent.reincidenceLevel >= 2 && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>¡Alerta de Reincidencia!</AlertTitle>
-              <AlertDescription>
-                <p className="mb-2">Este estudiante tiene un nivel de reincidencia {selectedStudent.reincidenceLevel}.</p>
-                <p className="font-semibold">Acción sugerida: {getSuggestedAction(selectedStudent.reincidenceLevel)}</p>
-              </AlertDescription>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowReincidenceAlert(false)}
-                className="mt-2"
-              >
-                <span className="flex items-center">
-                  <X className="w-4 h-4 mr-2" />
-                  Cerrar
-                </span>
-              </Button>
-            </Alert>
-          )}
-
-          {/* Fault Selection */}
-          <Card className="app-card">
-            <CardHeader className="app-card-header">
-              <CardTitle>Tipo de Falta</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <StaffDataPanel>
+            <StaffDataPanelHeader
+              accent="warning"
+              title="Tipo de falta y evidencia"
+              description="Seleccione la falta, agregue observaciones y evidencia opcional"
+            />
+            <div className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
               <div className="space-y-2">
                 <Label>Seleccionar falta</Label>
                 {faults.length > 0 ? (
@@ -563,8 +622,8 @@ export const RegisterIncident = () => {
                   </span>
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </StaffDataPanel>
         </>
       )}
 

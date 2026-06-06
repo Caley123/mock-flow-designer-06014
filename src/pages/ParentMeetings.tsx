@@ -59,6 +59,13 @@ import { parentMeetingsService, studentsService } from '@/lib/services';
 import { ParentMeeting, Student, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/PageHeader';
+import {
+  StaffKpiStat,
+  StaffToolbar,
+  StaffDataPanel,
+  StaffDataPanelHeader,
+  StaffDataPanelBody,
+} from '@/components/staff';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -413,7 +420,7 @@ export const ParentMeetings = () => {
   const getMinDate = () => getLimaTodayDate();
 
   return (
-    <div className="app-page">
+    <div className="app-page app-page-shell">
       <PageHeader
         icon={CalendarDays}
         eyebrow="Comunicación"
@@ -431,87 +438,36 @@ export const ParentMeetings = () => {
         </Button>
       </PageHeader>
 
-      {/* Stats Cards */}
+      {/* KPIs */}
       {stats && (
-        <div className="grid gap-4 md:grid-cols-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Citas</CardTitle>
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-600">{stats.pendientes}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Confirmadas</CardTitle>
-              <CheckCircle className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{stats.confirmadas}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completadas</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.completadas}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">No Asistieron</CardTitle>
-              <XCircle className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.noAsistieron}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tasa Asistencia</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.tasaAsistencia}%</div>
-            </CardContent>
-          </Card>
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          <StaffKpiStat label="Total citas" value={stats.total} icon={CalendarDays} tone="primary" />
+          <StaffKpiStat label="Pendientes" value={stats.pendientes} icon={AlertCircle} tone="warning" />
+          <StaffKpiStat label="Confirmadas" value={stats.confirmadas} icon={CheckCircle} tone="info" />
+          <StaffKpiStat label="Completadas" value={stats.completadas} icon={CheckCircle} tone="success" />
+          <StaffKpiStat label="No asistieron" value={stats.noAsistieron} icon={XCircle} tone="warning" />
+          <StaffKpiStat
+            label="Tasa asistencia"
+            value={`${stats.tasaAsistencia}%`}
+            icon={TrendingUp}
+            tone="accent"
+          />
         </div>
       )}
 
-      {/* Scanner de código de barras para asistencia - Versión mejorada */}
-      <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-accent/5 to-primary/10 shadow-lg">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
-                <ScanLine className="w-5 h-5 text-white" />
-              </div>
-              Registro Rápido de Asistencia
-            </CardTitle>
-            <Badge variant="outline" className="bg-green-50 border-green-300 text-green-700">
-              <CheckCircle className="w-3 h-3 mr-1" />
-              Sistema Digital
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          title="Registro rápido de asistencia"
+          description="Escanee el carnet del estudiante para marcar asistencia del apoderado"
+          accent="primary"
+          action={
+            <Badge variant="outline" className="border-success/40 bg-success/10 text-success">
+              <CheckCircle className="mr-1 h-3 w-3" />
+              Digital
             </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            Escanee el carnet del estudiante para registrar automáticamente la asistencia del padre. 
-            No se requiere cuaderno ni firma física.
-          </p>
-        </CardHeader>
-        <CardContent>
+          }
+        />
+        <StaffDataPanelBody className="space-y-4 p-4 sm:p-5">
           <form onSubmit={handleBarcodeScan} className="space-y-4">
             <div className="relative">
               <Scan className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-primary" />
@@ -548,49 +504,50 @@ export const ParentMeetings = () => {
               )}
             </Button>
           </form>
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>Ventajas del sistema digital:</strong> Registro instantáneo, sin papel, 
-              detección automática de tardanzas, y acceso inmediato a historial.
+          <div className="rounded-xl border border-info/25 bg-info/10 p-3">
+            <p className="text-sm text-foreground/90">
+              <strong>Ventajas del sistema digital:</strong> Registro instantáneo, sin papel,
+              detección automática de tardanzas y acceso inmediato al historial.
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </StaffDataPanelBody>
+      </StaffDataPanel>
 
-      {/* Vista de Calendario Moderno */}
-      <Card className="h-[800px]">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Calendario de Citas</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBulkDialogOpen(true)}
-              >
-                <Users className="w-4 h-4 mr-2" />
-                Citas Masivas
-              </Button>
-              <Button
-                variant={viewMode === 'calendar' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('calendar')}
-              >
-                <CalendarIcon className="w-4 h-4 mr-2" />
-                Calendario
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="w-4 h-4 mr-2" />
-                Lista
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="h-full p-0">
+      <StaffToolbar title="Vista y acciones" description="Calendario, lista o citas masivas">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
+            <Users className="mr-2 h-4 w-4" />
+            Citas masivas
+          </Button>
+          <Button
+            variant={viewMode === 'calendar' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('calendar')}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            Calendario
+          </Button>
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+          >
+            <List className="mr-2 h-4 w-4" />
+            Lista
+          </Button>
+          <Button variant="accent" size="sm" onClick={() => setDialogOpen(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Nueva cita
+          </Button>
+        </div>
+      </StaffToolbar>
+
+      <StaffDataPanel className={viewMode === 'calendar' ? 'h-[800px]' : undefined}>
+        <StaffDataPanelHeader
+          title={viewMode === 'calendar' ? 'Calendario de citas' : 'Buscar citas'}
+          accent="neutral"
+        />
+        <StaffDataPanelBody className={viewMode === 'calendar' ? 'h-[calc(100%-4rem)] p-0' : 'p-4 sm:p-5'}>
           {viewMode === 'calendar' ? (
             <div className="h-full">
               <ModernCalendar
@@ -651,29 +608,16 @@ export const ParentMeetings = () => {
                   Nueva Cita
                 </Button>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Table - Solo en modo lista */}
-      {viewMode === 'list' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Lista de Citas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span>Cargando citas...</span>
-              </div>
-            ) : filteredMeetings.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No hay citas para mostrar
-              </div>
-            ) : (
-            <Table>
+              {loading ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span>Cargando citas...</span>
+                </div>
+              ) : filteredMeetings.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">No hay citas para mostrar</div>
+              ) : (
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Estudiante</TableHead>
@@ -804,10 +748,11 @@ export const ParentMeetings = () => {
                 ))}
               </TableBody>
             </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              )}
+            </div>
+          )}
+        </StaffDataPanelBody>
+      </StaffDataPanel>
 
       {/* Create Meeting Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -10,6 +10,8 @@ import {
   LogOut,
   X,
   ScanLine,
+  Search,
+  Loader2,
 } from 'lucide-react';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { GuardyMark } from '@/components/brand/GuardyMark';
@@ -42,11 +44,17 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { configService } from '@/lib/services';
+import { getLimaNow } from '@/lib/utils/limaDateTime';
+import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 
 export const TutorScanner = () => {
   const navigate = useNavigate();
   const [barcode, setBarcode] = useState('');
-  const [scanning, setScanning] = useState(false);
+  const [nameSearch, setNameSearch] = useState('');
+  const [nameSearchResults, setNameSearchResults] = useState<Student[]>([]);
+  const [nameSearching, setNameSearching] = useState(false);
+  const [lookupPending, setLookupPending] = useState(false);
+  const [scanAnnouncement, setScanAnnouncement] = useState('');
   const [student, setStudent] = useState<Student | null>(null);
   const [showIncidentDialog, setShowIncidentDialog] = useState(false);
   const [faults, setFaults] = useState<FaultType[]>([]);
@@ -67,6 +75,8 @@ export const TutorScanner = () => {
   >([]);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const barcodeIndexRef = useRef<Map<string, Student>>(new Map());
+  const syncGenerationRef = useRef(0);
 
   const user = authService.getCurrentUser();
 
@@ -84,6 +94,10 @@ export const TutorScanner = () => {
     loadFaults();
     arrivalService.prefetchArrivalConfig();
     loadArrivalLimit();
+    void studentsService.prefetchBarcodeIndex().then((map) => {
+      if (!isMountedRef.current) return;
+      barcodeIndexRef.current = map;
+    });
     const stopClock = startClock();
     focusBarcodeInput();
 
@@ -99,6 +113,29 @@ export const TutorScanner = () => {
       focusBarcodeInput();
     }
   }, [showIncidentDialog, focusBarcodeInput]);
+
+  useEffect(() => {
+    if (nameSearch.trim().length < 2) {
+      setNameSearchResults([]);
+      setNameSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setNameSearching(true);
+
+    const timeoutId = window.setTimeout(async () => {
+      const { students, error } = await studentsService.searchByName(nameSearch.trim(), 8);
+      if (cancelled || !isMountedRef.current) return;
+      if (!error) setNameSearchResults(students);
+      setNameSearching(false);
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [nameSearch]);
 
   const loadFaults = async () => {
     if (!isMountedRef.current) return;
@@ -156,59 +193,20 @@ export const TutorScanner = () => {
     }
   };
 
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const computeArrivalSnapshot = useCallback(() => {
+    const { date, time } = getLimaNow();
+    const status: ArrivalRecord['status'] =
+      time <= arrivalLimit ? 'A tiempo' : 'Tarde';
+    return { date, time, status };
+  }, [arrivalLimit]);
 
-    if (!barcode.trim() || !isMountedRef.current) {
-      if (!isMountedRef.current) return;
-      toast.error('Ingrese un código de barras');
-      return;
-    }
-
-    const code = barcode.trim();
-    setScanning(true);
-
-    try {
-      const { student: foundStudent, error } = await studentsService.getByBarcode(code, {
-        skipReincidence: true,
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (error || !foundStudent) {
-        toast.error('Estudiante no encontrado');
-        setBarcode('');
-        setScanning(false);
-        focusBarcodeInput();
-        return;
-      }
-
-      const currentUser = authService.getCurrentUser();
-      const { record, error: arrivalError } = await arrivalService.createArrivalRecord(
-        foundStudent.id,
-        currentUser?.id
-      );
-
-      if (!isMountedRef.current) return;
-
-      if (arrivalError) {
-        console.error('Error al registrar llegada:', arrivalError);
-        toast.error('Error al registrar la llegada');
-        setBarcode('');
-        setScanning(false);
-        focusBarcodeInput();
-        return;
-      }
-
-      const { student: fullStudent } = await studentsService.getById(foundStudent.id);
-      const studentToShow = fullStudent ?? foundStudent;
-
+  const applyScanSuccess = useCallback(
+    (studentToShow: Student, record: ArrivalRecord) => {
       setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
-      setBarcode('');
 
-      const status = record?.status || 'Registrado';
+      const status = record.status || 'Registrado';
       setSessionCount((prev) => ({
         total: prev.total + 1,
         onTime: prev.onTime + (status === 'A tiempo' ? 1 : 0),
@@ -219,35 +217,162 @@ export const TutorScanner = () => {
           {
             id: `${Date.now()}-${studentToShow.id}`,
             name: studentToShow.fullName,
-            time: record?.arrivalTime ?? nowHHMM,
+            time: record.arrivalTime ?? nowHHMM,
             status,
           },
           ...prev,
         ];
         return next.slice(0, 6);
       });
+      setScanAnnouncement(
+        `${studentToShow.fullName} registrado: ${status}, hora ${record.arrivalTime ?? nowHHMM}`
+      );
+    },
+    [nowHHMM]
+  );
 
-      /* Sin animación ni toast en escaneo: la tarjeta y el feed lateral ya confirman la llegada */
+  const persistArrivalInBackground = useCallback(
+    (studentToShow: Student, arrivalOpts: CreateArrivalOptions, syncGen: number) => {
+      const currentUser = authService.getCurrentUser();
+      void arrivalService
+        .createArrivalRecord(studentToShow.id, currentUser?.id, arrivalOpts)
+        .then(({ record, error: arrivalError }) => {
+          if (!isMountedRef.current || syncGenerationRef.current !== syncGen) return;
 
-      if (record && whatsappService.isEnabled()) {
-        void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
-          if (!isMountedRef.current) return;
-          if (!wa.ok && wa.error) {
-            toast.warning(`WhatsApp: ${wa.error}`, { duration: 2800 });
+          if (arrivalError || !record) {
+            console.error('Error al registrar llegada:', arrivalError);
+            toast.error('No se guardó la llegada en el servidor. Vuelva a escanear.');
+            setShowStudentProfile(false);
+            setStudent(null);
+            setArrivalRecord(null);
+            focusBarcodeInput();
+            return;
+          }
+
+          setArrivalRecord(record);
+
+          if (whatsappService.isEnabled()) {
+            void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
+              if (!isMountedRef.current) return;
+              if (!wa.ok && wa.error) {
+                toast.warning(`WhatsApp: ${wa.error}`, { duration: 2800 });
+              }
+            });
           }
         });
+    },
+    [focusBarcodeInput]
+  );
+
+  const resolveStudentByBarcode = useCallback(
+    async (code: string): Promise<Student | null> => {
+      const fromIndex = studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, code);
+      if (fromIndex) return fromIndex;
+
+      setLookupPending(true);
+      try {
+        const { student, error } = await studentsService.getByBarcode(code, {
+          skipReincidence: true,
+        });
+        if (student) {
+          barcodeIndexRef.current.set(code, student);
+          return student;
+        }
+        if (error) console.warn('getByBarcode:', error);
+        return null;
+      } finally {
+        if (isMountedRef.current) setLookupPending(false);
       }
-    } catch (error: unknown) {
+    },
+    []
+  );
+
+  const processStudent = useCallback(
+    (foundStudent: Student) => {
       if (!isMountedRef.current) return;
-      console.error('Error al escanear:', error);
-      toast.error('Error al procesar el escaneo');
-      setBarcode('');
-    } finally {
-      if (isMountedRef.current) {
-        setScanning(false);
-        focusBarcodeInput();
+
+      focusBarcodeInput();
+
+      const { date, time, status } = computeArrivalSnapshot();
+      const arrivalOpts: CreateArrivalOptions = {
+        date,
+        arrivalTime: time,
+        status,
+      };
+
+      if (foundStudent.barcode?.trim()) {
+        barcodeIndexRef.current.set(foundStudent.barcode.trim(), foundStudent);
       }
+
+      const optimisticRecord: ArrivalRecord = {
+        id: 0,
+        studentId: foundStudent.id,
+        date,
+        arrivalTime: time,
+        status,
+        createdAt: new Date().toISOString(),
+      };
+
+      const syncGen = ++syncGenerationRef.current;
+      applyScanSuccess(foundStudent, optimisticRecord);
+      persistArrivalInBackground(foundStudent, arrivalOpts, syncGen);
+    },
+    [
+      applyScanSuccess,
+      computeArrivalSnapshot,
+      focusBarcodeInput,
+      persistArrivalInBackground,
+    ]
+  );
+
+  const processScanCode = useCallback(
+    async (rawInput: string) => {
+      const raw = rawInput.replace(/\r?\n/g, '').trim();
+      if (!raw || !isMountedRef.current) {
+        if (!raw) toast.error('Ingrese un código de barras');
+        return;
+      }
+
+      let foundStudent = studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, raw);
+
+      if (!foundStudent) {
+        foundStudent = await resolveStudentByBarcode(raw);
+        if (!isMountedRef.current) return;
+      }
+
+      if (!foundStudent) {
+        toast.error('Estudiante no encontrado');
+        focusBarcodeInput();
+        return;
+      }
+
+      processStudent(foundStudent);
+    },
+    [focusBarcodeInput, processStudent, resolveStudentByBarcode]
+  );
+
+  const handleNameSearchSelect = (selected: Student) => {
+    setNameSearch('');
+    setNameSearchResults([]);
+    processStudent(selected);
+  };
+
+  const handleScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = barcode;
+    setBarcode('');
+    void processScanCode(code);
+  };
+
+  const handleBarcodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    if (/[\r\n]/.test(v)) {
+      const code = v.replace(/\r?\n/g, '').trim();
+      setBarcode('');
+      if (code) void processScanCode(code);
+      return;
     }
+    setBarcode(v);
   };
 
   const handleRegisterFault = () => {
@@ -308,10 +433,19 @@ export const TutorScanner = () => {
 
   const clearScan = () => {
     setBarcode('');
+    setNameSearch('');
+    setNameSearchResults([]);
     setStudent(null);
     setShowStudentProfile(false);
     setArrivalRecord(null);
     focusBarcodeInput();
+  };
+
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      clearScan();
+    }
   };
 
   const closeStudentProfile = () => {
@@ -319,6 +453,8 @@ export const TutorScanner = () => {
     setStudent(null);
     setArrivalRecord(null);
     setBarcode('');
+    setNameSearch('');
+    setNameSearchResults([]);
     focusBarcodeInput();
   };
 
@@ -334,6 +470,9 @@ export const TutorScanner = () => {
 
   return (
     <div className="tutor-page">
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {scanAnnouncement}
+      </div>
       <header className="tutor-header">
         <div className="tutor-header__inner">
           <div className="tutor-header__brand">
@@ -367,7 +506,7 @@ export const TutorScanner = () => {
         </div>
       </header>
 
-      <main className="tutor-main">
+      <main id="main-content" className="tutor-main">
         <div className="tutor-grid">
           <section className="tutor-left">
             <div className="tutor-scan-card">
@@ -386,17 +525,22 @@ export const TutorScanner = () => {
                       </Badge>
                     </div>
                     <h2 className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
-                      Escanear código de barras
+                      Escanear código o buscar por nombre
                     </h2>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Enfoque automático, registro continuo y acceso rápido a incidencias.
+                      Carnet con lector de barras o búsqueda manual por nombre del estudiante.
                     </p>
                   </div>
                 </div>
               </div>
 
               <CardContent className="p-5 sm:p-7 pt-5 sm:pt-6">
-                <form onSubmit={handleScan} className="space-y-5">
+                <form
+                  onSubmit={handleScan}
+                  className="space-y-5"
+                  aria-busy={lookupPending}
+                  aria-label="Registro de llegada por código de barras o nombre"
+                >
                   <div className="space-y-2">
                     <Label htmlFor="barcode-input" className="text-sm font-medium text-foreground">
                       Código de barras
@@ -406,12 +550,15 @@ export const TutorScanner = () => {
                       id="barcode-input"
                       type="text"
                       value={barcode}
-                      onChange={(e) => setBarcode(e.target.value)}
+                      onChange={handleBarcodeChange}
+                      onKeyDown={handleBarcodeKeyDown}
                       autoComplete="off"
                       autoFocus
+                      placeholder="Escanee o escriba el código…"
+                      aria-describedby="barcode-scan-hint"
                       className="tutor-scan-input"
                     />
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <div id="barcode-scan-hint" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span className="rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
                         Enter
                       </span>
@@ -423,25 +570,76 @@ export const TutorScanner = () => {
                       <span>Limpiar</span>
                     </div>
                   </div>
+
+                  <div className="relative space-y-2">
+                    <Label htmlFor="name-search-input" className="text-sm font-medium text-foreground">
+                      Búsqueda por nombre
+                    </Label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="name-search-input"
+                        type="search"
+                        value={nameSearch}
+                        onChange={(e) => setNameSearch(e.target.value)}
+                        placeholder="Escriba al menos 2 letras del nombre…"
+                        autoComplete="off"
+                        disabled={lookupPending}
+                        className="pl-9"
+                        aria-describedby="name-search-hint"
+                        aria-expanded={nameSearchResults.length > 0}
+                        aria-controls="name-search-results"
+                      />
+                      {nameSearching && (
+                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    <p id="name-search-hint" className="text-xs text-muted-foreground">
+                      Seleccione un resultado para registrar la llegada sin escanear.
+                    </p>
+                    {nameSearchResults.length > 0 && (
+                      <div
+                        id="name-search-results"
+                        role="listbox"
+                        className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover shadow-lg"
+                      >
+                        {nameSearchResults.map((result) => (
+                          <button
+                            key={result.id}
+                            type="button"
+                            role="option"
+                            onClick={() => handleNameSearchSelect(result)}
+                            className="flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                          >
+                            <span className="font-medium text-foreground">{result.fullName}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {result.level} · {result.grade} {result.section}
+                              {result.barcode ? ` · ${result.barcode}` : ''}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
                     <Button
                       type="button"
                       variant="outline"
                       onClick={clearScan}
-                      disabled={scanning}
+                      disabled={lookupPending}
                       className="sm:min-w-[120px]"
                     >
                       Limpiar
                     </Button>
                     <Button
                       type="submit"
-                      disabled={scanning || !barcode.trim()}
+                      disabled={lookupPending || !barcode.trim()}
                       className="sm:min-w-[180px]"
                     >
-                      {scanning ? (
+                      {lookupPending ? (
                         <>
                           <Clock className="h-4 w-4 animate-spin" />
-                          Procesando…
+                          Buscando…
                         </>
                       ) : (
                         <>
@@ -601,7 +799,9 @@ export const TutorScanner = () => {
                 <ol>
                   <li>
                     <span className="tutor-instructions__step">1</span>
-                    <span>Escanee o ingrese el código de barras del carnet del estudiante.</span>
+                    <span>
+                      Escanee el código de barras del carnet o busque al estudiante por nombre.
+                    </span>
                   </li>
                   <li>
                     <span className="tutor-instructions__step">2</span>

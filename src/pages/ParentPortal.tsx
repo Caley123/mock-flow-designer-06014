@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParentPortal } from '@/contexts/ParentPortalContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,7 @@ import { ParentBottomNav, type ParentTab } from '@/components/parent/ParentBotto
 import { ParentMobileHeader } from '@/components/parent/ParentMobileHeader';
 import { ParentChildrenSwitcher } from '@/components/parent/ParentChildrenSwitcher';
 import { cn } from '@/lib/utils';
+import { useParentPortalAnimations } from '@/hooks/useParentPortalAnimations';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -69,6 +70,14 @@ export const ParentPortal = () => {
   const [selectedDate, setSelectedDate] = useState(() => getLimaTodayDate());
   const [reportMonth, setReportMonth] = useState(() => String(new Date().getMonth()));
   const [reportYear, setReportYear] = useState(() => String(new Date().getFullYear()));
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  const portalReady = !loading && students.length > 0;
+  useParentPortalAnimations(pageRef, {
+    ready: portalReady,
+    tab,
+    studentId: selectedStudentId,
+  });
 
   useEffect(() => {
     const studentId = Number(selectedStudentId);
@@ -165,7 +174,7 @@ export const ParentPortal = () => {
   }
 
   return (
-    <div className="parent-portal-page">
+    <div className="parent-portal-page" ref={pageRef}>
       <ParentMobileHeader />
       <div className="parent-portal space-y-5 sm:space-y-6">
       {!isParentRole && (
@@ -174,8 +183,20 @@ export const ParentPortal = () => {
         </p>
       )}
 
+      <p
+        className="parent-welcome-banner rounded-xl border border-primary/15 bg-gradient-to-r from-primary/8 via-card to-accent/5 px-4 py-3 text-sm text-muted-foreground"
+        data-parent-welcome
+        data-parent-anim
+      >
+        Consulte la asistencia, incidencias y citas de su hijo/a en un solo lugar.
+      </p>
+
       {/* Hijo/a activo */}
-      <section className="parent-student-hero overflow-hidden rounded-2xl border border-border/80 bg-card p-4 sm:p-5">
+      <section
+        className="parent-student-hero overflow-hidden rounded-2xl border border-border/80 bg-card p-4 sm:p-5"
+        data-parent-hero
+        data-parent-anim
+      >
         {isParentRole && students.length > 1 && (
           <ParentChildrenSwitcher className="mb-4" />
         )}
@@ -232,22 +253,29 @@ export const ParentPortal = () => {
         </div>
       )}
 
-      <ParentBottomNav
-        value={tab}
-        onChange={setTab}
-        badges={navBadges}
-        hideDesktop={isParentRole}
-      />
+      <div data-parent-nav data-parent-anim>
+        <ParentBottomNav value={tab} onChange={setTab} badges={navBadges} />
+      </div>
 
-      {loadingTab ? (
-        <div className="flex min-h-[12rem] items-center justify-center py-10">
-          <PageLoader message="Actualizando datos..." />
-        </div>
-      ) : (
-        <div key={`${selectedStudentId}-${tab}`} className="parent-tab-panel space-y-4 sm:space-y-5">
+      <div
+        key={`${selectedStudentId}-${tab}`}
+        className="parent-tab-panel relative space-y-4 sm:space-y-5"
+        data-parent-panel
+        data-parent-anim
+      >
+        {loadingTab && (
+          <div
+            className="absolute inset-0 z-10 flex min-h-[8rem] items-center justify-center rounded-2xl bg-background/75 backdrop-blur-[2px]"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <PageLoader message="Actualizando datos..." />
+          </div>
+        )}
+
       {tab === 'resumen' && (
         <div className="space-y-4 sm:space-y-5">
-          <Card className="parent-surface-card overflow-hidden shadow-sm">
+          <Card className="parent-surface-card overflow-hidden shadow-sm" data-parent-card data-parent-anim>
             <CardContent className="p-0">
               <div className="bg-primary/10 px-4 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">Hoy</p>
@@ -284,7 +312,7 @@ export const ParentPortal = () => {
           </div>
 
           {activeIncidents.length > 0 && (
-            <Card className="parent-surface-card">
+            <Card className="parent-surface-card" data-parent-card data-parent-anim>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Avisos del colegio</CardTitle>
                 <CardDescription>Toque Incidencias para ver el detalle</CardDescription>
@@ -304,7 +332,7 @@ export const ParentPortal = () => {
 
       {tab === 'asistencia' && (
         <div className="space-y-4 sm:space-y-5">
-          <Card className="parent-surface-card shadow-sm">
+          <Card className="parent-surface-card shadow-sm" data-parent-card data-parent-anim>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">¿Qué pasó un día?</CardTitle>
               <CardDescription>Elija la fecha y vea llegada y salida</CardDescription>
@@ -340,7 +368,7 @@ export const ParentPortal = () => {
             </div>
           )}
 
-          <Card className="parent-surface-card">
+          <Card className="parent-surface-card" data-parent-card data-parent-anim>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Resumen del mes</CardTitle>
             </CardHeader>
@@ -411,8 +439,7 @@ export const ParentPortal = () => {
         </div>
       )}
 
-        </div>
-      )}
+      </div>
 
       <footer className="border-t border-border/50 pt-4 text-center text-xs leading-relaxed text-muted-foreground">
         ¿Consultas? Comuníquese con secretaría
@@ -475,6 +502,8 @@ function ParentStat({
         tone === 'alert' && value > 0 && 'border-red-200/90 bg-red-50/90',
         !tone && 'border-border/80 bg-card'
       )}
+      data-parent-stat
+      data-parent-anim
     >
       <p className="text-[10px] font-medium leading-snug text-muted-foreground sm:text-[11px]">
         <span className="sm:hidden">{shortLabel ?? label}</span>
@@ -490,7 +519,7 @@ function ArrivalCard({ record, compact }: { record: ArrivalRecord; compact?: boo
     ? format(parseISO(record.date.slice(0, 10)), compact ? 'dd/MM' : 'EEEE d MMM', { locale: es })
     : '—';
   return (
-    <div className="parent-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="parent-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-parent-card data-parent-anim>
       <div className="min-w-0">
         <p className={cn('font-medium capitalize', compact && 'text-sm')}>{fecha}</p>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -525,7 +554,7 @@ function IncidentCard({ incident, detailed }: { incident: Incident; detailed?: b
         : incident.status;
 
   return (
-    <div className="parent-card p-4 sm:p-5">
+    <div className="parent-card p-4 sm:p-5" data-parent-card data-parent-anim>
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-snug tracking-tight">{name}</p>
@@ -551,7 +580,7 @@ function IncidentCard({ incident, detailed }: { incident: Incident; detailed?: b
 
 function MeetingCard({ meeting }: { meeting: ParentMeeting }) {
   return (
-    <div className="parent-card p-4 sm:p-5">
+    <div className="parent-card p-4 sm:p-5" data-parent-card data-parent-anim>
       <div className="flex items-start gap-3 sm:gap-4">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary sm:h-12 sm:w-12">
           <Calendar className="h-5 w-5" />
