@@ -3,7 +3,7 @@ import { LoginCarnetBarcode } from '@/components/login/LoginCarnetBarcode';
 const SPARKS = Array.from({ length: 10 }, (_, i) => i);
 const EMBERS = Array.from({ length: 18 }, (_, i) => i);
 const CARNET_CODE = '61814729';
-const STUDENT_PHOTO = '/login-carnet-sample.png';
+const STUDENT_PHOTO = '/login-carnet-student.jpg';
 
 /** Carnet digital — réplica estilizada acorde al login + escáner de barras. */
 export function LoginHeroIllustration() {

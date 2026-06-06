@@ -311,6 +311,7 @@ export const TutorScanner = () => {
         arrivalTime: time,
         status,
         createdAt: new Date().toISOString(),
+        registeredBy: 0,
       };
 
       const syncGen = ++syncGenerationRef.current;

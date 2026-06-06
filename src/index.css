@@ -716,15 +716,15 @@
   }
 
   .login-carnet-card {
-    @apply relative mx-auto rounded-[1.125rem] border;
+    @apply relative mx-auto rounded-[1.25rem] border;
     width: 100%;
-    max-width: 218px;
-    border-color: hsl(var(--login-glow) / 0.32);
+    max-width: 236px;
+    border-color: hsl(var(--login-glow) / 0.4);
     background: transparent;
     box-shadow:
-      0 0 0 1px hsl(var(--login-accent) / 0.14) inset,
-      0 0 48px hsl(var(--login-glow) / 0.12),
-      0 24px 48px hsl(var(--login-deep) / 0.65);
+      0 0 0 1px hsl(var(--login-accent) / 0.2) inset,
+      0 0 60px hsl(var(--login-glow) / 0.18),
+      0 30px 60px hsl(var(--login-deep) / 0.7);
     overflow: visible;
   }
 
@@ -947,16 +947,17 @@
   }
 
   .login-carnet-replica__photo {
-    @apply relative h-[5rem] w-[5rem] overflow-hidden rounded-full;
+    @apply relative h-[5.75rem] w-[4.75rem] overflow-hidden rounded-xl;
     background: hsl(var(--login-deep) / 0.65);
-    border: 2px solid hsl(var(--login-glow) / 0.35);
+    border: 2px solid hsl(var(--login-glow) / 0.5);
     box-shadow:
-      0 0 0 1px hsl(var(--login-accent) / 0.2) inset,
-      0 8px 20px hsl(var(--login-deep) / 0.45);
+      0 0 0 1px hsl(var(--login-accent) / 0.25) inset,
+      0 10px 24px hsl(var(--login-deep) / 0.55),
+      0 0 24px hsl(var(--login-glow) / 0.25);
   }
 
   .login-carnet-replica__photo-ring {
-    @apply absolute inset-[-4px] rounded-full;
+    @apply absolute inset-[-3px] rounded-xl;
     background: conic-gradient(
       from 210deg,
       hsl(var(--login-glow)),
@@ -965,8 +966,9 @@
       hsl(var(--login-accent)),
       hsl(var(--login-glow))
     );
-    opacity: 0.8;
-    animation: login-photo-ring-spin 8s linear infinite;
+    opacity: 0.7;
+    animation: login-photo-ring-spin 10s linear infinite;
+    filter: blur(0.5px);
   }
 
   @keyframes login-photo-ring-spin {
@@ -975,7 +977,7 @@
 
   .login-carnet-replica__photo-img {
     @apply relative z-[1] h-full w-full object-cover;
-    object-position: center 14%;
+    object-position: center 18%;
   }
 
   .login-carnet-replica__id-badge {

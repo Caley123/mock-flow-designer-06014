@@ -94,14 +94,12 @@ export function useParentPortalAnimations(
         gsap.fromTo(
           '[data-parent-panel] [data-parent-stat]',
           { y: 12, autoAlpha: 0 },
-          { y: 0, autoAlpha: 1, duration: 0.35, stagger: 0.04, ease: 'back.out(1.2)' },
-          0.06
+          { y: 0, autoAlpha: 1, duration: 0.35, stagger: 0.04, ease: 'back.out(1.2)', delay: 0.06 }
         );
         gsap.fromTo(
           '[data-parent-panel] [data-parent-card]',
           { y: 10, autoAlpha: 0 },
-          { y: 0, autoAlpha: 1, duration: 0.32, stagger: 0.04 },
-          0.1
+          { y: 0, autoAlpha: 1, duration: 0.32, stagger: 0.04, delay: 0.1 }
         );
       } else {
         gsap.set('[data-parent-anim]', { autoAlpha: 1, clearProps: 'transform' });
@@ -135,8 +133,7 @@ export function useParentShellAnimation(scopeRef: RefObject<HTMLElement | null>)
       gsap.fromTo(
         '[data-parent-shell-glow]',
         { scaleX: 0.6, autoAlpha: 0 },
-        { scaleX: 1, autoAlpha: 1, duration: 0.65, ease: 'power2.out' },
-        0.05
+        { scaleX: 1, autoAlpha: 1, duration: 0.65, ease: 'power2.out', delay: 0.05 }
       );
     },
     { scope: scopeRef }
