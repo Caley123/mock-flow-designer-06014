@@ -50,12 +50,12 @@ export function LoginHeroIllustration() {
 
                 <div className="login-carnet-replica__inner" data-login-visual-carnet>
                   <header className="login-carnet-replica__head" data-login-visual-carnet-part="header">
-                    <img src="/favicon.svg" alt="" className="login-carnet-replica__crest" width={24} height={24} draggable={false} />
+                    <span className="login-carnet-replica__chip" data-login-visual-carnet-part="chip" aria-hidden />
+                    <img src="/favicon.svg" alt="" className="login-carnet-replica__crest" width={20} height={20} draggable={false} />
                     <div className="login-carnet-replica__head-text">
                       <p className="login-carnet-replica__school">I.E. San Ramón</p>
-                      <p className="login-carnet-replica__school-sub">Carnet estudiantil · 2025</p>
+                      <p className="login-carnet-replica__school-sub">Institución Educativa Pública Emblemática</p>
                     </div>
-                    <span className="login-carnet-replica__chip" data-login-visual-carnet-part="chip" aria-hidden />
                   </header>
 
                   <div className="login-carnet-replica__body">
@@ -69,19 +69,12 @@ export function LoginHeroIllustration() {
                           draggable={false}
                         />
                       </div>
-                      <span className="login-carnet-replica__id-badge">ID {CARNET_CODE.slice(-4)}</span>
                     </div>
 
                     <div className="login-carnet-replica__info" data-login-visual-carnet-part="info">
-                      <p className="login-carnet-replica__label">Estudiante</p>
-                      <p className="login-carnet-replica__name">Jacob Elías Mora</p>
+                      <p className="login-carnet-replica__name">Jacob Elías<br />Mora Villegas</p>
                       <p className="login-carnet-replica__grade">5º &apos;A&apos; · Secundaria</p>
-                      <p className="login-carnet-replica__dni">DNI {CARNET_CODE}</p>
                     </div>
-
-                    <p className="login-carnet-replica__valid" data-login-visual-carnet-part="valid">
-                      Válido · 2025
-                    </p>
                   </div>
 
                   <footer className="login-carnet-replica__foot" data-login-visual-carnet-part="foot">
@@ -89,7 +82,7 @@ export function LoginHeroIllustration() {
                       <LoginCarnetBarcode value={CARNET_CODE} className="login-carnet-replica__barcode-svg" />
                     </div>
                     <p className="login-carnet-replica__foot-code">{CARNET_CODE}</p>
-                    <p className="login-carnet-replica__foot-role">Código de barras · Asistencia</p>
+                    <p className="login-carnet-replica__foot-role">Estudiante</p>
                   </footer>
                 </div>
 
