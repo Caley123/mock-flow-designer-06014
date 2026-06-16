@@ -18,9 +18,37 @@ const OPENWA_API_KEY = import.meta.env.VITE_OPENWA_API_KEY || '';
 
 const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, '') || '';
 
-function getArrivalLink(recordId: number | string): string {
-  const base = APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  return `${base}/llegada/${recordId}`;
+function getAppBaseUrl(): string {
+  return APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+}
+
+function getParentPortalLink(): string {
+  const base = getAppBaseUrl();
+  return base ? `${base}/portal-padres` : '/portal-padres';
+}
+
+/** Enlace directo a la asistencia del estudiante (DNI/código de barras). */
+function getStudentAttendanceLink(student: Student, record: ArrivalRecord): string | null {
+  const base = getAppBaseUrl();
+  if (!base) return null;
+  const dni = student.barcode?.trim();
+  if (dni) return `${base}/llegada/dni/${encodeURIComponent(dni)}`;
+  if (record.id) return `${base}/llegada/${record.id}`;
+  return null;
+}
+
+function formatStudentAcademicLines(student: Student): string[] {
+  const lines: string[] = [];
+  if (student.level) {
+    lines.push(`*Nivel:* ${student.level}`);
+  }
+  if (student.grade) {
+    lines.push(`*Grado:* ${student.grade}`);
+  }
+  if (student.section) {
+    lines.push(`*Sección:* ${student.section}`);
+  }
+  return lines;
 }
 
 function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
@@ -31,23 +59,26 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     fecha = `${d}/${m}/${y}`;
   }
   const hora = (record.arrivalTime || '').slice(0, 5) || '—:—';
-  const nivel = [student.level, student.grade, student.section].filter(Boolean).join(' · ');
-  const link = record.id ? getArrivalLink(record.id) : null;
+  const attendanceLink = getStudentAttendanceLink(student, record);
+  const portalLink = getParentPortalLink();
 
   return [
     '🏫 *Registro de llegada — I.E. San Ramón*',
     '',
     `*Estudiante:* ${student.fullName}`,
-    nivel ? `*Curso:* ${nivel}` : '',
+    ...formatStudentAcademicLines(student),
     `*Fecha:* ${fecha}`,
     `*Hora:* ${hora}`,
     `*Estado:* ${record.status || 'Registrado'}`,
     '',
-    link ? `📋 Ver perfil de asistencia:\n${link}` : '',
+    attendanceLink
+      ? `📋 *Ver asistencia de hoy:*\n${attendanceLink}`
+      : '',
+    portalLink ? `👨‍👩‍👧 *Portal de padres:*\n${portalLink}` : '',
     '',
-    '_Notificación automática del sistema SIE._',
+    '_Notificación automática del sistema de asistencia escolar._',
   ]
-    .filter((l) => l !== null && l !== undefined)
+    .filter((l) => l !== null && l !== undefined && l !== '')
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
