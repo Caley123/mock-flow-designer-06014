@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.wrangler
+.dev.vars
 
 # OpenWA (clonar aparte; ver OPENWA_WHATSAPP.md)
 OpenWA/

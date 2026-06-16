@@ -30,6 +30,8 @@ const ParentPortalRoute = lazy(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
 );
 const JustifyFaults = lazy(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
+const ArrivalView = lazy(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
+const ParentDniPortal = lazy(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -207,6 +209,10 @@ const AppContent = () => {
                   </ProtectedRoute>
                 } 
               />
+              {/* Rutas públicas para padres */}
+              <Route path="/portal-padres" element={<ParentDniPortal />} />
+              <Route path="/llegada/dni/:dni" element={<ArrivalView />} />
+              <Route path="/llegada/:id" element={<ArrivalView />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

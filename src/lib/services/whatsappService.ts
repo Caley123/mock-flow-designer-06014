@@ -16,6 +16,13 @@ const OPENWA_API_URL = (
 const OPENWA_SESSION_ID = import.meta.env.VITE_OPENWA_SESSION_ID || '';
 const OPENWA_API_KEY = import.meta.env.VITE_OPENWA_API_KEY || '';
 
+const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, '') || '';
+
+function getArrivalLink(recordId: number | string): string {
+  const base = APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  return `${base}/llegada/${recordId}`;
+}
+
 function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
   const datePart = record.date?.slice(0, 10) || '';
   let fecha = datePart;
@@ -25,9 +32,10 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
   }
   const hora = (record.arrivalTime || '').slice(0, 5) || '—:—';
   const nivel = [student.level, student.grade, student.section].filter(Boolean).join(' · ');
+  const link = record.id ? getArrivalLink(record.id) : null;
 
   return [
-    '*Registro de llegada — SIE*',
+    '🏫 *Registro de llegada — I.E. San Ramón*',
     '',
     `*Estudiante:* ${student.fullName}`,
     nivel ? `*Curso:* ${nivel}` : '',
@@ -35,10 +43,14 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     `*Hora:* ${hora}`,
     `*Estado:* ${record.status || 'Registrado'}`,
     '',
-    '_Notificación automática del sistema de asistencia escolar._',
+    link ? `📋 Ver perfil de asistencia:\n${link}` : '',
+    '',
+    '_Notificación automática del sistema SIE._',
   ]
-    .filter(Boolean)
-    .join('\n');
+    .filter((l) => l !== null && l !== undefined)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function openwaHeaders(): Record<string, string> {

@@ -23,6 +23,29 @@ Buscar más: `npx skills find <tema>`
 
 Restaurar lockfile: `npx skills experimental_install`
 
+## Despliegue Cloudflare (frontend estático)
+
+Configuración en el **dashboard de Cloudflare** → proyecto `sie` → Builds:
+
+| Campo | Valor |
+|-------|--------|
+| Build command | `bun run build` |
+| Deploy command | `bun run cf:deploy` |
+| Output directory | `dist` |
+
+**No usar** preset "Framework: Vite" ni `npx wrangler deploy` a pelo.  
+**No añadir** `public/_redirects` (choca con SPA de `wrangler.toml`).
+
+Variables de build en Cloudflare (opcional): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL`, `VITE_OPENWA_ENABLED=false`.
+
+Archivos clave: `wrangler.toml`, `public/_headers`, `.node-version`.
+
+```bash
+npm run build:cf   # Build producción
+npm run cf:deploy  # Deploy (tras build)
+npm run deploy:cf  # Build + deploy local
+```
+
 ## Comandos
 
 ```bash

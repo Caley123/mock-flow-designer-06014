@@ -5,7 +5,7 @@ const EMBERS = Array.from({ length: 18 }, (_, i) => i);
 const CARNET_CODE = '61814729';
 const STUDENT_PHOTO = '/login-carnet-student.jpg';
 
-/** Carnet digital — réplica estilizada acorde al login + escáner de barras. */
+/** Carnet digital — réplica académica con escáner láser animado. */
 export function LoginHeroIllustration() {
   return (
     <div className="login-hero-visual login-carnet-scene" aria-hidden>
@@ -15,6 +15,8 @@ export function LoginHeroIllustration() {
 
       <div className="login-carnet-scene__frame" data-login-visual-inner>
         <div className="login-carnet-scanner" data-login-visual-scanner>
+
+          {/* Esquinas decorativas de encuadre */}
           <div className="login-carnet-scanner__frame" aria-hidden>
             <span className="login-carnet-scanner__corner login-carnet-scanner__corner--tl" />
             <span className="login-carnet-scanner__corner login-carnet-scanner__corner--tr" />
@@ -22,13 +24,7 @@ export function LoginHeroIllustration() {
             <span className="login-carnet-scanner__corner login-carnet-scanner__corner--br" />
           </div>
 
-          <div className="login-carnet-scanner__hud" data-login-visual-hud>
-            <span className="login-carnet-scanner__hud-tag">SCAN</span>
-            <span className="login-carnet-scanner__hud-code" data-login-visual-hud-code>
-              ···14729
-            </span>
-          </div>
-
+          {/* Carnet */}
           <div className="login-carnet-card login-carnet-replica" data-login-visual-card>
             <div className="login-carnet-replica__orbit" data-login-visual-orbit aria-hidden />
             <div className="login-carnet-replica__embers" data-login-visual-embers aria-hidden>
@@ -46,6 +42,12 @@ export function LoginHeroIllustration() {
 
             <div className="login-carnet-replica__flip" data-login-visual-flip>
               <div className="login-carnet-replica__face login-carnet-replica__face--front">
+
+                {/* Overlays de escaneo */}
+                <div className="login-carnet-replica__scan-overlay" data-login-visual-scan-overlay aria-hidden />
+                <div className="login-carnet-replica__scan-cone"    data-login-visual-scan-cone    aria-hidden />
+                <div className="login-carnet-replica__scan-line"    data-login-visual-card-scanline aria-hidden />
+
                 <div className="login-carnet-replica__stripe" data-login-visual-carnet-part="stripe" aria-hidden />
 
                 <div className="login-carnet-replica__inner" data-login-visual-carnet>
@@ -62,15 +64,9 @@ export function LoginHeroIllustration() {
                     <div className="login-carnet-replica__photo-wrap" data-login-visual-carnet-part="photo">
                       <div className="login-carnet-replica__photo">
                         <span className="login-carnet-replica__photo-ring" aria-hidden />
-                        <img
-                          src={STUDENT_PHOTO}
-                          alt=""
-                          className="login-carnet-replica__photo-img"
-                          draggable={false}
-                        />
+                        <img src={STUDENT_PHOTO} alt="" className="login-carnet-replica__photo-img" draggable={false} />
                       </div>
                     </div>
-
                     <div className="login-carnet-replica__info" data-login-visual-carnet-part="info">
                       <p className="login-carnet-replica__name">Jacob Elías<br />Mora Villegas</p>
                       <p className="login-carnet-replica__grade">5º &apos;A&apos; · Secundaria</p>
@@ -86,6 +82,7 @@ export function LoginHeroIllustration() {
                   </footer>
                 </div>
 
+                {/* Zona del código de barras */}
                 <div className="login-carnet-card__barcode-zone" data-login-visual-barcode-zone>
                   <span className="login-carnet-card__zone-pulse" aria-hidden />
                   <span className="login-carnet-card__barcode-corner login-carnet-card__barcode-corner--tl" />
@@ -98,14 +95,15 @@ export function LoginHeroIllustration() {
                         <span key={i} className="login-carnet-card__spark" data-login-visual-spark={i} />
                       ))}
                     </div>
-                    <div className="login-carnet-card__barcode-hscan" data-login-visual-hscan aria-hidden />
-                    <div className="login-carnet-card__barcode-trail" data-login-visual-beam-glow aria-hidden />
-                    <div className="login-carnet-card__barcode-beam" data-login-visual-beam aria-hidden />
-                    <div className="login-carnet-card__barcode-beam-core" data-login-visual-beam-core aria-hidden />
+                    <div className="login-carnet-card__barcode-hscan"      data-login-visual-hscan      aria-hidden />
+                    <div className="login-carnet-card__barcode-trail"      data-login-visual-beam-glow  aria-hidden />
+                    <div className="login-carnet-card__barcode-beam"       data-login-visual-beam       aria-hidden />
+                    <div className="login-carnet-card__barcode-beam-core"  data-login-visual-beam-core  aria-hidden />
                   </div>
                 </div>
               </div>
 
+              {/* Reverso */}
               <div className="login-carnet-replica__face login-carnet-replica__face--back" data-login-visual-carnet-back>
                 <div className="login-carnet-replica__back-stripe" aria-hidden />
                 <img src="/favicon.svg" alt="" className="login-carnet-replica__back-crest" width={36} height={36} draggable={false} />
@@ -118,25 +116,6 @@ export function LoginHeroIllustration() {
             </div>
           </div>
 
-          <div className="login-carnet-scanner__footer">
-            <p className="login-carnet-scanner__status" data-login-visual-status>
-              <span className="login-carnet-scanner__status-dot" data-login-visual-status-dot />
-              <span data-login-visual-status-text>Leyendo código de barras…</span>
-            </p>
-            <p className="login-carnet-scanner__result" data-login-visual-result>
-              <span className="login-carnet-scanner__result-icon" aria-hidden>✓</span>
-              <span data-login-visual-result-text>{CARNET_CODE} · A tiempo</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="login-hero-visual__chip login-hero-visual__chip--live" data-login-visual-badge>
-          <span className="login-hero-visual__chip-dot" />
-          <span className="login-hero-visual__chip-label">En vivo</span>
-        </div>
-        <div className="login-hero-visual__chip login-hero-visual__chip--success" data-login-visual-badge>
-          <span className="login-hero-visual__chip-value">OK</span>
-          <span className="login-hero-visual__chip-label">Asistencia</span>
         </div>
       </div>
     </div>

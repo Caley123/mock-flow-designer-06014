@@ -16,3 +16,4 @@ export { parentMeetingsService } from './parentMeetingsService';
 export { sessionService } from './sessionService';
 export { whatsappService } from './whatsappService';
 export { parentPortalService } from './parentPortalService';
+export { scheduleService } from './scheduleService';

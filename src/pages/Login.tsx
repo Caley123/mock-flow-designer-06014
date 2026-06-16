@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Loader2, Eye, EyeOff, ArrowRight, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
@@ -65,7 +65,7 @@ export const Login = () => {
         if (user.cambioPasswordObligatorio) {
           toast.info('Debe cambiar su contraseña');
         }
-        navigate('/');
+        navigate(user.role === 'Padre' ? '/parent-portal' : '/');
       }
     } catch {
       if (!isMountedRef.current) return;
@@ -99,9 +99,7 @@ export const Login = () => {
 
             <form onSubmit={handleLogin} className="login-form">
               <div className="login-field-group" data-login-field data-login-anim>
-                <Label htmlFor="username" className="sr-only">
-                  Usuario
-                </Label>
+                <Label htmlFor="username" className="sr-only">Usuario</Label>
                 <Input
                   id="username"
                   type="text"
@@ -115,9 +113,7 @@ export const Login = () => {
               </div>
 
               <div className="login-field-group" data-login-field data-login-anim>
-                <Label htmlFor="password" className="sr-only">
-                  Contraseña
-                </Label>
+                <Label htmlFor="password" className="sr-only">Contraseña</Label>
                 <div className="login-input-wrap">
                   <Input
                     id="password"
@@ -154,16 +150,12 @@ export const Login = () => {
                     disabled={loading}
                     className="login-checkbox"
                   />
-                  <Label htmlFor="remember" className="login-remember-label">
-                    Recordarme
-                  </Label>
+                  <Label htmlFor="remember" className="login-remember-label">Recordarme</Label>
                 </div>
                 <button
                   type="button"
                   className="login-link"
-                  onClick={() =>
-                    toast.info('Contacte al administrador para recuperar su contraseña')
-                  }
+                  onClick={() => toast.info('Contacte al administrador para recuperar su contraseña')}
                   disabled={loading}
                 >
                   ¿Olvidó clave?
@@ -178,27 +170,23 @@ export const Login = () => {
                 data-login-anim
               >
                 {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Entrando…
-                  </>
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando…</>
                 ) : (
-                  <>
-                    Continuar
-                    <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
-                  </>
+                  <>Continuar<ArrowRight className="ml-2 h-4 w-4" aria-hidden /></>
                 )}
               </Button>
             </form>
 
-            <Link to="/parent-portal" className="login-parent-link" data-login-field data-login-anim>
-              Portal padres
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            <Link
+              to="/portal-padres"
+              className="login-parent-link"
+              data-login-field
+              data-login-anim
+            >
+              <Users className="h-3.5 w-3.5" aria-hidden />
+              Soy padre / apoderado
+              <ArrowRight className="h-3.5 w-3.5 ml-auto" aria-hidden />
             </Link>
-
-            {import.meta.env.DEV && (
-              <p className="login-dev border-t">Dev: admin / admin123</p>
-            )}
 
             <p className="login-form-card__footer">
               <img

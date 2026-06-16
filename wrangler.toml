@@ -1,10 +1,21 @@
-# SIE — frontend estático (Vite 5 + React SPA)
-# Cloudflare: NO usar el preset "Framework: Vite" de Wrangler.
-# Este proyecto despliega solo la carpeta dist/ como assets estáticos.
+# SIE — frontend estático en Cloudflare Workers (Assets)
+# Compatible con Vite 5.x. NO usar el preset "Framework: Vite" del dashboard.
+#
+# Dashboard Cloudflare → Build:
+#   Build command:    bun run build
+#   Deploy command:   bun run cf:deploy
+#   Output directory: dist  (solo referencia; wrangler lee ./dist)
 
 name = "sie"
 compatibility_date = "2024-09-23"
+send_metrics = false
 
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
+
+# index.html sin caché; assets con hash sí (ver public/_headers)
+html_handling = "auto-trailing-slash"
+
+[observability]
+enabled = false

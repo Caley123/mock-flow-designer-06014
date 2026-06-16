@@ -12,16 +12,22 @@ export const useSessionMonitor = () => {
   const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Verificar sesión inmediatamente
-    if (sessionService.isExpired()) {
+    const session = sessionService.getSession();
+
+    // Sin sesión = visitante en rutas públicas; no redirigir al login.
+    if (!session) return;
+
+    if (Date.now() > session.expiresAt) {
       authService.logout();
       navigate('/login?expired=true', { replace: true });
       return;
     }
 
-    // Función para verificar y actualizar sesión
     const checkSession = () => {
-      if (sessionService.isExpired()) {
+      const current = sessionService.getSession();
+      if (!current) return;
+
+      if (Date.now() > current.expiresAt) {
         authService.logout();
         navigate('/login?expired=true', { replace: true });
       } else {

@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
+import { studentsService } from './studentsService';
 import { getLimaNow, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { getCached, setCached } from '@/lib/utils/memoryCache';
 
@@ -98,19 +99,93 @@ export type CreateArrivalOptions = {
   status?: 'A tiempo' | 'Tarde';
 };
 
+export type CreateArrivalResult = {
+  record: ArrivalRecord | null;
+  error: string | null;
+  /** El estudiante ya tenía llegada registrada hoy (otro tutor o re-escaneo). */
+  alreadyRegistered?: boolean;
+};
+
+const ARRIVAL_ROW_SELECT =
+  'id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por';
+
+/** Evita carrera solo para el mismo estudiante; distintos escanean en paralelo. */
+const arrivalCreateLocks = new Map<number, Promise<CreateArrivalResult>>();
+
+function mapArrivalRow(data: {
+  id_registro: number;
+  id_estudiante: number;
+  fecha: string;
+  hora_llegada: string;
+  estado: string;
+  fecha_creacion: string;
+  registrado_por: number | null;
+}): ArrivalRecord {
+  let arrivalTime = data.hora_llegada;
+  if (arrivalTime.length > 5) {
+    arrivalTime = arrivalTime.substring(0, 5);
+  }
+
+  return {
+    id: data.id_registro,
+    studentId: data.id_estudiante,
+    date: data.fecha,
+    arrivalTime,
+    status: data.estado as ArrivalRecord['status'],
+    registeredBy: data.registrado_por ?? 0,
+    createdAt: data.fecha_creacion,
+  };
+}
+
 /**
- * Registrar una llegada de estudiante
+ * Llegada del día para un estudiante (evita duplicados entre tutores o re-escaneos).
  */
-export async function createArrivalRecord(
+export async function getTodayArrivalForStudent(
+  studentId: number,
+  date?: string
+): Promise<{ record: ArrivalRecord | null; error: string | null }> {
+  try {
+    const targetDate = date ?? getLimaNow().date;
+
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select(ARRIVAL_ROW_SELECT)
+      .eq('id_estudiante', studentId)
+      .eq('fecha', targetDate)
+      .order('hora_llegada', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return { record: null, error: error.message };
+    }
+
+    if (!data) {
+      return { record: null, error: null };
+    }
+
+    return { record: mapArrivalRow(data), error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error al consultar llegada';
+    return { record: null, error: message };
+  }
+}
+
+async function createArrivalRecordInner(
   studentId: number,
   registeredBy?: number,
   options?: CreateArrivalOptions
-): Promise<{ record: ArrivalRecord | null; error: string | null }> {
+): Promise<CreateArrivalResult> {
   try {
     const { date: formattedDate, time: formattedTime } =
       options?.date && options?.arrivalTime
         ? { date: options.date, time: options.arrivalTime }
         : getLimaNow();
+
+    const { record: existing } = await getTodayArrivalForStudent(studentId, formattedDate);
+    if (existing) {
+      return { record: existing, error: null, alreadyRegistered: true };
+    }
 
     const insertData: Record<string, unknown> = {
       id_estudiante: studentId,
@@ -133,31 +208,54 @@ export async function createArrivalRecord(
     const { data, error } = await supabase
       .from('registros_llegada')
       .insert(insertData)
-      .select(`
-        id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por
-      `)
+      .select(ARRIVAL_ROW_SELECT)
       .single();
 
     if (error) {
+      // Carrera entre dos tutores: el otro insertó primero.
+      if (error.code === '23505') {
+        const { record: raced } = await getTodayArrivalForStudent(studentId, formattedDate);
+        if (raced) {
+          return { record: raced, error: null, alreadyRegistered: true };
+        }
+      }
       console.error('Error al registrar llegada:', error);
       return { record: null, error: error.message };
     }
 
-    const record: ArrivalRecord = {
-      id: data.id_registro,
-      studentId: data.id_estudiante,
-      date: data.fecha,
-      arrivalTime: data.hora_llegada,
-      status: data.estado,
-      registeredBy: data.registrado_por,
-      createdAt: data.fecha_creacion,
-    };
-
-    return { record, error: null };
+    return { record: mapArrivalRow(data), error: null };
   } catch (error: any) {
     console.error('Error al registrar llegada:', error);
     return { record: null, error: error.message };
   }
+}
+
+/**
+ * Registrar una llegada. Varios tutores/estudiantes en paralelo;
+ * solo se serializa si es el mismo estudiante al mismo tiempo.
+ */
+export async function createArrivalRecord(
+  studentId: number,
+  registeredBy?: number,
+  options?: CreateArrivalOptions
+): Promise<CreateArrivalResult> {
+  const inFlight = arrivalCreateLocks.get(studentId);
+  if (inFlight) {
+    const result = await inFlight;
+    if (result.record && !result.alreadyRegistered) {
+      return { record: result.record, error: null, alreadyRegistered: true };
+    }
+    return result;
+  }
+
+  const task = createArrivalRecordInner(studentId, registeredBy, options).finally(() => {
+    if (arrivalCreateLocks.get(studentId) === task) {
+      arrivalCreateLocks.delete(studentId);
+    }
+  });
+
+  arrivalCreateLocks.set(studentId, task);
+  return task;
 }
 
 /**
@@ -717,8 +815,190 @@ function getTodayDate(): string {
   return getLimaTodayDate();
 }
 
+/**
+ * Busca un estudiante por DNI/código de barras y devuelve su llegada de hoy
+ * (si existe) junto con los últimos 14 días. Uso público — sin autenticación.
+ */
+type RpcArrivalRow = {
+  id: number;
+  studentId: number;
+  date: string;
+  arrivalTime: string;
+  status: string;
+};
+
+type RpcParentLookup = {
+  found: boolean;
+  student?: {
+    id: number;
+    fullName: string;
+    grade: string;
+    section: string;
+    level: EducationalLevel;
+    barcode: string;
+    profilePhoto: string | null;
+    active: boolean;
+  };
+  arrivalToday?: RpcArrivalRow | null;
+  recentArrivals?: RpcArrivalRow[];
+};
+
+function mapRpcArrival(row: RpcArrivalRow): ArrivalRecord {
+  return {
+    id: row.id,
+    studentId: row.studentId,
+    date: row.date,
+    arrivalTime: row.arrivalTime,
+    status: row.status as ArrivalRecord['status'],
+    registeredBy: 0,
+    createdAt: row.date,
+  };
+}
+
+async function getPublicInfoByDniRpc(dni: string): Promise<{
+  arrival: ArrivalRecord | null;
+  recentArrivals: ArrivalRecord[];
+  student: Student | null;
+  error: string | null;
+} | null> {
+  const { data, error } = await supabase.rpc('buscar_asistencia_por_dni', { p_dni: dni.trim() });
+  if (error) {
+    // Función no desplegada aún: usar fallback directo.
+    if (error.code === 'PGRST202' || error.message?.includes('does not exist')) {
+      return null;
+    }
+    return { arrival: null, recentArrivals: [], student: null, error: error.message };
+  }
+
+  const payload = data as RpcParentLookup;
+  if (!payload?.found || !payload.student) {
+    return {
+      arrival: null,
+      recentArrivals: [],
+      student: null,
+      error: 'No se encontró ningún estudiante con ese DNI.',
+    };
+  }
+
+  const student: Student = {
+    id: payload.student.id,
+    fullName: payload.student.fullName,
+    grade: payload.student.grade,
+    section: payload.student.section,
+    level: payload.student.level,
+    barcode: payload.student.barcode,
+    profilePhoto: payload.student.profilePhoto,
+    active: payload.student.active,
+    reincidenceLevel: 0,
+    faultsLast60Days: 0,
+  };
+
+  return {
+    arrival: payload.arrivalToday ? mapRpcArrival(payload.arrivalToday) : null,
+    recentArrivals: (payload.recentArrivals || []).map(mapRpcArrival),
+    student,
+    error: null,
+  };
+}
+
+export async function getPublicInfoByDNI(dni: string): Promise<{
+  arrival: ArrivalRecord | null;
+  recentArrivals: ArrivalRecord[];
+  student: Student | null;
+  error: string | null;
+}> {
+  try {
+    const fromRpc = await getPublicInfoByDniRpc(dni);
+    if (fromRpc) return fromRpc;
+
+    const { student, error: studentErr } = await studentsService.getByBarcode(dni.trim(), { skipReincidence: true });
+    if (studentErr || !student) {
+      return { arrival: null, recentArrivals: [], student: null, error: 'No se encontró ningún estudiante con ese DNI.' };
+    }
+
+    const today = getLimaTodayDate();
+    const since = new Date();
+    since.setDate(since.getDate() - 13);
+    const sinceStr = since.toISOString().split('T')[0];
+
+    const [todayRes, recentRes] = await Promise.all([
+      getTodayArrivalForStudent(student.id, today),
+      supabase
+        .from('registros_llegada')
+        .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
+        .eq('id_estudiante', student.id)
+        .gte('fecha', sinceStr)
+        .order('fecha', { ascending: false })
+        .limit(14),
+    ]);
+
+    return {
+      arrival: todayRes.record,
+      recentArrivals: (recentRes.data || []).map(mapArrivalRow),
+      student,
+      error: null,
+    };
+  } catch (err) {
+    return { arrival: null, recentArrivals: [], student: null, error: err instanceof Error ? err.message : 'Error al buscar el estudiante' };
+  }
+}
+
+/**
+ * Carga pública (sin auth) de un registro de llegada con datos del estudiante
+ * y los últimos 14 días de asistencia. Se usa en /llegada/:id para padres.
+ */
+export async function getPublicArrivalInfo(recordId: number): Promise<{
+  arrival: ArrivalRecord | null;
+  recentArrivals: ArrivalRecord[];
+  error: string | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select(`
+        id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por,
+        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(
+          id_estudiante, nombre_completo, grado, seccion, nivel_educativo,
+          foto_perfil, activo, codigo_barras, nombre_responsable, parentesco_responsable
+        )
+      `)
+      .eq('id_registro', recordId)
+      .maybeSingle();
+
+    if (error) return { arrival: null, recentArrivals: [], error: error.message };
+    if (!data) return { arrival: null, recentArrivals: [], error: 'Registro no encontrado.' };
+
+    const arrival = mapArrivalRecord(data as any);
+    const studentId = arrival.studentId;
+
+    // Últimos 14 días para el estudiante
+    const since = new Date();
+    since.setDate(since.getDate() - 13);
+    const sinceStr = since.toISOString().split('T')[0];
+
+    const { data: recent, error: recentErr } = await supabase
+      .from('registros_llegada')
+      .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
+      .eq('id_estudiante', studentId)
+      .gte('fecha', sinceStr)
+      .order('fecha', { ascending: false })
+      .limit(14);
+
+    if (recentErr) {
+      return { arrival, recentArrivals: [], error: null };
+    }
+
+    const recentArrivals = (recent || []).map(mapArrivalRow);
+    return { arrival, recentArrivals, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error al cargar el registro';
+    return { arrival: null, recentArrivals: [], error: message };
+  }
+}
+
 export const arrivalService = {
   createArrivalRecord,
+  getTodayArrivalForStudent,
   getArrivals,
   getMonthlyAttendance,
   getBimestralAttendance,
@@ -727,4 +1007,6 @@ export const arrivalService = {
   getStudentsWithoutDeparture,
   getDepartureAlerts,
   prefetchArrivalConfig,
+  getPublicArrivalInfo,
+  getPublicInfoByDNI,
 };

@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
+    "build:cf": "vite build",
+    "cf:deploy": "bunx wrangler@4.100.0 deploy",
+    "deploy:cf": "npm run build:cf && npm run cf:deploy",
     "openwa": "npm run dev --prefix OpenWA",
     "openwa:install": "powershell -ExecutionPolicy Bypass -File scripts/instalar-openwa.ps1"
   },

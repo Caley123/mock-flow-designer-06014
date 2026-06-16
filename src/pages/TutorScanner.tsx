@@ -12,6 +12,8 @@ import {
   ScanLine,
   Search,
   Loader2,
+  Zap,
+  CalendarClock,
 } from 'lucide-react';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { GuardyMark } from '@/components/brand/GuardyMark';
@@ -23,8 +25,10 @@ import {
   authService,
   arrivalService,
   whatsappService,
+  scheduleService,
 } from '@/lib/services';
 import { Student, FaultType, ArrivalRecord } from '@/types';
+import type { StudentScheduleStatus } from '@/lib/utils/sectionSchedule';
 import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
@@ -73,10 +77,15 @@ export const TutorScanner = () => {
   const [recentScans, setRecentScans] = useState<
     Array<{ id: string; name: string; time: string; status: 'A tiempo' | 'Tarde' | string }>
   >([]);
+  const [studentSchedule, setStudentSchedule] = useState<StudentScheduleStatus | null>(null);
+  const [quickFaultId, setQuickFaultId] = useState<number | null>(null);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const barcodeIndexRef = useRef<Map<string, Student>>(new Map());
-  const syncGenerationRef = useRef(0);
+  const latestProfileScanRef = useRef(0);
+  const activeLookupsRef = useRef(0);
+  const inFlightStudentIdsRef = useRef<Set<number>>(new Set());
+  const todayArrivalsRef = useRef<Map<number, ArrivalRecord>>(new Map());
 
   const user = authService.getCurrentUser();
 
@@ -93,6 +102,7 @@ export const TutorScanner = () => {
     isMountedRef.current = true;
     loadFaults();
     arrivalService.prefetchArrivalConfig();
+    void scheduleService.getConfig();
     loadArrivalLimit();
     void studentsService.prefetchBarcodeIndex().then((map) => {
       if (!isMountedRef.current) return;
@@ -113,6 +123,14 @@ export const TutorScanner = () => {
       focusBarcodeInput();
     }
   }, [showIncidentDialog, focusBarcodeInput]);
+
+  // El tutor no debe pulsar "Siguiente": al mostrarse el perfil reenfocamos el
+  // input para que escanear el siguiente carnet reemplace el perfil al instante.
+  useEffect(() => {
+    if (showStudentProfile && !showIncidentDialog) {
+      focusBarcodeInput();
+    }
+  }, [showStudentProfile, showIncidentDialog, focusBarcodeInput]);
 
   useEffect(() => {
     if (nameSearch.trim().length < 2) {
@@ -136,6 +154,38 @@ export const TutorScanner = () => {
       window.clearTimeout(timeoutId);
     };
   }, [nameSearch]);
+
+  useEffect(() => {
+    if (!student) {
+      setStudentSchedule(null);
+      return;
+    }
+    let cancelled = false;
+    void scheduleService.getForStudent(student, nowHHMM || undefined).then((status) => {
+      if (!cancelled && isMountedRef.current) setStudentSchedule(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [student, nowHHMM]);
+
+  const quickFaults = useMemo(
+    () =>
+      [...faults]
+        .filter((f) => f.active)
+        .sort((a, b) => (a.ordenVisualizacion ?? 99) - (b.ordenVisualizacion ?? 99))
+        .slice(0, 6),
+    [faults]
+  );
+
+  const scheduleBadgeVariant = useMemo(() => {
+    if (!studentSchedule) return 'secondary' as const;
+    if (studentSchedule.shouldBeAtSchool) {
+      return studentSchedule.phase === 'exit' ? ('warning' as const) : ('success' as const);
+    }
+    if (studentSchedule.phase === 'before_entry') return 'secondary' as const;
+    return 'destructive' as const;
+  }, [studentSchedule]);
 
   const loadFaults = async () => {
     if (!isMountedRef.current) return;
@@ -201,12 +251,61 @@ export const TutorScanner = () => {
   }, [arrivalLimit]);
 
   const applyScanSuccess = useCallback(
-    (studentToShow: Student, record: ArrivalRecord) => {
+    (
+      studentToShow: Student,
+      record: ArrivalRecord,
+      options?: { countInSession?: boolean; duplicate?: boolean }
+    ) => {
       setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
 
       const status = record.status || 'Registrado';
+      const displayTime = record.arrivalTime ?? nowHHMM;
+
+      if (options?.countInSession !== false) {
+        setSessionCount((prev) => ({
+          total: prev.total + 1,
+          onTime: prev.onTime + (status === 'A tiempo' ? 1 : 0),
+          late: prev.late + (status === 'Tarde' ? 1 : 0),
+        }));
+        setRecentScans((prev) => {
+          const next = [
+            {
+              id: `${Date.now()}-${studentToShow.id}`,
+              name: studentToShow.fullName,
+              time: displayTime,
+              status,
+            },
+            ...prev,
+          ];
+          return next.slice(0, 6);
+        });
+      }
+
+      setScanAnnouncement(
+        options?.duplicate
+          ? `${studentToShow.fullName} ya registrado hoy: ${status}, hora ${displayTime}`
+          : `${studentToShow.fullName} registrado: ${status}, hora ${displayTime}`
+      );
+    },
+    [nowHHMM]
+  );
+
+  const revertOptimisticSessionCount = useCallback((status: ArrivalRecord['status']) => {
+    setSessionCount((prev) => ({
+      total: Math.max(0, prev.total - 1),
+      onTime: Math.max(0, prev.onTime - (status === 'A tiempo' ? 1 : 0)),
+      late: Math.max(0, prev.late - (status === 'Tarde' ? 1 : 0)),
+    }));
+    setRecentScans((prev) => prev.slice(1));
+  }, []);
+
+  const appendToSessionStats = useCallback(
+    (studentToShow: Student, record: ArrivalRecord) => {
+      const status = record.status || 'Registrado';
+      const displayTime = record.arrivalTime ?? nowHHMM;
+
       setSessionCount((prev) => ({
         total: prev.total + 1,
         onTime: prev.onTime + (status === 'A tiempo' ? 1 : 0),
@@ -217,7 +316,7 @@ export const TutorScanner = () => {
           {
             id: `${Date.now()}-${studentToShow.id}`,
             name: studentToShow.fullName,
-            time: record.arrivalTime ?? nowHHMM,
+            time: displayTime,
             status,
           },
           ...prev,
@@ -225,31 +324,75 @@ export const TutorScanner = () => {
         return next.slice(0, 6);
       });
       setScanAnnouncement(
-        `${studentToShow.fullName} registrado: ${status}, hora ${record.arrivalTime ?? nowHHMM}`
+        `${studentToShow.fullName} registrado: ${status}, hora ${displayTime}`
       );
     },
     [nowHHMM]
   );
 
+  const setLookupBusy = useCallback((busy: boolean) => {
+    if (busy) {
+      activeLookupsRef.current += 1;
+      if (isMountedRef.current) setLookupPending(true);
+      return;
+    }
+    activeLookupsRef.current = Math.max(0, activeLookupsRef.current - 1);
+    if (activeLookupsRef.current === 0 && isMountedRef.current) {
+      setLookupPending(false);
+    }
+  }, []);
+
   const persistArrivalInBackground = useCallback(
-    (studentToShow: Student, arrivalOpts: CreateArrivalOptions, syncGen: number) => {
+    (
+      studentToShow: Student,
+      arrivalOpts: CreateArrivalOptions,
+      scanSeq: number,
+      optimisticStatus: ArrivalRecord['status'],
+      showedOptimisticUi: boolean
+    ) => {
       const currentUser = authService.getCurrentUser();
       void arrivalService
         .createArrivalRecord(studentToShow.id, currentUser?.id, arrivalOpts)
-        .then(({ record, error: arrivalError }) => {
-          if (!isMountedRef.current || syncGenerationRef.current !== syncGen) return;
+        .then(({ record, error: arrivalError, alreadyRegistered }) => {
+          if (!isMountedRef.current) return;
+
+          inFlightStudentIdsRef.current.delete(studentToShow.id);
+
+          const isLatestProfile = scanSeq === latestProfileScanRef.current;
 
           if (arrivalError || !record) {
             console.error('Error al registrar llegada:', arrivalError);
+            if (isLatestProfile && showedOptimisticUi) {
+              revertOptimisticSessionCount(optimisticStatus);
+              setShowStudentProfile(false);
+              setStudent(null);
+              setArrivalRecord(null);
+            }
             toast.error('No se guardó la llegada en el servidor. Vuelva a escanear.');
-            setShowStudentProfile(false);
-            setStudent(null);
-            setArrivalRecord(null);
             focusBarcodeInput();
             return;
           }
 
-          setArrivalRecord(record);
+          todayArrivalsRef.current.set(studentToShow.id, record);
+
+          if (alreadyRegistered) {
+            if (isLatestProfile && showedOptimisticUi) {
+              revertOptimisticSessionCount(optimisticStatus);
+              applyScanSuccess(studentToShow, record, { countInSession: false, duplicate: true });
+            }
+            toast.info(
+              `${studentToShow.fullName} ya fue registrado hoy a las ${record.arrivalTime ?? '—'}`,
+              { duration: 2800 }
+            );
+            focusBarcodeInput();
+            return;
+          }
+
+          if (!showedOptimisticUi) {
+            appendToSessionStats(studentToShow, record);
+          } else if (isLatestProfile) {
+            setArrivalRecord(record);
+          }
 
           if (whatsappService.isEnabled()) {
             void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
@@ -261,7 +404,12 @@ export const TutorScanner = () => {
           }
         });
     },
-    [focusBarcodeInput]
+    [
+      appendToSessionStats,
+      applyScanSuccess,
+      focusBarcodeInput,
+      revertOptimisticSessionCount,
+    ]
   );
 
   const resolveStudentByBarcode = useCallback(
@@ -269,7 +417,6 @@ export const TutorScanner = () => {
       const fromIndex = studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, code);
       if (fromIndex) return fromIndex;
 
-      setLookupPending(true);
       try {
         const { student, error } = await studentsService.getByBarcode(code, {
           skipReincidence: true,
@@ -280,18 +427,39 @@ export const TutorScanner = () => {
         }
         if (error) console.warn('getByBarcode:', error);
         return null;
-      } finally {
-        if (isMountedRef.current) setLookupPending(false);
+      } catch {
+        return null;
       }
     },
     []
   );
 
   const processStudent = useCallback(
-    (foundStudent: Student) => {
+    (foundStudent: Student, scanSeq: number) => {
       if (!isMountedRef.current) return;
 
       focusBarcodeInput();
+
+      const isLatestProfile = scanSeq === latestProfileScanRef.current;
+
+      const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
+      if (cachedToday) {
+        if (isLatestProfile) {
+          applyScanSuccess(foundStudent, cachedToday, { countInSession: false, duplicate: true });
+        }
+        toast.info(
+          `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}`,
+          { duration: 2800 }
+        );
+        return;
+      }
+
+      if (inFlightStudentIdsRef.current.has(foundStudent.id)) {
+        if (isLatestProfile) {
+          toast.info(`Registrando a ${foundStudent.fullName}…`, { duration: 1800 });
+        }
+        return;
+      }
 
       const { date, time, status } = computeArrivalSnapshot();
       const arrivalOpts: CreateArrivalOptions = {
@@ -314,9 +482,20 @@ export const TutorScanner = () => {
         registeredBy: 0,
       };
 
-      const syncGen = ++syncGenerationRef.current;
-      applyScanSuccess(foundStudent, optimisticRecord);
-      persistArrivalInBackground(foundStudent, arrivalOpts, syncGen);
+      inFlightStudentIdsRef.current.add(foundStudent.id);
+
+      const showedOptimisticUi = isLatestProfile;
+      if (showedOptimisticUi) {
+        applyScanSuccess(foundStudent, optimisticRecord);
+      }
+
+      persistArrivalInBackground(
+        foundStudent,
+        arrivalOpts,
+        scanSeq,
+        status,
+        showedOptimisticUi
+      );
     },
     [
       applyScanSuccess,
@@ -327,7 +506,7 @@ export const TutorScanner = () => {
   );
 
   const processScanCode = useCallback(
-    async (rawInput: string) => {
+    async (rawInput: string, scanSeq: number) => {
       const raw = rawInput.replace(/\r?\n/g, '').trim();
       if (!raw || !isMountedRef.current) {
         if (!raw) toast.error('Ingrese un código de barras');
@@ -337,7 +516,12 @@ export const TutorScanner = () => {
       let foundStudent = studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, raw);
 
       if (!foundStudent) {
-        foundStudent = await resolveStudentByBarcode(raw);
+        setLookupBusy(true);
+        try {
+          foundStudent = await resolveStudentByBarcode(raw);
+        } finally {
+          setLookupBusy(false);
+        }
         if (!isMountedRef.current) return;
       }
 
@@ -347,22 +531,31 @@ export const TutorScanner = () => {
         return;
       }
 
-      processStudent(foundStudent);
+      processStudent(foundStudent, scanSeq);
     },
-    [focusBarcodeInput, processStudent, resolveStudentByBarcode]
+    [focusBarcodeInput, processStudent, resolveStudentByBarcode, setLookupBusy]
+  );
+
+  const startScan = useCallback(
+    (rawInput: string) => {
+      const scanSeq = ++latestProfileScanRef.current;
+      void processScanCode(rawInput, scanSeq);
+    },
+    [processScanCode]
   );
 
   const handleNameSearchSelect = (selected: Student) => {
     setNameSearch('');
     setNameSearchResults([]);
-    processStudent(selected);
+    const scanSeq = ++latestProfileScanRef.current;
+    processStudent(selected, scanSeq);
   };
 
   const handleScan = (e: React.FormEvent) => {
     e.preventDefault();
     const code = barcode;
     setBarcode('');
-    void processScanCode(code);
+    startScan(code);
   };
 
   const handleBarcodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -370,7 +563,7 @@ export const TutorScanner = () => {
     if (/[\r\n]/.test(v)) {
       const code = v.replace(/\r?\n/g, '').trim();
       setBarcode('');
-      if (code) void processScanCode(code);
+      if (code) startScan(code);
       return;
     }
     setBarcode(v);
@@ -384,6 +577,56 @@ export const TutorScanner = () => {
     setShowIncidentDialog(true);
   };
 
+  const submitIncident = async (faultTypeId: number, obs?: string) => {
+    if (!student || !isMountedRef.current) return false;
+
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Usuario no autenticado');
+      return false;
+    }
+
+    const { error } = await incidentsService.create({
+      studentId: student.id,
+      faultTypeId,
+      registeredBy: currentUser.id,
+      observations: obs?.trim() || undefined,
+    });
+
+    if (!isMountedRef.current) return false;
+
+    if (error) {
+      toast.error(error, { duration: 3200 });
+      return false;
+    }
+
+    toast.success('Incidencia registrada');
+    setShowIncidentDialog(false);
+    setSelectedFault('');
+    setObservations('');
+    setQuickFaultId(null);
+    setStudent(null);
+    setShowStudentProfile(false);
+    setArrivalRecord(null);
+    setBarcode('');
+    focusBarcodeInput();
+    return true;
+  };
+
+  const handleQuickIncident = async (faultId: number) => {
+    if (!student || registering) return;
+    setQuickFaultId(faultId);
+    setRegistering(true);
+    try {
+      await submitIncident(faultId);
+    } finally {
+      if (isMountedRef.current) {
+        setRegistering(false);
+        setQuickFaultId(null);
+      }
+    }
+  };
+
   const handleSubmitIncident = async () => {
     if (!student || !selectedFault || !isMountedRef.current) {
       if (!isMountedRef.current) return;
@@ -392,36 +635,8 @@ export const TutorScanner = () => {
     }
 
     setRegistering(true);
-
     try {
-      const currentUser = authService.getCurrentUser();
-      if (!currentUser) {
-        toast.error('Usuario no autenticado');
-        setRegistering(false);
-        return;
-      }
-
-      const { error } = await incidentsService.create({
-        studentId: student.id,
-        faultTypeId: parseInt(selectedFault, 10),
-        registeredBy: currentUser.id,
-        observations: observations.trim() || undefined,
-      });
-
-      if (!isMountedRef.current) return;
-
-      if (error) {
-        toast.error(error, { duration: 3200 });
-      } else {
-        setShowIncidentDialog(false);
-        setSelectedFault('');
-        setObservations('');
-        setStudent(null);
-        setShowStudentProfile(false);
-        setArrivalRecord(null);
-        setBarcode('');
-        focusBarcodeInput();
-      }
+      await submitIncident(parseInt(selectedFault, 10), observations);
     } catch {
       if (!isMountedRef.current) return;
       toast.error('Error al registrar incidencia');
@@ -482,10 +697,16 @@ export const TutorScanner = () => {
             </div>
             <div className="min-w-0">
               <p className="tutor-header__title">Control de asistencia</p>
-              <p className="tutor-header__subtitle">SIE — Sistema de Incidencias Escolares</p>
+              <p className="tutor-header__subtitle hidden sm:block">SIE — Sistema de Incidencias Escolares</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <Badge
+              variant={limitTone}
+              className="md:hidden text-[10px] px-2 py-0.5 shrink-0"
+            >
+              {nowHHMM || '—:—'}
+            </Badge>
             <span className="tutor-header__user">{user?.fullName}</span>
             <Badge
               variant="outline"
@@ -498,11 +719,35 @@ export const TutorScanner = () => {
               size="sm"
               variant="outline"
               onClick={handleLogout}
-              className="border-[var(--tutor-lead)] bg-transparent text-[var(--tutor-starlight)] hover:bg-[var(--tutor-graphite)] hover:text-[var(--tutor-starlight)]"
+              className="tutor-header__logout border-[var(--tutor-lead)] bg-transparent text-[var(--tutor-starlight)] hover:bg-[var(--tutor-graphite)] hover:text-[var(--tutor-starlight)]"
             >
               <LogOut className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Salir</span>
             </Button>
+          </div>
+        </div>
+
+        {/* Barra de sesión — solo móvil */}
+        <div className="tutor-mobile-bar md:hidden" aria-label="Estado de la sesión">
+          <div className="tutor-mobile-bar__strip">
+            <div className="tutor-mobile-bar__stat">
+              <span className="tutor-mobile-bar__stat-val">{sessionCount.total}</span>
+              <span className="tutor-mobile-bar__stat-lbl">Total</span>
+            </div>
+            <span className="tutor-mobile-bar__divider" aria-hidden />
+            <div className="tutor-mobile-bar__stat tutor-mobile-bar__stat--ok">
+              <span className="tutor-mobile-bar__stat-val">{sessionCount.onTime}</span>
+              <span className="tutor-mobile-bar__stat-lbl">A tiempo</span>
+            </div>
+            <span className="tutor-mobile-bar__divider" aria-hidden />
+            <div className="tutor-mobile-bar__stat tutor-mobile-bar__stat--late">
+              <span className="tutor-mobile-bar__stat-val">{sessionCount.late}</span>
+              <span className="tutor-mobile-bar__stat-lbl">Tarde</span>
+            </div>
+            <div className="tutor-mobile-bar__limit">
+              <span className="tutor-mobile-bar__limit-lbl">Límite</span>
+              <span className="tutor-mobile-bar__limit-val">{arrivalLimit}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -525,11 +770,14 @@ export const TutorScanner = () => {
                         Límite {arrivalLimit}
                       </Badge>
                     </div>
-                    <h2 className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
-                      Escanear código o buscar por nombre
+                    <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
+                      Escanear o buscar estudiante
                     </h2>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-sm text-muted-foreground leading-relaxed hidden sm:block">
                       Carnet con lector de barras o búsqueda manual por nombre del estudiante.
+                    </p>
+                    <p className="text-sm text-muted-foreground leading-relaxed sm:hidden">
+                      Conecte el lector por Bluetooth o adaptador: escanee carnets seguidos sin tocar la pantalla.
                     </p>
                   </div>
                 </div>
@@ -550,21 +798,28 @@ export const TutorScanner = () => {
                       ref={barcodeInputRef}
                       id="barcode-input"
                       type="text"
+                      inputMode="none"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
                       value={barcode}
                       onChange={handleBarcodeChange}
                       onKeyDown={handleBarcodeKeyDown}
                       autoComplete="off"
                       autoFocus
-                      placeholder="Escanee o escriba el código…"
+                      placeholder="Escanee el carnet…"
                       aria-describedby="barcode-scan-hint"
                       className="tutor-scan-input"
                     />
                     <div id="barcode-scan-hint" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
+                      <span className="sm:hidden rounded-full border border-primary/25 bg-primary/5 px-2 py-1">
+                        Lector Bluetooth listo
+                      </span>
+                      <span className="hidden sm:inline rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
                         Enter
                       </span>
-                      <span>Registrar</span>
-                      <span className="mx-1">·</span>
+                      <span className="hidden sm:inline">Registrar</span>
+                      <span className="hidden sm:inline mx-1">·</span>
                       <span className="rounded-full border border-border bg-muted/20 px-2 py-1 font-mono">
                         Esc
                       </span>
@@ -586,7 +841,7 @@ export const TutorScanner = () => {
                         placeholder="Escriba al menos 2 letras del nombre…"
                         autoComplete="off"
                         disabled={lookupPending}
-                        className="pl-9"
+                        className="pl-9 text-base min-h-12 sm:min-h-10"
                         aria-describedby="name-search-hint"
                         aria-expanded={nameSearchResults.length > 0}
                         aria-controls="name-search-results"
@@ -655,9 +910,19 @@ export const TutorScanner = () => {
             </div>
 
             {showStudentProfile && student && (
-              <div
-                className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
-              >
+              <>
+                <button
+                  type="button"
+                  className="tutor-student-backdrop md:hidden"
+                  aria-label="Cerrar perfil del estudiante"
+                  onClick={closeStudentProfile}
+                />
+                <div
+                  className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={`Registro de ${student.fullName}`}
+                >
                 <div className="tutor-student-card__banner" aria-hidden />
                 <div className="tutor-student-card__body">
                   <Button
@@ -671,40 +936,75 @@ export const TutorScanner = () => {
                     <span className="sr-only">Cerrar</span>
                   </Button>
 
-                  <div className="tutor-student-card__hero">
+                  <div className="tutor-identity">
                     <StudentPhoto
                       src={student.profilePhoto}
                       name={student.fullName}
-                      className="tutor-student-card__photo"
+                      className="tutor-identity__photo h-56 w-56 sm:h-64 sm:w-64 md:h-72 md:w-72"
+                      imageClassName="object-cover object-center"
                     />
-                    <div className="tutor-student-card__identity">
-                      <Badge
-                        variant={arrivalOnTime ? 'success' : 'warning'}
-                        className="tutor-student-card__status mb-2"
-                      >
-                        {arrivalRecord?.status ?? 'Registrado'}
-                      </Badge>
-                      <h3 className="tutor-student-card__name">{student.fullName}</h3>
-                      <p className="tutor-student-card__grade">
-                        {student.level} · {student.grade} {student.section}
-                      </p>
-                    </div>
+                    <Badge
+                      variant={arrivalOnTime ? 'success' : 'warning'}
+                      className="tutor-student-card__status mt-3"
+                    >
+                      {arrivalRecord?.status ?? 'Registrado'} · {displayArrivalTime}
+                    </Badge>
+                    <h3 className="tutor-identity__name">{student.fullName}</h3>
+                    <p className="tutor-identity__grade">
+                      {student.level} · {student.grade} &apos;{student.section}&apos;
+                    </p>
+                    <p className="tutor-identity__dni font-mono">{student.barcode || '—'}</p>
                   </div>
 
-                  <div className="tutor-student-card__stats">
-                    <div className="tutor-student-card__stat tutor-student-card__stat--time">
-                      <p className="tutor-student-card__stat-label">Hora de llegada</p>
-                      <p className="tutor-student-card__stat-value tutor-student-card__stat-value--clock">
-                        {displayArrivalTime}
-                      </p>
+                  {/* Horario del salón */}
+                  {studentSchedule && (
+                    <div
+                      className={`tutor-schedule tutor-schedule--${studentSchedule.phase}`}
+                      aria-label="Horario del salón"
+                    >
+                      <div className="tutor-schedule__head">
+                        <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
+                        <span className="font-semibold text-sm">Horario del salón</span>
+                        <Badge variant={scheduleBadgeVariant} className="ml-auto text-[10px]">
+                          {studentSchedule.phaseLabel}
+                        </Badge>
+                      </div>
+                      <p className="tutor-schedule__summary">{studentSchedule.summary}</p>
+                      {!studentSchedule.shouldBeAtSchool && studentSchedule.phase === 'after_school' && (
+                        <p className="tutor-schedule__alert">
+                          Fuera de jornada — verifique si tiene taller o permiso especial.
+                        </p>
+                      )}
                     </div>
-                    <div className="tutor-student-card__stat">
-                      <p className="tutor-student-card__stat-label">Código de barras</p>
-                      <p className="tutor-student-card__stat-value tutor-student-card__stat-value--code">
-                        {student.barcode || '—'}
+                  )}
+
+                  {/* Reporte rápido */}
+                  {quickFaults.length > 0 && (
+                    <div className="tutor-quick-report">
+                      <p className="tutor-quick-report__title">
+                        <Zap className="h-4 w-4" aria-hidden />
+                        Reporte rápido
                       </p>
+                      <div className="tutor-quick-report__grid">
+                        {quickFaults.map((fault) => (
+                          <Button
+                            key={fault.id}
+                            type="button"
+                            variant={fault.severity === 'Grave' ? 'destructive' : 'secondary'}
+                            size="sm"
+                            disabled={registering}
+                            className="tutor-quick-report__btn h-auto min-h-[2.75rem] py-2 text-left text-xs leading-snug whitespace-normal"
+                            onClick={() => handleQuickIncident(fault.id)}
+                          >
+                            {registering && quickFaultId === fault.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                            ) : null}
+                            {fault.name}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="tutor-student-card__actions">
                     <Button
@@ -724,15 +1024,16 @@ export const TutorScanner = () => {
                       className="tutor-student-card__btn-incident gap-2"
                     >
                       <AlertCircle className="h-5 w-5" />
-                      Registrar incidencia
+                      Otra incidencia…
                     </Button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </>
             )}
           </section>
 
-          <aside className="tutor-right">
+          <aside className="tutor-right hidden md:block">
             <div className="tutor-side-card">
               <div className="tutor-side-card__head">
                 <CardTitle className="text-base font-semibold">Estado del turno</CardTitle>
@@ -824,6 +1125,37 @@ export const TutorScanner = () => {
             </Card>
           </aside>
         </div>
+
+        {/* Historial reciente colapsable — solo móvil */}
+        <details className="tutor-mobile-feed md:hidden">
+          <summary className="tutor-mobile-feed__summary">
+            Últimos escaneos
+            {sessionCount.total > 0 && (
+              <Badge variant="secondary" className="ml-2 text-[10px]">
+                {sessionCount.total}
+              </Badge>
+            )}
+          </summary>
+          <div className="tutor-feed tutor-mobile-feed__body">
+            {recentScans.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">
+                Aún no hay registros en esta sesión.
+              </p>
+            ) : (
+              recentScans.map((row) => (
+                <div key={row.id} className="tutor-feed__row">
+                  <span className="tutor-feed__name">{row.name}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="tutor-feed__time">{row.time}</span>
+                    <Badge variant={row.status === 'A tiempo' ? 'success' : row.status === 'Tarde' ? 'warning' : 'secondary'}>
+                      {row.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </details>
       </main>
 
       <Dialog
@@ -837,7 +1169,7 @@ export const TutorScanner = () => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md rounded-[28px]">
+        <DialogContent className="tutor-dialog sm:max-w-md rounded-[28px] max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Registrar incidencia</DialogTitle>
             <DialogDescription>
