@@ -244,9 +244,7 @@ export const ParentPortal = () => {
         </div>
       )}
 
-      <div data-parent-nav data-parent-anim>
-        <ParentBottomNav value={tab} onChange={setTab} badges={navBadges} />
-      </div>
+      <ParentBottomNav value={tab} onChange={setTab} badges={navBadges} />
 
       <div
         key={`${selectedStudentId}-${tab}`}
