@@ -29,8 +29,8 @@ Configuración en el **dashboard de Cloudflare** → proyecto `sie` → Builds:
 
 | Campo | Valor |
 |-------|--------|
-| Build command | `bun run build` |
-| Deploy command | `bun run cf:deploy` |
+| Build command | `npm run build` |
+| Deploy command | `npm run cf:deploy` |
 | Output directory | `dist` |
 
 **No usar** preset "Framework: Vite" ni `npx wrangler deploy` a pelo.  

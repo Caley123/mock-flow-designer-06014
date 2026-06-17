@@ -2,8 +2,8 @@
 # Compatible con Vite 5.x. NO usar el preset "Framework: Vite" del dashboard.
 #
 # Dashboard Cloudflare → Build:
-#   Build command:    bun run build
-#   Deploy command:   bun run cf:deploy
+#   Build command:    npm run build
+#   Deploy command:   npm run cf:deploy
 #   Output directory: dist  (solo referencia; wrangler lee ./dist)
 
 name = "sie"

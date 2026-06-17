@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "build:cf": "vite build",
-    "cf:deploy": "bunx wrangler@4.101.0 deploy",
+    "cf:deploy": "npx wrangler@4.101.0 deploy",
     "deploy:cf": "npm run build:cf && npm run cf:deploy",
     "import:nomina": "node scripts/import-nomina.mjs",
     "import:nomina:primaria": "node scripts/import-nomina.mjs --nivel Primaria",
