@@ -11,10 +11,10 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: {
-      "/api/wa-proxy": {
+      "/internal/wa": {
         target: "http://localhost:2785",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/wa-proxy/, "/api"),
+        rewrite: (path) => path.replace(/^\/internal\/wa/, "/api"),
       },
     },
   },

@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "build:cf": "vite build",
-    "cf:deploy": "npx wrangler@4.100.0 deploy",
+    "cf:deploy": "wrangler deploy",
     "deploy:cf": "npm run build:cf && npm run cf:deploy",
     "import:nomina": "node scripts/import-nomina.mjs",
     "import:nomina:primaria": "node scripts/import-nomina.mjs --nivel Primaria",
@@ -99,6 +99,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "wrangler": "^4.100.0"
   }
 }
