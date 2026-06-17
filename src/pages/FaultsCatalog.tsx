@@ -64,6 +64,14 @@ const faultFormSchema = z.object({
 
 type FaultFormValues = z.infer<typeof faultFormSchema>;
 
+const faultFormDefaults: FaultFormValues = {
+  nombre_falta: '',
+  descripcion: '',
+  categoria: 'Conducta',
+  es_grave: false,
+  puntos_reincidencia: 1,
+};
+
 export const FaultsCatalog = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<FaultCategory | 'all'>('all');
@@ -75,13 +83,7 @@ export const FaultsCatalog = () => {
 
   const form = useForm<FaultFormValues>({
     resolver: zodResolver(faultFormSchema),
-    defaultValues: {
-      nombre_falta: '',
-      descripcion: '',
-      categoria: undefined,
-      es_grave: false,
-      puntos_reincidencia: 1,
-    },
+    defaultValues: faultFormDefaults,
   });
 
   useEffect(() => {
@@ -130,19 +132,12 @@ export const FaultsCatalog = () => {
     } else {
       toast.success('Falta agregada exitosamente');
       setDialogOpen(false);
-      form.reset();
-      setTempCategoria(undefined);
+      form.reset(faultFormDefaults);
+      setTempCategoria('Conducta');
       loadFaults();
     }
     setLoading(false);
   };
-
-  // Resetear estado temporal cuando se abre/cierra el dialog
-  useEffect(() => {
-    if (!dialogOpen) {
-      setTempCategoria(undefined);
-    }
-  }, [dialogOpen]);
 
   if (loading && faults.length === 0) {
     return (
@@ -169,9 +164,11 @@ export const FaultsCatalog = () => {
           open={dialogOpen} 
           onOpenChange={(open) => {
             setDialogOpen(open);
-            if (!open) {
-              // Resetear el formulario cuando se cierra el dialog
-              form.reset();
+            if (open) {
+              form.reset(faultFormDefaults);
+              setTempCategoria('Conducta');
+            } else {
+              form.reset(faultFormDefaults);
               setTempCategoria(undefined);
             }
           }}

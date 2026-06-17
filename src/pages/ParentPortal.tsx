@@ -34,7 +34,6 @@ import { es } from 'date-fns/locale';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { ParentBottomNav, type ParentTab } from '@/components/parent/ParentBottomNav';
-import { ParentMobileHeader } from '@/components/parent/ParentMobileHeader';
 import { ParentChildrenSwitcher } from '@/components/parent/ParentChildrenSwitcher';
 import { cn } from '@/lib/utils';
 import { useParentPortalAnimations } from '@/hooks/useParentPortalAnimations';
@@ -175,21 +174,13 @@ export const ParentPortal = () => {
 
   return (
     <div className="parent-portal-page" ref={pageRef}>
-      <ParentMobileHeader />
-      <div className="parent-portal space-y-5 sm:space-y-6">
+      <div className="parent-portal space-y-4 sm:space-y-5">
+      <h1 className="sr-only">Portal familiar</h1>
       {!isParentRole && (
         <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900">
           Vista de personal — así verá el apoderado
         </p>
       )}
-
-      <p
-        className="parent-welcome-banner rounded-xl border border-primary/15 bg-gradient-to-r from-primary/8 via-card to-accent/5 px-4 py-3 text-sm text-muted-foreground"
-        data-parent-welcome
-        data-parent-anim
-      >
-        Consulte la asistencia, incidencias y citas de su hijo/a en un solo lugar.
-      </p>
 
       {/* Hijo/a activo */}
       <section
@@ -209,9 +200,9 @@ export const ParentPortal = () => {
                 className="h-[4.25rem] w-[4.25rem] shrink-0 rounded-2xl border-2 border-primary/15 shadow-sm sm:h-20 sm:w-20"
               />
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg font-bold leading-snug tracking-tight sm:text-2xl">
+                <h2 className="text-lg font-bold leading-snug tracking-tight sm:text-2xl">
                   {student.fullName}
-                </h1>
+                </h2>
                 <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground">
                   <GraduationCap className="h-4 w-4 shrink-0 text-primary/70" />
                   <span>{student.level}</span>

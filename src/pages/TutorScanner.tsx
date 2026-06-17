@@ -50,6 +50,7 @@ import { Label } from '@/components/ui/label';
 import { configService } from '@/lib/services';
 import { getLimaNow } from '@/lib/utils/limaDateTime';
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
+import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 
 export const TutorScanner = () => {
   const navigate = useNavigate();
@@ -86,6 +87,8 @@ export const TutorScanner = () => {
   const activeLookupsRef = useRef(0);
   const inFlightStudentIdsRef = useRef<Set<number>>(new Set());
   const todayArrivalsRef = useRef<Map<number, ArrivalRecord>>(new Map());
+  const clearScanRef = useRef<() => void>(() => {});
+  const bumpProfileIdleRef = useRef<() => void>(() => {});
 
   const user = authService.getCurrentUser();
 
@@ -131,6 +134,18 @@ export const TutorScanner = () => {
       focusBarcodeInput();
     }
   }, [showStudentProfile, showIncidentDialog, focusBarcodeInput]);
+
+  const bumpProfileIdle = useTutorProfileIdle({
+    active: showStudentProfile && !showIncidentDialog,
+    onIdle: () => {
+      clearScanRef.current();
+      toast.message('Pantalla limpiada por inactividad', { duration: 2500 });
+    },
+  });
+
+  useEffect(() => {
+    bumpProfileIdleRef.current = bumpProfileIdle;
+  }, [bumpProfileIdle]);
 
   useEffect(() => {
     if (nameSearch.trim().length < 2) {
@@ -288,6 +303,7 @@ export const TutorScanner = () => {
           ? `${studentToShow.fullName} ya registrado hoy: ${status}, hora ${displayTime}`
           : `${studentToShow.fullName} registrado: ${status}, hora ${displayTime}`
       );
+      bumpProfileIdleRef.current();
     },
     [nowHHMM]
   );
@@ -657,6 +673,8 @@ export const TutorScanner = () => {
     focusBarcodeInput();
   };
 
+  clearScanRef.current = clearScan;
+
   const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -824,6 +842,10 @@ export const TutorScanner = () => {
                         Esc
                       </span>
                       <span>Limpiar</span>
+                      <span className="mx-1 hidden sm:inline">·</span>
+                      <span className="hidden sm:inline">
+                        Perfil se oculta a los 45 s sin actividad
+                      </span>
                     </div>
                   </div>
 

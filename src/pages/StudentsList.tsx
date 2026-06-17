@@ -118,40 +118,33 @@ export const StudentsList = () => {
   const [tempSeccion, setTempSeccion] = useState<string>('');
   const [tempNivel, setTempNivel] = useState<EducationalLevel | ''>('');
 
+  const studentFormDefaults: StudentFormValues = {
+    codigo_barras: '',
+    nombre_completo: '',
+    grado: '',
+    seccion: '',
+    nivel_educativo: 'Secundaria',
+    telefono_contacto: '',
+    email_contacto: '',
+    nombre_responsable: '',
+    parentesco_responsable: '',
+    telefono_emergencia: '',
+  };
+
   const form = useForm<StudentFormValues>({
     resolver: zodResolver(studentFormSchema),
-    defaultValues: {
-      codigo_barras: '',
-      nombre_completo: '',
-      grado: '',
-      seccion: '',
-      nivel_educativo: 'Secundaria',
-      telefono_contacto: '',
-      email_contacto: '',
-      nombre_responsable: '',
-      parentesco_responsable: '',
-      telefono_emergencia: '',
-    },
+    defaultValues: studentFormDefaults,
   });
 
-  // Resetear formulario cuando se abre el dialog
+  // Resetear formulario cuando se abre el dialog de creación
   useEffect(() => {
     if (dialogOpen) {
-      form.reset({
-        codigo_barras: '',
-        nombre_completo: '',
-        grado: '',
-        seccion: '',
-        nivel_educativo: 'Secundaria',
-        telefono_contacto: '',
-        email_contacto: '',
-        nombre_responsable: '',
-        parentesco_responsable: '',
-        telefono_emergencia: '',
-      });
+      form.reset(studentFormDefaults);
       setTempGrado('');
       setTempSeccion('');
       setTempNivel('');
+      setPhotoFile(null);
+      setPhotoPreview('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
@@ -718,7 +711,18 @@ export const StudentsList = () => {
           </Dialog>
 
           {/* Edit Student Dialog */}
-          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <Dialog open={editDialogOpen} onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) {
+              setSelectedStudent(null);
+              setPhotoFile(null);
+              setPhotoPreview('');
+              setTempGrado('');
+              setTempSeccion('');
+              setTempNivel('');
+              form.reset(studentFormDefaults);
+            }
+          }}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Editar Estudiante</DialogTitle>

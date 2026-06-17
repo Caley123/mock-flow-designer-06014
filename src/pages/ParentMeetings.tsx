@@ -78,20 +78,84 @@ import {
   parseMeetingDateTime,
 } from '@/lib/utils/limaDateTime';
 
-const meetingFormSchema = z.object({
-  id_estudiante: z.number().min(1, 'Debe seleccionar un estudiante').optional(),
-  motivo: z.string().min(5, 'El motivo debe tener al menos 5 caracteres'),
-  fecha: z.string().min(1, 'La fecha es requerida'),
-  hora: z.string().min(1, 'La hora es requerida'),
-  notas: z.string().optional(),
-  tipo: z.enum(['individual', 'all', 'grade', 'section', 'students']).default('individual'),
-  grade: z.string().optional(),
-  section: z.string().optional(),
-  level: z.string().optional(),
-  studentIds: z.array(z.number()).optional(),
-});
+const meetingFormSchema = z
+  .object({
+    id_estudiante: z.number().optional(),
+    motivo: z.string().min(5, 'El motivo debe tener al menos 5 caracteres'),
+    fecha: z.string().min(1, 'La fecha es requerida'),
+    hora: z.string().min(1, 'La hora es requerida'),
+    notas: z.string().optional(),
+    tipo: z.enum(['individual', 'all', 'grade', 'section', 'students']).default('individual'),
+    grade: z.string().optional(),
+    section: z.string().optional(),
+    level: z.string().optional(),
+    studentIds: z.array(z.number()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.tipo === 'individual' && (!data.id_estudiante || data.id_estudiante < 1)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe seleccionar un estudiante',
+        path: ['id_estudiante'],
+      });
+    }
+    if (data.tipo === 'grade' && !data.grade) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe seleccionar un grado',
+        path: ['grade'],
+      });
+    }
+    if (data.tipo === 'section' && !data.level) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe seleccionar el nivel educativo',
+        path: ['level'],
+      });
+    }
+    if (data.tipo === 'section' && !data.grade) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe seleccionar un grado',
+        path: ['grade'],
+      });
+    }
+    if (data.tipo === 'section' && !data.section) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe seleccionar una sección',
+        path: ['section'],
+      });
+    }
+  });
 
 type MeetingFormValues = z.infer<typeof meetingFormSchema>;
+
+const individualMeetingDefaults: MeetingFormValues = {
+  id_estudiante: 0,
+  motivo: '',
+  fecha: '',
+  hora: '',
+  notas: '',
+  tipo: 'individual',
+  grade: undefined,
+  section: undefined,
+  level: undefined,
+  studentIds: undefined,
+};
+
+const bulkMeetingDefaults: MeetingFormValues = {
+  id_estudiante: 0,
+  motivo: '',
+  fecha: '',
+  hora: '',
+  notas: '',
+  tipo: 'all',
+  grade: undefined,
+  section: undefined,
+  level: undefined,
+  studentIds: undefined,
+};
 
 export const ParentMeetings = () => {
   const [meetings, setMeetings] = useState<ParentMeeting[]>([]);
@@ -116,6 +180,33 @@ export const ParentMeetings = () => {
     tasaAsistencia: number;
   } | null>(null);
   const isMountedRef = useRef(true);
+
+  const openIndividualDialog = () => {
+    form.reset(individualMeetingDefaults);
+    setDialogOpen(true);
+  };
+
+  const openIndividualDialogWithSchedule = (date: Date, time?: string) => {
+    form.reset({
+      ...individualMeetingDefaults,
+      fecha: format(date, 'yyyy-MM-dd'),
+      hora: time ?? '',
+    });
+    setDialogOpen(true);
+  };
+
+  const openBulkDialog = () => {
+    form.reset(bulkMeetingDefaults);
+    setBulkDialogOpen(true);
+  };
+
+  const focusMeetingsOnDate = (fecha: string) => {
+    const [year, month, day] = fecha.split('-').map(Number);
+    if (year && month && day) {
+      setSelectedDate(new Date(year, month - 1, day));
+    }
+    setViewMode('list');
+  };
 
   const form = useForm<MeetingFormValues>({
     resolver: zodResolver(meetingFormSchema),
@@ -218,8 +309,9 @@ export const ParentMeetings = () => {
     setLoading(true);
 
     try {
-      // Si es cita masiva
-      if (data.tipo !== 'individual') {
+      const isBulk = bulkDialogOpen || data.tipo !== 'individual';
+
+      if (isBulk) {
         const { success, count, error } = await parentMeetingsService.createBulk({
           motivo: data.motivo,
           fecha: data.fecha,
@@ -237,10 +329,13 @@ export const ParentMeetings = () => {
 
         if (error) {
           toast.error(error);
+        } else if (!success) {
+          toast.error('No se pudieron crear las citas masivas');
         } else {
           toast.success(`${count} citas creadas exitosamente`);
           setBulkDialogOpen(false);
           form.reset();
+          focusMeetingsOnDate(data.fecha);
           loadMeetings();
           loadStats();
         }
@@ -515,7 +610,7 @@ export const ParentMeetings = () => {
 
       <StaffToolbar title="Vista y acciones" description="Calendario, lista o citas masivas">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
+          <Button variant="outline" size="sm" onClick={openBulkDialog}>
             <Users className="mr-2 h-4 w-4" />
             Citas masivas
           </Button>
@@ -535,7 +630,7 @@ export const ParentMeetings = () => {
             <List className="mr-2 h-4 w-4" />
             Lista
           </Button>
-          <Button variant="accent" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button variant="accent" size="sm" onClick={openIndividualDialog}>
             <UserPlus className="mr-2 h-4 w-4" />
             Nueva cita
           </Button>
@@ -554,8 +649,7 @@ export const ParentMeetings = () => {
                 events={calendarEvents}
                 onDateClick={(date) => {
                   setSelectedDate(date);
-                  form.setValue('fecha', format(date, 'yyyy-MM-dd'));
-                  setDialogOpen(true);
+                  openIndividualDialogWithSchedule(date);
                 }}
                 onEventClick={(event) => {
                   const meeting = meetings.find(m => m.id === event.id);
@@ -566,11 +660,7 @@ export const ParentMeetings = () => {
                 }}
                 onCreateEvent={(date, time) => {
                   setSelectedDate(date);
-                  form.setValue('fecha', format(date, 'yyyy-MM-dd'));
-                  if (time) {
-                    form.setValue('hora', time);
-                  }
-                  setDialogOpen(true);
+                  openIndividualDialogWithSchedule(date, time);
                 }}
                 defaultView="week"
                 currentDate={selectedDate || new Date()}
@@ -603,7 +693,7 @@ export const ParentMeetings = () => {
                     <SelectItem value="Cancelada">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="accent" onClick={() => setDialogOpen(true)}>
+                <Button variant="accent" onClick={openIndividualDialog}>
                   <UserPlus className="w-4 h-4 mr-2" />
                   Nueva Cita
                 </Button>
@@ -755,7 +845,15 @@ export const ParentMeetings = () => {
       </StaffDataPanel>
 
       {/* Create Meeting Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            form.reset(individualMeetingDefaults);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nueva Cita con Padre</DialogTitle>
@@ -777,6 +875,10 @@ export const ParentMeetings = () => {
                         field.onChange(value);
                         if (value !== 'individual') {
                           setDialogOpen(false);
+                          form.reset({
+                            ...bulkMeetingDefaults,
+                            tipo: value as MeetingFormValues['tipo'],
+                          });
                           setBulkDialogOpen(true);
                         }
                       }}
@@ -899,7 +1001,15 @@ export const ParentMeetings = () => {
       </Dialog>
 
       {/* Bulk Create Meeting Dialog */}
-      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+      <Dialog
+        open={bulkDialogOpen}
+        onOpenChange={(open) => {
+          setBulkDialogOpen(open);
+          if (open) {
+            form.reset(bulkMeetingDefaults);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Crear Citas Masivas</DialogTitle>

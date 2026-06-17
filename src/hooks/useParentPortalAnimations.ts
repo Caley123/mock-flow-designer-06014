@@ -49,22 +49,16 @@ export function useParentPortalAnimations(
           0
         )
           .fromTo(
-            '[data-parent-welcome]',
-            { y: 14, autoAlpha: 0 },
-            { y: 0, autoAlpha: 1, duration: dur * 0.85 },
-            0.08
-          )
-          .fromTo(
             '[data-parent-nav]',
             { y: 16, autoAlpha: 0 },
             { y: 0, autoAlpha: 1, duration: dur * 0.9 },
-            0.12
+            0.1
           )
           .fromTo(
             '[data-parent-panel]',
             { y: 20, autoAlpha: 0 },
             { y: 0, autoAlpha: 1, duration: dur * 0.95, ease: 'power3.out' },
-            0.18
+            0.16
           )
           .fromTo(
             '[data-parent-stat]',

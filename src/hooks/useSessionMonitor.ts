@@ -1,77 +1,95 @@
-import { useEffect, useRef } from 'react';
-import { sessionService } from '@/lib/services';
-import { authService } from '@/lib/services';
+import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authService, sessionService } from '@/lib/services';
+
+const ACTIVITY_THROTTLE_MS = 1000;
 
 /**
- * Hook para monitorear y gestionar la expiración de sesiones
+ * Cierra la sesión tras inactividad real (sin renovar el temporizador en segundo plano).
+ * Tutor y padre: 15 min · resto de roles: 30 min.
  */
 export const useSessionMonitor = () => {
   const navigate = useNavigate();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTouchRef = useRef(0);
 
-  useEffect(() => {
-    const session = sessionService.getSession();
+  const logoutExpired = useCallback(() => {
+    const role = sessionService.readSessionRaw()?.user.role;
+    void authService.logout();
+    const roleQuery =
+      role === 'Tutor' ? '&role=tutor' : role === 'Padre' ? '&role=padre' : '';
+    navigate(`/login?expired=true${roleQuery}`, { replace: true });
+  }, [navigate]);
 
-    // Sin sesión = visitante en rutas públicas; no redirigir al login.
+  const scheduleIdleLogout = useCallback(() => {
+    const session = sessionService.readSessionRaw();
     if (!session) return;
 
-    if (Date.now() > session.expiresAt) {
-      authService.logout();
-      navigate('/login?expired=true', { replace: true });
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    }
+
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) {
+      logoutExpired();
       return;
     }
 
-    const checkSession = () => {
-      const current = sessionService.getSession();
-      if (!current) return;
+    idleTimerRef.current = setTimeout(logoutExpired, remaining);
+  }, [logoutExpired]);
 
-      if (Date.now() > current.expiresAt) {
-        authService.logout();
-        navigate('/login?expired=true', { replace: true });
-      } else {
-        sessionService.updateActivity();
-      }
-    };
+  const onUserActivity = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTouchRef.current < ACTIVITY_THROTTLE_MS) return;
+    lastTouchRef.current = now;
 
-    // Verificar cada 5 minutos
-    intervalRef.current = setInterval(checkSession, sessionService.REFRESH_INTERVAL);
+    if (sessionService.isExpired()) {
+      logoutExpired();
+      return;
+    }
 
-    // Actualizar actividad en eventos de usuario
-    const updateActivity = () => {
-      // Cancelar timeout anterior
-      if (activityTimeoutRef.current) {
-        clearTimeout(activityTimeoutRef.current);
-      }
-      
-      // Debounce: actualizar actividad después de 30 segundos de inactividad
-      activityTimeoutRef.current = setTimeout(() => {
-        if (!sessionService.isExpired()) {
-          sessionService.updateActivity();
-        }
-      }, 30000);
-    };
+    sessionService.touchActivity();
+    scheduleIdleLogout();
+  }, [logoutExpired, scheduleIdleLogout]);
 
-    // Eventos que indican actividad del usuario
-    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    
-    activityEvents.forEach(event => {
-      document.addEventListener(event, updateActivity, { passive: true });
+  useEffect(() => {
+    const session = sessionService.getSession();
+    if (!session) return;
+
+    scheduleIdleLogout();
+
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const;
+    activityEvents.forEach((event) => {
+      document.addEventListener(event, onUserActivity, { passive: true });
     });
 
-    // Limpiar al desmontar
+    const intervalId = setInterval(() => {
+      if (sessionService.isExpired()) {
+        logoutExpired();
+      }
+    }, sessionService.REFRESH_INTERVAL);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (sessionService.isExpired()) {
+        logoutExpired();
+        return;
+      }
+      sessionService.touchActivity();
+      scheduleIdleLogout();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
       }
-      if (activityTimeoutRef.current) {
-        clearTimeout(activityTimeoutRef.current);
-      }
-      activityEvents.forEach(event => {
-        document.removeEventListener(event, updateActivity);
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      activityEvents.forEach((event) => {
+        document.removeEventListener(event, onUserActivity);
       });
     };
-  }, [navigate]);
+  }, [logoutExpired, onUserActivity, scheduleIdleLogout]);
 };
-

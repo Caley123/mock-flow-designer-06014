@@ -6,79 +6,102 @@ interface SessionData {
   lastActivity: number;
 }
 
+const DEFAULT_SESSION_MS = 30 * 60 * 1000;
+const TUTOR_SESSION_MS = 15 * 60 * 1000;
+const PARENT_SESSION_MS = 15 * 60 * 1000;
+
 /**
- * Servicio de gestión de sesiones con expiración automática
+ * Servicio de gestión de sesiones con expiración por inactividad
  */
 export const sessionService = {
-  SESSION_DURATION: 30 * 60 * 1000, // 30 minutos
-  REFRESH_INTERVAL: 5 * 60 * 1000, // Verificar cada 5 minutos
+  SESSION_DURATION: DEFAULT_SESSION_MS,
+  TUTOR_SESSION_DURATION: TUTOR_SESSION_MS,
+  PARENT_SESSION_DURATION: PARENT_SESSION_MS,
+  /** Tiempo sin interacción antes de ocultar el perfil del alumno en el escáner */
+  TUTOR_PROFILE_IDLE_MS: 45 * 1000,
+  REFRESH_INTERVAL: 60 * 1000,
   STORAGE_KEY: 'session',
-  
+
+  getIdleDurationMs(role?: User['role']): number {
+    if (role === 'Tutor') return TUTOR_SESSION_MS;
+    if (role === 'Padre') return PARENT_SESSION_MS;
+    return DEFAULT_SESSION_MS;
+  },
+
   /**
    * Guardar sesión con expiración
    */
   saveSession(user: User): void {
+    const now = Date.now();
+    const duration = this.getIdleDurationMs(user.role);
     const sessionData: SessionData = {
       user,
-      expiresAt: Date.now() + this.SESSION_DURATION,
-      lastActivity: Date.now()
+      expiresAt: now + duration,
+      lastActivity: now,
     };
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
-      // También mantener compatibilidad con el sistema anterior
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('userId', user.id.toString());
     } catch (error) {
       console.error('Error al guardar sesión:', error);
     }
   },
-  
+
+  readSessionRaw(): SessionData | null {
+    try {
+      const sessionStr = localStorage.getItem(this.STORAGE_KEY);
+      if (!sessionStr) return null;
+      return JSON.parse(sessionStr) as SessionData;
+    } catch {
+      return null;
+    }
+  },
+
   /**
    * Obtener sesión actual (si no está expirada)
    */
   getSession(): SessionData | null {
-    try {
-      const sessionStr = localStorage.getItem(this.STORAGE_KEY);
-      if (!sessionStr) return null;
-      
-      const session: SessionData = JSON.parse(sessionStr);
-      
-      // Verificar si la sesión expiró
-      if (Date.now() > session.expiresAt) {
-        this.clearSession();
-        return null;
-      }
-      
-      return session;
-    } catch (error) {
-      console.error('Error al obtener sesión:', error);
+    const session = this.readSessionRaw();
+    if (!session) return null;
+
+    if (Date.now() > session.expiresAt) {
       this.clearSession();
       return null;
     }
+
+    return session;
   },
-  
+
   /**
-   * Actualizar última actividad
+   * Reinicia el temporizador de inactividad (solo ante actividad real del usuario)
    */
-  updateActivity(): void {
-    const session = this.getSession();
-    if (session) {
-      session.lastActivity = Date.now();
-      // Extender expiración si hay actividad reciente
-      if (Date.now() - session.lastActivity < 5 * 60 * 1000) {
-        session.expiresAt = Date.now() + this.SESSION_DURATION;
-      }
-      try {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
-      } catch (error) {
-        console.error('Error al actualizar actividad:', error);
-      }
+  touchActivity(): void {
+    const session = this.readSessionRaw();
+    if (!session) return;
+
+    if (Date.now() > session.expiresAt) {
+      this.clearSession();
+      return;
+    }
+
+    const now = Date.now();
+    const duration = this.getIdleDurationMs(session.user.role);
+    session.lastActivity = now;
+    session.expiresAt = now + duration;
+
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.error('Error al actualizar actividad:', error);
     }
   },
-  
-  /**
-   * Limpiar sesión
-   */
+
+  /** @deprecated Usar touchActivity */
+  updateActivity(): void {
+    this.touchActivity();
+  },
+
   clearSession(): void {
     try {
       localStorage.removeItem(this.STORAGE_KEY);
@@ -88,39 +111,21 @@ export const sessionService = {
       console.error('Error al limpiar sesión:', error);
     }
   },
-  
-  /**
-   * Verificar si la sesión está expirada
-   */
+
   isExpired(): boolean {
-    const session = this.getSession();
+    const session = this.readSessionRaw();
     return !session || Date.now() > session.expiresAt;
   },
-  
-  /**
-   * Obtener tiempo restante de sesión en minutos
-   */
+
   getTimeRemaining(): number {
-    const session = this.getSession();
+    const session = this.readSessionRaw();
     if (!session) return 0;
     const remaining = session.expiresAt - Date.now();
     return Math.max(0, Math.floor(remaining / 60000));
   },
-  
-  /**
-   * Extender sesión
-   */
+
   extendSession(): void {
-    const session = this.getSession();
-    if (session) {
-      session.expiresAt = Date.now() + this.SESSION_DURATION;
-      session.lastActivity = Date.now();
-      try {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
-      } catch (error) {
-        console.error('Error al extender sesión:', error);
-      }
-    }
-  }
+    this.touchActivity();
+  },
 };
 

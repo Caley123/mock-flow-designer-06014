@@ -1,6 +1,10 @@
 import { supabase } from '../supabaseClient';
 import { ParentMeeting, CitaPadreDB } from '@/types';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { gradeFilterValues } from '@/lib/utils/gradeAliases';
+import { fetchAllPages } from '@/lib/utils/supabasePagination';
+
+const INSERT_BATCH_SIZE = 200;
 
 /**
  * Servicio para gestionar citas con padres
@@ -104,88 +108,46 @@ export const parentMeetingsService = {
     studentIds?: number[];
   }): Promise<{ success: boolean; count: number; error: string | null }> {
     try {
-      // Obtener estudiantes según el tipo
-      let studentIds: number[] = [];
-
-      if (meetings.tipo === 'all') {
-        // Todos los estudiantes activos
-        const { data: allStudents, error: allError } = await supabase
-          .from('estudiantes')
-          .select('id_estudiante')
-          .eq('activo', true);
-
-        if (allError) {
-          return { success: false, count: 0, error: allError.message };
-        }
-        studentIds = (allStudents || []).map(s => s.id_estudiante);
-      } else if (meetings.tipo === 'grade' && meetings.grade) {
-        // Por grado (y nivel si se indicó)
-        let gradeQuery = supabase
-          .from('estudiantes')
-          .select('id_estudiante')
-          .eq('activo', true)
-          .eq('grado', meetings.grade);
-
-        if (meetings.level) {
-          gradeQuery = gradeQuery.eq('nivel_educativo', meetings.level);
-        }
-
-        const { data: gradeStudents, error: gradeError } = await gradeQuery;
-
-        if (gradeError) {
-          return { success: false, count: 0, error: gradeError.message };
-        }
-        studentIds = (gradeStudents || []).map(s => s.id_estudiante);
-      } else if (meetings.tipo === 'section' && meetings.grade && meetings.section) {
-        // Por sección (y nivel si se indicó)
-        let sectionQuery = supabase
-          .from('estudiantes')
-          .select('id_estudiante')
-          .eq('activo', true)
-          .eq('grado', meetings.grade)
-          .eq('seccion', meetings.section);
-
-        if (meetings.level) {
-          sectionQuery = sectionQuery.eq('nivel_educativo', meetings.level);
-        }
-
-        const { data: sectionStudents, error: sectionError } = await sectionQuery;
-
-        if (sectionError) {
-          return { success: false, count: 0, error: sectionError.message };
-        }
-        studentIds = (sectionStudents || []).map(s => s.id_estudiante);
-      } else if (meetings.tipo === 'students' && meetings.studentIds) {
-        // Estudiantes específicos
-        studentIds = meetings.studentIds;
+      const studentIdsResult = await fetchActiveStudentIdsForBulk(meetings);
+      if (studentIdsResult.error) {
+        return { success: false, count: 0, error: studentIdsResult.error };
       }
 
+      const studentIds = studentIdsResult.ids;
       if (studentIds.length === 0) {
         return { success: false, count: 0, error: 'No se encontraron estudiantes para crear las citas' };
       }
 
-      // Crear citas para todos los estudiantes
-      const citas = studentIds.map(id_estudiante => ({
+      const citas = studentIds.map((id_estudiante) => ({
         id_estudiante,
         motivo: meetings.motivo,
         fecha: meetings.fecha,
         hora: meetings.hora,
         id_usuario_creador: meetings.id_usuario_creador,
-        estado: 'Pendiente',
+        estado: 'Pendiente' as const,
         notas: meetings.notas || null,
         asistencia: null,
       }));
 
-      const { data, error } = await supabase
-        .from('citas_padres')
-        .insert(citas)
-        .select();
-
-      if (error) {
-        return { success: false, count: 0, error: error.message };
+      let inserted = 0;
+      for (let i = 0; i < citas.length; i += INSERT_BATCH_SIZE) {
+        const batch = citas.slice(i, i + INSERT_BATCH_SIZE);
+        const { error } = await supabase.from('citas_padres').insert(batch);
+        if (error) {
+          const partial =
+            inserted > 0
+              ? ` Se crearon ${inserted} citas antes del error.`
+              : '';
+          return {
+            success: false,
+            count: inserted,
+            error: `${error.message}${partial}`,
+          };
+        }
+        inserted += batch.length;
       }
 
-      return { success: true, count: data?.length || 0, error: null };
+      return { success: true, count: inserted, error: null };
     } catch (error: any) {
       console.error('Error en createBulk:', error);
       return { success: false, count: 0, error: error.message || 'Error al crear citas masivas' };
@@ -231,48 +193,58 @@ export const parentMeetingsService = {
     offset?: number;
   }): Promise<{ meetings: ParentMeeting[]; total: number; error: string | null }> {
     try {
-      let query = supabase
-        .from('citas_padres')
-        .select(`
-          *,
-          estudiante:estudiantes!citas_padres_id_estudiante_fkey(*),
-          usuario_creador:usuarios!citas_padres_id_usuario_creador_fkey(*)
-        `, { count: 'exact' })
-        .order('fecha', { ascending: false })
-        .order('hora', { ascending: false });
+      const buildQuery = () => {
+        let query = supabase
+          .from('citas_padres')
+          .select(
+            `
+            *,
+            estudiante:estudiantes!citas_padres_id_estudiante_fkey(*),
+            usuario_creador:usuarios!citas_padres_id_usuario_creador_fkey(*)
+          `,
+            filters?.limit !== undefined || filters?.offset !== undefined
+              ? { count: 'exact' }
+              : undefined
+          )
+          .order('fecha', { ascending: false })
+          .order('hora', { ascending: false });
 
-      if (filters?.estudianteId) {
-        query = query.eq('id_estudiante', filters.estudianteId);
+        if (filters?.estudianteId) {
+          query = query.eq('id_estudiante', filters.estudianteId);
+        }
+        if (filters?.estado) {
+          query = query.eq('estado', filters.estado);
+        }
+        if (filters?.fechaDesde) {
+          query = query.gte('fecha', filters.fechaDesde);
+        }
+        if (filters?.fechaHasta) {
+          query = query.lte('fecha', filters.fechaHasta);
+        }
+        return query;
+      };
+
+      if (filters?.limit !== undefined || filters?.offset !== undefined) {
+        const offset = filters.offset ?? 0;
+        const limit = filters.limit ?? 10;
+        const { data, error, count } = await buildQuery().range(offset, offset + limit - 1);
+        if (error) {
+          return { meetings: [], total: 0, error: error.message };
+        }
+        const meetings = (data || []).map((item: any) => mapDBToParentMeeting(item));
+        return { meetings, total: count ?? meetings.length, error: null };
       }
 
-      if (filters?.estado) {
-        query = query.eq('estado', filters.estado);
-      }
-
-      if (filters?.fechaDesde) {
-        query = query.gte('fecha', filters.fechaDesde);
-      }
-
-      if (filters?.fechaHasta) {
-        query = query.lte('fecha', filters.fechaHasta);
-      }
-
-      if (filters?.limit) {
-        query = query.limit(filters.limit);
-      }
-
-      if (filters?.offset) {
-        query = query.range(filters.offset, filters.offset + (filters.limit || 10) - 1);
-      }
-
-      const { data, error, count } = await query;
+      const { data, error } = await fetchAllPages((from, to) =>
+        buildQuery().range(from, to)
+      );
 
       if (error) {
-        return { meetings: [], total: 0, error: error.message };
+        return { meetings: [], total: 0, error };
       }
 
-      const meetings = (data || []).map((item: any) => mapDBToParentMeeting(item));
-      return { meetings, total: count || 0, error: null };
+      const meetings = data.map((item: any) => mapDBToParentMeeting(item));
+      return { meetings, total: meetings.length, error: null };
     } catch (error: any) {
       console.error('Error en getAll:', error);
       return { meetings: [], total: 0, error: error.message || 'Error al obtener citas' };
@@ -477,34 +449,41 @@ export const parentMeetingsService = {
     error: string | null;
   }> {
     try {
-      let query = supabase
-        .from('citas_padres')
-        .select('estado, asistencia', { count: 'exact' });
+      const countByEstado = async (
+        estado?: 'Pendiente' | 'Confirmada' | 'Completada' | 'No asistió'
+      ) => {
+        let query = supabase
+          .from('citas_padres')
+          .select('*', { count: 'exact', head: true });
 
-      if (filters?.fechaDesde) {
-        query = query.gte('fecha', filters.fechaDesde);
-      }
+        if (estado) {
+          query = query.eq('estado', estado);
+        }
+        if (filters?.fechaDesde) {
+          query = query.gte('fecha', filters.fechaDesde);
+        }
+        if (filters?.fechaHasta) {
+          query = query.lte('fecha', filters.fechaHasta);
+        }
 
-      if (filters?.fechaHasta) {
-        query = query.lte('fecha', filters.fechaHasta);
-      }
+        const { count, error } = await query;
+        if (error) {
+          throw new Error(error.message);
+        }
+        return count ?? 0;
+      };
 
-      const { data, error, count } = await query;
+      const [total, pendientes, confirmadas, completadas, noAsistieron] = await Promise.all([
+        countByEstado(),
+        countByEstado('Pendiente'),
+        countByEstado('Confirmada'),
+        countByEstado('Completada'),
+        countByEstado('No asistió'),
+      ]);
 
-      if (error) {
-        return { stats: null, error: error.message };
-      }
-
-      const total = count || 0;
-      const pendientes = (data || []).filter((c: any) => c.estado === 'Pendiente').length;
-      const confirmadas = (data || []).filter((c: any) => c.estado === 'Confirmada').length;
-      const completadas = (data || []).filter((c: any) => c.estado === 'Completada').length;
-      const noAsistieron = (data || []).filter((c: any) => c.estado === 'No asistió').length;
-      
       const totalConAsistencia = completadas + noAsistieron;
-      const tasaAsistencia = totalConAsistencia > 0 
-        ? Math.round((completadas / totalConAsistencia) * 100) 
-        : 0;
+      const tasaAsistencia =
+        totalConAsistencia > 0 ? Math.round((completadas / totalConAsistencia) * 100) : 0;
 
       return {
         stats: {
@@ -523,4 +502,53 @@ export const parentMeetingsService = {
     }
   },
 };
+
+async function fetchActiveStudentIdsForBulk(meetings: {
+  tipo: 'all' | 'grade' | 'section' | 'students';
+  grade?: string;
+  section?: string;
+  level?: string;
+  studentIds?: number[];
+}): Promise<{ ids: number[]; error: string | null }> {
+  if (meetings.tipo === 'students' && meetings.studentIds?.length) {
+    return { ids: meetings.studentIds, error: null };
+  }
+
+  if (meetings.tipo === 'grade' && !meetings.grade) {
+    return { ids: [], error: 'Debe seleccionar un grado' };
+  }
+
+  if (meetings.tipo === 'section' && (!meetings.grade || !meetings.section)) {
+    return { ids: [], error: 'Debe seleccionar grado y sección' };
+  }
+
+  const { data, error } = await fetchAllPages<{ id_estudiante: number }>((from, to) => {
+    let query = supabase
+      .from('estudiantes')
+      .select('id_estudiante')
+      .eq('activo', true);
+
+    if (meetings.tipo === 'grade' && meetings.grade) {
+      query = query.in('grado', gradeFilterValues(meetings.grade));
+      if (meetings.level) {
+        query = query.eq('nivel_educativo', meetings.level);
+      }
+    } else if (meetings.tipo === 'section' && meetings.grade && meetings.section) {
+      query = query
+        .in('grado', gradeFilterValues(meetings.grade))
+        .eq('seccion', meetings.section);
+      if (meetings.level) {
+        query = query.eq('nivel_educativo', meetings.level);
+      }
+    }
+
+    return query.range(from, to);
+  });
+
+  if (error) {
+    return { ids: [], error };
+  }
+
+  return { ids: data.map((row) => row.id_estudiante), error: null };
+}
 

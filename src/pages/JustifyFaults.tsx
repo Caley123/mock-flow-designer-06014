@@ -342,7 +342,19 @@ export const JustifyFaults = () => {
                     <TableCell>
                       <div className="flex gap-2">
                         {incident.status === 'Activa' && (
-                          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                          <Dialog
+                            open={dialogOpen && selectedIncident?.id === incident.id}
+                            onOpenChange={(open) => {
+                              setDialogOpen(open);
+                              if (open) {
+                                setSelectedIncident(incident);
+                                setJustificationReason('');
+                              } else {
+                                setJustificationReason('');
+                                setSelectedIncident(null);
+                              }
+                            }}
+                          >
                             <DialogTrigger asChild>
                               <Button
                                 variant="default"

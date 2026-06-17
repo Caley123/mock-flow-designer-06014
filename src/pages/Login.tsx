@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { useLoginAmbientAnimation } from '@/hooks/useLoginAmbientAnimation';
 
 export const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -34,6 +35,18 @@ export const Login = () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('expired') !== 'true') return;
+    const role = searchParams.get('role');
+    const message =
+      role === 'tutor'
+        ? 'Sesión del tutor cerrada por inactividad (15 min).'
+        : role === 'padre'
+          ? 'Sesión del portal familiar cerrada por inactividad (15 min).'
+          : 'Su sesión se cerró por inactividad. Vuelva a iniciar sesión.';
+    toast.info(message);
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

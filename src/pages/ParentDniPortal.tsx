@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
+import { toast } from 'sonner';
+
 /** Portal público para padres — solo DNI del estudiante. */
 export function ParentDniPortal() {
   const navigate = useNavigate();
@@ -13,7 +15,10 @@ export function ParentDniPortal() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = dni.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      toast.error('Ingrese el DNI del estudiante');
+      return;
+    }
     navigate(`/llegada/dni/${encodeURIComponent(trimmed)}`);
   };
 
