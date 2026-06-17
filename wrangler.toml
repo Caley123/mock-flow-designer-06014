@@ -7,8 +7,13 @@
 #   Output directory: dist  (solo referencia; wrangler lee ./dist)
 
 name = "sie"
+main = "worker/index.ts"
 compatibility_date = "2024-09-23"
 send_metrics = false
+
+# URL del API OpenWA en el VPS (HTTP; el navegador usa /api/openwa en el mismo dominio).
+[vars]
+OPENWA_UPSTREAM = "http://178.104.115.2/api"
 
 [assets]
 directory = "./dist"

@@ -106,6 +106,14 @@ function friendlyOpenwaError(detail: string, status?: number): string {
     return 'Sesión de OpenWA no encontrada. Revise VITE_OPENWA_SESSION_ID en .env.local.';
   }
   if (
+    lower.includes('cert') ||
+    lower.includes('ssl') ||
+    lower.includes('authority_invalid') ||
+    lower.includes('failed to fetch')
+  ) {
+    return 'No se pudo conectar con OpenWA. En producción use VITE_OPENWA_API_URL=/api/openwa (proxy Cloudflare).';
+  }
+  if (
     status === 500 ||
     status === 502 ||
     status === 503 ||

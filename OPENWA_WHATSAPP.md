@@ -97,6 +97,42 @@ Mismas URLs (`:2785` API, `:2886` dashboard).
 
 ---
 
+## Producción (Cloudflare + VPS Hetzner)
+
+El navegador **no puede** llamar a `https://178.104.115.2` directamente: el certificado es autofirmado (`ERR_CERT_AUTHORITY_INVALID`).
+
+### Configuración correcta
+
+1. **Cloudflare Build variables** (no uses la IP en el frontend):
+
+```env
+VITE_OPENWA_ENABLED=true
+VITE_OPENWA_API_URL=/api/openwa
+VITE_OPENWA_SESSION_ID=<uuid de la sesión>
+VITE_OPENWA_API_KEY=<api key del dashboard>
+```
+
+2. El **Worker** (`worker/index.ts`) reenvía `/api/openwa/*` al VPS por **HTTP** (`OPENWA_UPSTREAM` en `wrangler.toml`).
+
+3. En el **VPS**, el API debe responder por **HTTP puerto 80** en `/api` (sin redirigir a HTTPS). Ejemplo Caddy:
+
+```caddy
+:80 {
+  handle /api/* {
+    reverse_proxy 127.0.0.1:2785
+  }
+}
+```
+
+4. Despliegue: `npm run deploy:cf`
+
+| Síntoma | Qué hacer |
+|---------|-----------|
+| `ERR_CERT_AUTHORITY_INVALID` | Cambie `VITE_OPENWA_API_URL` a `/api/openwa` y vuelva a desplegar |
+| 502 desde `/api/openwa` | Abra puerto 80 en el VPS y compruebe `OPENWA_UPSTREAM` |
+
+---
+
 ## Problemas frecuentes
 
 | Síntoma | Qué hacer |
