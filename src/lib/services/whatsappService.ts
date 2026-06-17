@@ -10,7 +10,7 @@ const WHATSAPP_ENABLED =
 const OPENWA_API_URL = (
   import.meta.env.VITE_OPENWA_API_URL ||
   import.meta.env.VITE_OPENWA_BASE_URL ||
-  '/api/openwa'
+  '/api/wa-proxy'
 ).replace(/\/$/, '');
 
 const OPENWA_SESSION_ID = import.meta.env.VITE_OPENWA_SESSION_ID || '';
@@ -111,7 +111,7 @@ function friendlyOpenwaError(detail: string, status?: number): string {
     lower.includes('authority_invalid') ||
     lower.includes('failed to fetch')
   ) {
-    return 'No se pudo conectar con OpenWA. En producción use VITE_OPENWA_API_URL=/api/openwa (proxy Cloudflare).';
+    return 'No se pudo conectar con OpenWA. En producción use VITE_OPENWA_API_URL=/api/wa-proxy (proxy Cloudflare).';
   }
   if (
     status === 500 ||

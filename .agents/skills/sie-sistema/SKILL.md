@@ -12,7 +12,7 @@ description: >-
 
 - **Frontend:** React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - **Backend:** Supabase (Postgres, Auth, Storage)
-- **Integraciones:** OpenWA (WhatsApp tutor), proxy Vite `/api/openwa` → `:2785`
+- **Integraciones:** OpenWA (WhatsApp tutor), proxy Vite `/api/wa-proxy` → `:2785`
 
 ## Rutas clave
 
@@ -37,7 +37,7 @@ description: >-
 
 ```env
 VITE_OPENWA_ENABLED=true
-VITE_OPENWA_API_URL=/api/openwa
+VITE_OPENWA_API_URL=/api/wa-proxy
 VITE_OPENWA_SESSION_ID=<uuid del dashboard :2886>
 VITE_OPENWA_API_KEY=dev-admin-key
 ```

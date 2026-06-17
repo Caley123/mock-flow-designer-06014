@@ -4,7 +4,8 @@ export interface Env {
   OPENWA_UPSTREAM?: string;
 }
 
-const OPENWA_PREFIX = '/api/openwa';
+/** No usar /api/openwa: Cloudflare workers.dev bloquea esa ruta (403 / error 1003). */
+const OPENWA_PREFIX = '/api/wa-proxy';
 
 function resolveUpstreamBase(raw?: string): string {
   const base = (raw || 'http://178.104.115.2/api').trim().replace(/\/$/, '');
