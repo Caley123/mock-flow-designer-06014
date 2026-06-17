@@ -17,7 +17,10 @@ OPENWA_UPSTREAM = "http://178.104.115.2/api"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+# Sin esto, /api/openwa no llega al Worker → error 1003 (403 Forbidden)
+run_worker_first = ["/api/*"]
 
 # index.html sin caché; assets con hash sí (ver public/_headers)
 html_handling = "auto-trailing-slash"

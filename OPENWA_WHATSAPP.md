@@ -124,12 +124,21 @@ VITE_OPENWA_API_KEY=<api key del dashboard>
 }
 ```
 
-4. Despliegue: `npm run deploy:cf`
+4. **Cloudflare Dashboard** → proyecto `sie` → **Retry deployment** (el código con Worker ya está en `main`).
+
+5. **Comprobar** tras el deploy:
+   - `curl https://sie.rudeusgreiyart7000.workers.dev/api/openwa/health` → JSON, no HTML.
+   - Si devuelve HTML del SIE, el Worker aún no está desplegado.
+
+6. **VPS — Caddy** (obligatorio): hoy `http://178.104.115.2/api` responde **308** a HTTPS. El Worker no puede usar ese certificado. Copie el bloque de `scripts/vps-caddy-openwa.caddy` en `/etc/caddy/Caddyfile` y ejecute `sudo systemctl reload caddy`.
 
 | Síntoma | Qué hacer |
 |---------|-----------|
-| `ERR_CERT_AUTHORITY_INVALID` | Cambie `VITE_OPENWA_API_URL` a `/api/openwa` y vuelva a desplegar |
-| 502 desde `/api/openwa` | Abra puerto 80 en el VPS y compruebe `OPENWA_UPSTREAM` |
+| `ERR_CERT_AUTHORITY_INVALID` | En Cloudflare: `VITE_OPENWA_API_URL=/api/openwa` (no la IP). **Retry deployment**. |
+| `/api/openwa` devuelve HTML | Falta desplegar el Worker (`main` en `wrangler.toml`). Retry en Cloudflare. |
+| **403** / `error code: 1003` en `/api/openwa` | Falta `run_worker_first = ["/api/*"]` en `[assets]` de `wrangler.toml`. Redeploy. |
+| 502 desde `/api/openwa` | Caddy en el VPS debe servir `/api` por HTTP :80 sin redirigir (ver `scripts/vps-caddy-openwa.caddy`). |
+| Variable de entorno en Windows | Si tiene `VITE_OPENWA_API_URL=https://178.104.115.2/api` a nivel de sistema, elimínela o use `/api/openwa`. |
 
 ---
 
