@@ -29,12 +29,14 @@ Configuración en el **dashboard de Cloudflare** → proyecto `sie` → Builds:
 
 | Campo | Valor |
 |-------|--------|
-| Build command | `npm ci && npm run build` |
-| Deploy command | `npm run cf:deploy` |
+| Build command | `npm ci && npm run build:cf:ci` |
+| Deploy command | *(vacío o `echo ok`)* |
 | Build variable | `SKIP_DEPENDENCY_INSTALL` = `true` |
 | Output directory | `dist` |
 
-**Importante:** no dejar `bun.lock` ni `bun.lockb` en el repo (Cloudflare fuerza `bun install`). Si el build sigue fallando, en Deployments → **Clear build cache** y redeploy.
+El build ya incluye `npm ci` vía caché de Cloudflare con `SKIP_DEPENDENCY_INSTALL`; si hace falta instalar a mano: `npm ci && npm run build:cf:ci`.
+
+**Importante:** no dejar `bun.lock` ni `bun.lockb` en el repo. Si el build sigue fallando: **Clear build cache** y redeploy.
 
 **No usar** preset "Framework: Vite" ni `npx wrangler deploy` a pelo.  
 **No añadir** `public/_redirects` (choca con SPA de `wrangler.toml`).
