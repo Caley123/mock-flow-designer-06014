@@ -72,7 +72,7 @@ cd e:\mock-flow-designer-06014
 
 ```env
 VITE_OPENWA_ENABLED=true
-VITE_OPENWA_API_URL=/internal/wa
+VITE_OPENWA_API_URL=/sie-connect
 VITE_OPENWA_SESSION_ID=pegue-el-session-id
 VITE_OPENWA_API_KEY=pegue-la-api-key
 ```
@@ -107,14 +107,14 @@ El navegador **no puede** llamar a `https://178.104.115.2` directamente: el cert
 
 ```env
 VITE_OPENWA_ENABLED=true
-VITE_OPENWA_API_URL=/internal/wa
+VITE_OPENWA_API_URL=/sie-connect
 VITE_OPENWA_SESSION_ID=<uuid de la sesión>
 VITE_OPENWA_API_KEY=<api key del dashboard>
 ```
 
-2. El **Worker** (`worker/index.ts`) reenvía `/internal/wa/*` al VPS por **HTTP** (`OPENWA_UPSTREAM` en `wrangler.toml`).
+2. El **Worker** (`worker/index.ts`) reenvía `/sie-connect/*` al VPS por **HTTP** (`OPENWA_UPSTREAM` en `wrangler.toml`).
 
-   **Importante:** no usar `/api/openwa` ni `/api/wa-proxy` en `workers.dev` (403 / error 1003). El deploy (`cf:deploy`) **debe terminar en verde**.
+   **Importante:** Cloudflare bloquea `/api/openwa` y `/internal/wa` (403). El deploy (`cf:deploy`) **debe terminar en verde**.
 
 3. En el **VPS**, el API debe responder por **HTTP puerto 80** en `/api` (sin redirigir a HTTPS). Ejemplo Caddy:
 
@@ -129,18 +129,18 @@ VITE_OPENWA_API_KEY=<api key del dashboard>
 4. **Cloudflare Dashboard** → proyecto `sie` → **Retry deployment** (el código con Worker ya está en `main`).
 
 5. **Comprobar** tras el deploy:
-   - `curl https://sie.rudeusgreiyart7000.workers.dev/internal/wa/health/live` → JSON, no HTML.
+   - `curl https://sie.rudeusgreiyart7000.workers.dev/sie-connect/health/live` → JSON, no HTML.
    - Si devuelve HTML del SIE, el Worker aún no está desplegado.
 
 6. **VPS — Caddy** (obligatorio): hoy `http://178.104.115.2/api` responde **308** a HTTPS. El Worker no puede usar ese certificado. Copie el bloque de `scripts/vps-caddy-openwa.caddy` en `/etc/caddy/Caddyfile` y ejecute `sudo systemctl reload caddy`.
 
 | Síntoma | Qué hacer |
 |---------|-----------|
-| `ERR_CERT_AUTHORITY_INVALID` | En Cloudflare: `VITE_OPENWA_API_URL=/internal/wa` (no la IP). **Retry deployment**. |
-| `/internal/wa` devuelve HTML | El paso **Deploy** falló: regenere el API token (Workers Scripts Edit) y redeploy. |
-| **403** / `error code: 1003` | `run_worker_first` sin Worker desplegado, o rutas `/api/openwa` bloqueadas. Usar `/internal/wa`. |
-| 502 desde `/internal/wa` | Caddy en el VPS debe servir `/api` por HTTP :80 (ver `scripts/vps-caddy-openwa.caddy`). |
-| Variable de entorno en Windows | Elimine `VITE_OPENWA_API_URL=https://178.104.115.2/api`; use `/internal/wa`. |
+| `ERR_CERT_AUTHORITY_INVALID` | En Cloudflare: `VITE_OPENWA_API_URL=/sie-connect` (no la IP). **Retry deployment**. |
+| `/sie-connect` devuelve HTML | El paso **Deploy** falló: regenere el API token (Workers Scripts Edit) y redeploy. |
+| **403** / `error code: 1003` | `run_worker_first` sin Worker desplegado, o rutas `/api/openwa` bloqueadas. Usar `/sie-connect`. |
+| 502 desde `/sie-connect` | Caddy en el VPS debe servir `/api` por HTTP :80 (ver `scripts/vps-caddy-openwa.caddy`). |
+| Variable de entorno en Windows | Elimine `VITE_OPENWA_API_URL=https://178.104.115.2/api`; use `/sie-connect`. |
 
 ---
 
