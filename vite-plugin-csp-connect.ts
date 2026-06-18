@@ -6,10 +6,10 @@ function resolveHttpOrigin(url: string | undefined): string | null {
   if (!/^https?:\/\//i.test(trimmed)) return null;
   try {
     const { hostname, origin } = new URL(trimmed);
-    // En producción el navegador debe usar /sie-connect (proxy Worker), no la IP del VPS.
+    // En producción el navegador debe usar /sc-proxy (proxy Worker), no la IP del VPS.
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
       console.warn(
-        '[sie-csp] VITE_OPENWA_API_URL apunta a una IP. Use /sie-connect en Cloudflare para evitar ERR_CERT_AUTHORITY_INVALID.'
+        '[sie-csp] VITE_OPENWA_API_URL apunta a una IP. Use /sc-proxy en Cloudflare para evitar ERR_CERT_AUTHORITY_INVALID.'
       );
       return null;
     }
@@ -21,7 +21,7 @@ function resolveHttpOrigin(url: string | undefined): string | null {
 
 /**
  * Añade el origen de OpenWA (y Supabase del .env) a connect-src del CSP en index.html.
- * Rutas relativas (/sie-connect) usan 'self' y no requieren entrada extra.
+ * Rutas relativas (/sc-proxy) usan 'self' y no requieren entrada extra.
  */
 export function cspConnectSrcPlugin(): Plugin {
   let env: Record<string, string> = {};

@@ -4,8 +4,8 @@ export interface Env {
   OPENWA_UPSTREAM?: string;
 }
 
-/** Ruta proxy. Cloudflare bloquea /api/openwa y /internal/wa (403 error 1003). */
-const OPENWA_PREFIX = '/sie-connect';
+/** Proxy same-origin hacia OpenWA en el VPS. */
+const OPENWA_PREFIX = '/sc-proxy';
 
 function resolveUpstreamBase(raw?: string): string {
   const base = (raw || 'http://178.104.115.2/api').trim().replace(/\/$/, '');

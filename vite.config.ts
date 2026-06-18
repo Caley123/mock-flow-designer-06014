@@ -11,10 +11,10 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: {
-      "/sie-connect": {
+      "/sc-proxy": {
         target: "http://localhost:2785",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/sie-connect/, "/api"),
+        rewrite: (path) => path.replace(/^\/sc-proxy/, "/api"),
       },
     },
   },
