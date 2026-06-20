@@ -37,11 +37,16 @@ else
   log "WARN: falta $ENV_FILE; build con defaults de Vite"
 fi
 
-export NODE_ENV=production
 npm ci --no-audit --no-fund
 npm run build
 
 mkdir -p "$DIST_DIR"
 rsync -a --delete "${APP_DIR}/dist/" "$DIST_DIR/"
+
+if [[ -f "${APP_DIR}/scripts/vps-deploy.sh" ]]; then
+  cp "${APP_DIR}/scripts/vps-deploy.sh" /opt/sie/deploy.sh
+  sed -i 's/\r$//' /opt/sie/deploy.sh
+  chmod +x /opt/sie/deploy.sh
+fi
 
 log "Deploy OK -> $DIST_DIR ($(git rev-parse --short HEAD))"
