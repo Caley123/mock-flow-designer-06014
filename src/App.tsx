@@ -40,9 +40,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
-      staleTime: 10 * 60 * 1000,
-      gcTime: 30 * 60 * 1000,
+      // Refrescar al volver a la pestaña/ventana para que las listas muestren
+      // cambios hechos desde otra página (ej. TutorScanner → IncidentsList).
+      refetchOnWindowFocus: true,
+      // 90 s: datos suficientemente frescos sin exceso de peticiones.
+      staleTime: 90 * 1000,
+      gcTime: 10 * 60 * 1000,
     },
   },
 });

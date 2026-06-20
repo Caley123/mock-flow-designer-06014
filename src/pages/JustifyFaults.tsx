@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -56,6 +60,9 @@ export const JustifyFaults = () => {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [justificationReason, setJustificationReason] = useState('');
   const [justifying, setJustifying] = useState(false);
+  const invalidateIncidents = useInvalidateIncidents();
+  const invalidateStudents = useInvalidateStudents();
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Activa' | 'Justificada'>('Activa');
@@ -152,7 +159,10 @@ export const JustifyFaults = () => {
         setDialogOpen(false);
         setJustificationReason('');
         setSelectedIncident(null);
-        loadIncidents(); // Recargar lista
+        loadIncidents();
+        invalidateIncidents();
+        invalidateStudents();
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;

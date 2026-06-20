@@ -30,6 +30,10 @@ import {
 import { Student, FaultType, ArrivalRecord } from '@/types';
 import type { StudentScheduleStatus } from '@/lib/utils/sectionSchedule';
 import { useNavigate } from 'react-router-dom';
+import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query/queryKeys';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +58,9 @@ import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 
 export const TutorScanner = () => {
   const navigate = useNavigate();
+  const invalidateIncidents = useInvalidateIncidents();
+  const invalidateStudents = useInvalidateStudents();
+  const queryClient = useQueryClient();
   const [barcode, setBarcode] = useState('');
   const [nameSearch, setNameSearch] = useState('');
   const [nameSearchResults, setNameSearchResults] = useState<Student[]>([]);
@@ -625,6 +632,9 @@ export const TutorScanner = () => {
     }
 
     toast.success('Incidencia registrada');
+    invalidateIncidents();
+    invalidateStudents();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
     setShowIncidentDialog(false);
     setSelectedFault('');
     setObservations('');
