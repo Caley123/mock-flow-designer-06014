@@ -3,6 +3,7 @@ import { ParentMeeting, CitaPadreDB } from '@/types';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { gradeFilterValues } from '@/lib/utils/gradeAliases';
 import { studentsService } from './studentsService';
+import { fetchAllPages } from '@/lib/utils/supabasePagination';
 
 const INSERT_BATCH_SIZE = 200;
 
