@@ -107,10 +107,6 @@ export const TutorScanner = () => {
     arrivalService.prefetchArrivalConfig();
     void scheduleService.getConfig();
     loadArrivalLimit();
-    void studentsService.prefetchBarcodeIndex().then((map) => {
-      if (!isMountedRef.current) return;
-      barcodeIndexRef.current = map;
-    });
     const stopClock = startClock();
     focusBarcodeInput();
 
@@ -560,11 +556,23 @@ export const TutorScanner = () => {
     [processScanCode]
   );
 
-  const handleNameSearchSelect = (selected: Student) => {
+  const handleNameSearchSelect = async (selected: Student) => {
     setNameSearch('');
     setNameSearchResults([]);
     const scanSeq = ++latestProfileScanRef.current;
-    processStudent(selected, scanSeq);
+
+    let studentToRegister = selected;
+    if (selected.barcode?.trim()) {
+      setLookupBusy(true);
+      try {
+        const full = await resolveStudentByBarcode(selected.barcode.trim());
+        if (full) studentToRegister = full;
+      } finally {
+        setLookupBusy(false);
+      }
+    }
+
+    processStudent(studentToRegister, scanSeq);
   };
 
   const handleScan = (e: React.FormEvent) => {

@@ -360,28 +360,30 @@ export async function getMonthlyAttendance(filters: {
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
 
-    // Obtener estudiantes del filtro
-    let studentsQuery = supabase
-      .from('estudiantes')
-      .select('*')
-      .eq('activo', true);
-
-    if (filters.level) {
-      studentsQuery = studentsQuery.eq('nivel_educativo', filters.level);
-    }
-    if (filters.grade) {
-      studentsQuery = studentsQuery.eq('grado', filters.grade);
-    }
-    if (filters.section) {
-      studentsQuery = studentsQuery.eq('seccion', filters.section);
-    }
-
-    const { data: studentsData, error: studentsError } = await studentsQuery.order('nombre_completo', { ascending: true });
+    // Obtener estudiantes del filtro (vía RPC con token de sesión)
+    const { students: studentsList, error: studentsError } = await studentsService.getAll({
+      active: true,
+      fetchAll: true,
+      level: filters.level,
+      grade: filters.grade,
+      section: filters.section,
+    });
 
     if (studentsError) {
       console.error('Error al obtener estudiantes para reporte mensual:', studentsError);
-      return { rows: [], daysInMonth, error: studentsError.message };
+      return { rows: [], daysInMonth, error: studentsError };
     }
+
+    const studentsData = studentsList.map((st) => ({
+      id_estudiante: st.id,
+      nombre_completo: st.fullName,
+      grado: st.grade,
+      seccion: st.section,
+      nivel_educativo: st.level,
+      codigo_barras: st.barcode,
+      foto_perfil: st.profilePhoto,
+      activo: st.active,
+    }));
 
     const studentIds = (studentsData || []).map((st) => st.id_estudiante);
     if (studentIds.length === 0) {
@@ -507,28 +509,29 @@ export async function getBimestralAttendance(filters: {
     // Calcular días totales en el bimestre
     const daysInBimestre = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-    // Obtener estudiantes del filtro
-    let studentsQuery = supabase
-      .from('estudiantes')
-      .select('*')
-      .eq('activo', true);
-
-    if (filters.level) {
-      studentsQuery = studentsQuery.eq('nivel_educativo', filters.level);
-    }
-    if (filters.grade) {
-      studentsQuery = studentsQuery.eq('grado', filters.grade);
-    }
-    if (filters.section) {
-      studentsQuery = studentsQuery.eq('seccion', filters.section);
-    }
-
-    const { data: studentsData, error: studentsError } = await studentsQuery.order('nombre_completo', { ascending: true });
+    const { students: studentsList, error: studentsError } = await studentsService.getAll({
+      active: true,
+      fetchAll: true,
+      level: filters.level,
+      grade: filters.grade,
+      section: filters.section,
+    });
 
     if (studentsError) {
       console.error('Error al obtener estudiantes para reporte bimestral:', studentsError);
-      return { rows: [], daysInBimestre, error: studentsError.message };
+      return { rows: [], daysInBimestre, error: studentsError };
     }
+
+    const studentsData = studentsList.map((st) => ({
+      id_estudiante: st.id,
+      nombre_completo: st.fullName,
+      grado: st.grade,
+      seccion: st.section,
+      nivel_educativo: st.level,
+      codigo_barras: st.barcode,
+      foto_perfil: st.profilePhoto,
+      activo: st.active,
+    }));
 
     const studentIds = (studentsData || []).map((st) => st.id_estudiante);
     if (studentIds.length === 0) {

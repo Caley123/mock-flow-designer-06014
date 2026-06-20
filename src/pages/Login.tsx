@@ -8,6 +8,7 @@ import { Loader2, Eye, EyeOff, ArrowRight, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
+import { getHomeRouteForRole } from '@/lib/utils/roleRoutes';
 import { ErrorDialog } from '@/components/ui/error-dialog';
 import { useErrorDialog } from '@/hooks/useErrorDialog';
 import { LoginHeroPanel, LoginMobileIntro } from '@/components/login/LoginHeroPanel';
@@ -78,7 +79,7 @@ export const Login = () => {
         if (user.cambioPasswordObligatorio) {
           toast.info('Debe cambiar su contraseña');
         }
-        navigate(user.role === 'Padre' ? '/parent-portal' : '/');
+        navigate(getHomeRouteForRole(user.role));
       }
     } catch {
       if (!isMountedRef.current) return;
@@ -97,7 +98,7 @@ export const Login = () => {
 
       <LoginHeroPanel />
 
-      <main className="login-panel" data-login-panel-split>
+      <main id="main-content" className="login-panel" data-login-panel-split>
         <div className="login-panel__inner">
           <LoginMobileIntro />
 
@@ -106,8 +107,14 @@ export const Login = () => {
 
             <header className="login-form-card__header">
               <h1 className="login-title" data-login-title data-login-anim>
-                Entrar
+                <span className="sr-only">
+                  Iniciar sesión — Sistema de Incidencias y Asistencia Escolar I.E. San Ramón
+                </span>
+                <span aria-hidden="true">Entrar</span>
               </h1>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Acceso para personal docente y administración
+              </p>
             </header>
 
             <form onSubmit={handleLogin} className="login-form">
@@ -201,11 +208,15 @@ export const Login = () => {
               <ArrowRight className="h-3.5 w-3.5 ml-auto" aria-hidden />
             </Link>
 
-            <p className="login-form-card__footer">
+            <p className="login-form-card__footer text-center text-[11px] leading-relaxed text-muted-foreground">
+              <span className="block mb-2">
+                SIE Asiscole — plataforma de incidencias disciplinarias y control de asistencia de la
+                I.E. San Ramón.
+              </span>
               <img
                 src="/guardy-logo.png"
-                alt="Guardy"
-                className="login-form-card__footer-logo"
+                alt="Guardy — software educativo"
+                className="login-form-card__footer-logo mx-auto"
                 width={96}
                 height={32}
                 draggable={false}

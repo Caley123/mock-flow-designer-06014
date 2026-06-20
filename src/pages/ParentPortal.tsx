@@ -211,9 +211,12 @@ export const ParentPortal = () => {
                   <span className="text-border">·</span>
                   <span>Sección {student.section}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground/90">
-                  Código <span className="font-mono font-medium text-foreground/80">{student.barcode}</span>
-                </p>
+                {!isParentRole && (
+                  <p className="mt-1 text-xs text-muted-foreground/90">
+                    Código{' '}
+                    <span className="font-mono font-medium text-foreground/80">{student.barcode}</span>
+                  </p>
+                )}
               </div>
             </div>
             <div className="w-full rounded-xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card to-accent/10 px-3.5 py-2.5 text-sm shadow-sm lg:max-w-[14rem] lg:shrink-0">
@@ -431,8 +434,8 @@ export const ParentPortal = () => {
       </div>
 
       <footer className="border-t border-border/50 pt-4 text-center text-xs leading-relaxed text-muted-foreground">
-        ¿Consultas? Comuníquese con secretaría
-        {student?.contactPhone ? (
+        ¿Consultas? Comuníquese con secretaría del colegio.
+        {!isParentRole && student?.contactPhone ? (
           <span className="mt-1 block font-medium text-foreground/80 sm:mt-0 sm:inline">
             {' '}
             · <Phone className="mb-0.5 inline h-3 w-3" aria-hidden /> {student.contactPhone}

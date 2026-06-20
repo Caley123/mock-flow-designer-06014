@@ -3,22 +3,29 @@ import { studentsService } from '@/lib/services';
 import { queryKeys } from '@/lib/query/queryKeys';
 import type { EducationalLevel } from '@/types';
 
+export const STUDENTS_PAGE_SIZE = 10;
+
 export interface StudentsListFilters {
   search?: string;
   level?: EducationalLevel;
+  page?: number;
 }
 
 export function useStudentsQuery(filters: StudentsListFilters = {}) {
+  const page = filters.page ?? 1;
+
   return useQuery({
-    queryKey: queryKeys.students.list(filters),
+    queryKey: queryKeys.students.list({ ...filters, page }),
     queryFn: async () => {
-      const { students, error } = await studentsService.getAll({
+      const { students, total, stats, error } = await studentsService.getAll({
         search: filters.search,
         level: filters.level,
         active: true,
+        page,
+        pageSize: STUDENTS_PAGE_SIZE,
       });
       if (error) throw new Error(error);
-      return students;
+      return { students, total, stats };
     },
     placeholderData: keepPreviousData,
   });

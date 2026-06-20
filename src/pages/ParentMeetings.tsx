@@ -271,7 +271,7 @@ export const ParentMeetings = () => {
     if (!isMountedRef.current) return;
     
     try {
-      const { students: studentsList } = await studentsService.getAll({ active: true });
+      const { students: studentsList } = await studentsService.getAll({ active: true, fetchAll: true });
       if (!isMountedRef.current) return;
       if (studentsList) {
         setStudents(studentsList);

@@ -26,20 +26,41 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: 'esnext',
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        // No precargar librerías pesadas de reportes en la primera pantalla.
+        return deps.filter(
+          (dep) =>
+            !dep.includes('report-excel') &&
+            !dep.includes('report-pdf') &&
+            !dep.includes('spring-vendor')
+        );
+      },
+    },
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-select',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-tooltip'
-          ],
-          'chart-vendor': ['recharts'],
-          'utils-vendor': ['date-fns', 'zod', 'jspdf', 'exceljs'],
-          'spring-vendor': ['@react-spring/web'],
-          'gsap-vendor': ['gsap', '@gsap/react'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+
+          // No separar recharts: crear un chunk compartido provoca ciclo react-vendor ↔ chart-vendor
+          // (Rollup reutiliza helpers en chart-vendor que react-vendor termina importando).
+
+          if (id.includes('/exceljs/')) return 'report-excel';
+          if (id.includes('/jspdf')) return 'report-pdf';
+          if (id.includes('/@react-spring/')) return 'spring-vendor';
+          if (id.includes('/gsap/') || id.includes('/@gsap/')) return 'gsap-vendor';
+
+          if (
+            id.includes('/react-dom/') ||
+            id.includes('/react-router-dom/') ||
+            id.includes('/react-router/') ||
+            /\/node_modules\/react\//.test(id)
+          ) {
+            return 'react-vendor';
+          }
+
+          if (id.includes('/@radix-ui/')) return 'ui-vendor';
+          if (id.includes('/date-fns/') || id.includes('/zod/')) return 'utils-vendor';
         },
       },
     },

@@ -2,6 +2,7 @@ import { User } from '@/types';
 
 interface SessionData {
   user: User;
+  apiToken: string;
   expiresAt: number;
   lastActivity: number;
 }
@@ -29,13 +30,14 @@ export const sessionService = {
   },
 
   /**
-   * Guardar sesión con expiración
+   * Guardar sesión con token de API (validado en servidor)
    */
-  saveSession(user: User): void {
+  saveSession(user: User, apiToken: string, expiresInMs?: number): void {
     const now = Date.now();
-    const duration = this.getIdleDurationMs(user.role);
+    const duration = expiresInMs ?? this.getIdleDurationMs(user.role);
     const sessionData: SessionData = {
       user,
+      apiToken,
       expiresAt: now + duration,
       lastActivity: now,
     };
@@ -48,11 +50,26 @@ export const sessionService = {
     }
   },
 
+  getApiToken(): string | null {
+    const session = this.readSessionRaw();
+    if (!session?.apiToken) return null;
+    if (Date.now() > session.expiresAt) {
+      this.clearSession();
+      return null;
+    }
+    return session.apiToken;
+  },
+
   readSessionRaw(): SessionData | null {
     try {
       const sessionStr = localStorage.getItem(this.STORAGE_KEY);
       if (!sessionStr) return null;
-      return JSON.parse(sessionStr) as SessionData;
+      const parsed = JSON.parse(sessionStr) as SessionData;
+      if (!parsed.apiToken) {
+        this.clearSession();
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -128,4 +145,3 @@ export const sessionService = {
     this.touchActivity();
   },
 };
-

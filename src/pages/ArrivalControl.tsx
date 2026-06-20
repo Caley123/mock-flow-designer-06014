@@ -183,15 +183,15 @@ export const ArrivalControl = () => {
             max={getTodayDate()}
           />
         </div>
-        <div className="space-y-2 sm:col-span-2">
+        <div className="space-y-2 sm:col-span-2 lg:col-span-3">
           <Label>Buscar estudiante</Label>
-          <div className="relative">
+          <div className="relative min-w-0">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Nombre del estudiante..."
+              placeholder="Nombre completo del estudiante..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="min-w-[12rem] pl-10"
             />
           </div>
         </div>

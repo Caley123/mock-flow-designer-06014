@@ -1,146 +1,86 @@
 import { supabase } from '../supabaseClient';
-import { User, UsuarioDB } from '@/types';
+import { User } from '@/types';
 import { sessionService } from './sessionService';
 import { loginRateLimiter } from '@/lib/utils/rateLimit';
 import { sanitize } from '@/lib/utils/sanitize';
+
+interface SieLoginResponse {
+  ok: boolean;
+  error?: string;
+  token?: string;
+  expiresInMs?: number;
+  user?: {
+    id: number;
+    username: string;
+    fullName: string;
+    email: string | null;
+    role: User['role'];
+    active: boolean;
+    gradosAsignados: unknown;
+    cambioPasswordObligatorio: boolean;
+  };
+}
 
 /**
  * Servicio de autenticación
  */
 export const authService = {
   /**
-   * Iniciar sesión con username y password
+   * Iniciar sesión con username y password (validación y token en servidor)
    */
   async login(username: string, password: string): Promise<{ user: User | null; error: string | null }> {
     try {
-      // Sanitizar inputs
       const sanitizedUsername = sanitize.text(username, 50).trim();
       const sanitizedPassword = password.trim();
-      
+
       if (!sanitizedUsername || !sanitizedPassword) {
         return { user: null, error: 'Usuario y contraseña son requeridos' };
       }
-      
-      // Rate limiting
+
       const clientKey = `login_${sanitizedUsername}_${window.location.hostname}`;
       if (!loginRateLimiter.check(clientKey)) {
         const timeRemaining = Math.ceil(loginRateLimiter.getTimeUntilReset(clientKey) / 60000);
-        return { 
-          user: null, 
-          error: `Demasiados intentos fallidos. Intente nuevamente en ${timeRemaining} minuto(s).` 
-        };
-      }
-      
-      // Buscar usuario por username
-      const { data: usuarioData, error: usuarioError } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('username', sanitizedUsername)
-        .eq('activo', true)
-        .maybeSingle();
-
-      if (usuarioError || !usuarioData) {
-        return { user: null, error: 'Usuario o contraseña incorrectos' };
-      }
-
-      // TODO: Validar password_hash con bcrypt
-      // Por ahora, asumimos que la validación se hace en el backend
-      // En producción, esto debe hacerse mediante una función de Supabase o Edge Function
-
-      // Verificar si el usuario está bloqueado
-      if (usuarioData.bloqueado_hasta && new Date(usuarioData.bloqueado_hasta) > new Date()) {
-        return { 
-          user: null, 
-          error: `Usuario bloqueado hasta ${new Date(usuarioData.bloqueado_hasta).toLocaleString()}` 
+        return {
+          user: null,
+          error: `Demasiados intentos fallidos. Intente nuevamente en ${timeRemaining} minuto(s).`,
         };
       }
 
-      // Verificar intentos fallidos (si hay más de 5, bloquear)
-      if (usuarioData.intentos_fallidos >= 5) {
-        // Actualizar bloqueo hasta 1 hora después
-        const bloqueadoHasta = new Date();
-        bloqueadoHasta.setHours(bloqueadoHasta.getHours() + 1);
-        
-        await supabase
-          .from('usuarios')
-          .update({ bloqueado_hasta: bloqueadoHasta.toISOString() })
-          .eq('id_usuario', usuarioData.id_usuario);
+      const { data, error } = await supabase.rpc('sie_iniciar_sesion', {
+        p_username: sanitizedUsername,
+        p_password: sanitizedPassword,
+      });
 
-        return { 
-          user: null, 
-          error: 'Usuario bloqueado por múltiples intentos fallidos. Intente más tarde.' 
-        };
+      if (error) {
+        console.error('Error en sie_iniciar_sesion:', error.message);
+        return { user: null, error: 'No se pudo iniciar sesión. Contacte al administrador.' };
       }
 
-      // Validar password usando función RPC
-      let passwordValid = false;
-      
-      try {
-        const { data: validationData, error: validationError } = await supabase
-          .rpc('validar_password', {
-            p_username: username,
-            p_password: password
-          });
-        
-        if (!validationError && validationData !== null && validationData !== undefined) {
-          passwordValid = validationData === true;
-        } else if (validationError) {
-          // Si la función no existe, usar validación simple (SOLO PARA DESARROLLO)
-          console.warn('Función validar_password no encontrada. Usando validación simple.');
-          // Solo para desarrollo: comparación directa (NO USAR EN PRODUCCIÓN)
-          passwordValid = usuarioData.password_hash === password;
-        }
-      } catch (error) {
-        // Si falla, usar validación simple (SOLO PARA DESARROLLO)
-        console.warn('Error al validar contraseña. Usando validación simple.', error);
-        passwordValid = usuarioData.password_hash === password;
+      const result = data as SieLoginResponse | null;
+      if (!result?.ok || !result.token || !result.user) {
+        return { user: null, error: result?.error || 'Usuario o contraseña incorrectos' };
       }
 
-      if (!passwordValid) {
-        // Incrementar intentos fallidos
-        const nuevosIntentos = (usuarioData.intentos_fallidos || 0) + 1;
-        await supabase
-          .from('usuarios')
-          .update({
-            intentos_fallidos: nuevosIntentos,
-          })
-          .eq('id_usuario', usuarioData.id_usuario);
-
-        // No resetear rate limiter aquí, se reseteará automáticamente después del tiempo
-        return { user: null, error: 'Usuario o contraseña incorrectos' };
-      }
-      
-      // Resetear rate limiter en login exitoso
       loginRateLimiter.reset(clientKey);
-      
-      // Actualizar último acceso y resetear intentos fallidos
-      await supabase
-        .from('usuarios')
-        .update({
-          ultimo_acceso: new Date().toISOString(),
-          intentos_fallidos: 0,
-        })
-        .eq('id_usuario', usuarioData.id_usuario);
 
-      // Convertir a formato User
       const user: User = {
-        id: usuarioData.id_usuario,
-        username: usuarioData.username,
-        fullName: usuarioData.nombre_completo,
-        email: usuarioData.email,
-        role: usuarioData.rol,
-        active: usuarioData.activo,
-        gradosAsignados: usuarioData.grados_asignados,
-        cambioPasswordObligatorio: usuarioData.cambio_password_obligatorio,
+        id: result.user.id,
+        username: result.user.username,
+        fullName: result.user.fullName,
+        email: result.user.email,
+        role: result.user.role,
+        active: result.user.active,
+        gradosAsignados: result.user.gradosAsignados,
+        cambioPasswordObligatorio: result.user.cambioPasswordObligatorio,
       };
 
-      // Guardar sesión con expiración
-      sessionService.saveSession(user);
+      sessionService.saveSession(user, result.token, result.expiresInMs);
 
       return { user, error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error en login:', error);
-      return { user: null, error: error.message || 'Error al iniciar sesión' };
+      const message = error instanceof Error ? error.message : 'Error al iniciar sesión';
+      return { user: null, error: message };
     }
   },
 
@@ -148,6 +88,14 @@ export const authService = {
    * Cerrar sesión
    */
   async logout(): Promise<void> {
+    const token = sessionService.getApiToken();
+    if (token) {
+      try {
+        await supabase.rpc('sie_cerrar_sesion', { p_token: token });
+      } catch (error) {
+        console.warn('Error al cerrar sesión en servidor:', error);
+      }
+    }
     sessionService.clearSession();
   },
 
@@ -157,13 +105,12 @@ export const authService = {
   getCurrentUser(): User | null {
     const session = sessionService.getSession();
     if (!session) return null;
-    
-    // Verificar si la sesión expiró
+
     if (sessionService.isExpired()) {
-      this.logout();
+      void this.logout();
       return null;
     }
-    
+
     return session.user;
   },
 
@@ -179,89 +126,65 @@ export const authService = {
    */
   async requestPasswordReset(email: string): Promise<{ success: boolean; error: string | null }> {
     try {
-      // Buscar usuario por email
-      const { data: usuarioData, error: usuarioError } = await supabase
-        .from('usuarios')
-        .select('id_usuario, email')
-        .eq('email', email)
-        .eq('activo', true)
-        .single();
+      const { data, error } = await supabase.rpc('sie_solicitar_reset_password', {
+        p_email: email.trim(),
+      });
 
-      if (usuarioError || !usuarioData) {
-        // Por seguridad, no revelamos si el email existe o no
-        return { success: true, error: null };
+      if (error) {
+        console.error('Error en sie_solicitar_reset_password:', error);
+        return { success: false, error: 'Error al solicitar recuperación' };
       }
 
-      // Generar token único
-      const token = crypto.randomUUID();
-      const tokenHash = await this.hashToken(token);
-      const fechaExpiracion = new Date();
-      fechaExpiracion.setHours(fechaExpiracion.getHours() + 24); // 24 horas
-
-      // Guardar token en base de datos
-      const { error: tokenError } = await supabase
-        .from('tokens_recuperacion')
-        .insert({
-          id_usuario: usuarioData.id_usuario,
-          token_hash: tokenHash,
-          fecha_expiracion: fechaExpiracion.toISOString(),
-        });
-
-      if (tokenError) {
-        console.error('Error al crear token:', tokenError);
-        return { success: false, error: 'Error al generar token de recuperación' };
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (result?.error) {
+        return { success: false, error: result.error };
       }
-
-      // TODO: Enviar email con el token
-      // Por ahora, solo devolvemos éxito
 
       return { success: true, error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error en requestPasswordReset:', error);
-      return { success: false, error: error.message || 'Error al solicitar recuperación' };
+      const message = error instanceof Error ? error.message : 'Error al solicitar recuperación';
+      return { success: false, error: message };
     }
   },
 
-  /**
-   * Hash de token (simple, en producción usar bcrypt)
-   */
   async hashToken(token: string): Promise<string> {
-    // Usar Web Crypto API para hash simple
     const encoder = new TextEncoder();
     const data = encoder.encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   },
 
-  /**
-   * Cambiar contraseña
-   */
   async changePassword(
-    userId: number, 
+    _userId: number,
     newPassword: string
   ): Promise<{ success: boolean; error: string | null }> {
     try {
-      // TODO: Hash de la contraseña con bcrypt
-      // Por ahora, asumimos que se hace en el backend
-      const passwordHash = newPassword; // Placeholder
+      const apiToken = sessionService.getApiToken();
+      if (!apiToken) {
+        return { success: false, error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+      }
 
-      const { error } = await supabase
-        .from('usuarios')
-        .update({
-          password_hash: passwordHash,
-          cambio_password_obligatorio: false,
-        })
-        .eq('id_usuario', userId);
+      const { data, error } = await supabase.rpc('sie_cambiar_password', {
+        p_token: apiToken,
+        p_new_password: newPassword,
+      });
 
       if (error) {
         return { success: false, error: error.message };
       }
 
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (!result?.ok) {
+        return { success: false, error: result?.error || 'Error al cambiar contraseña' };
+      }
+
       return { success: true, error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error en changePassword:', error);
-      return { success: false, error: error.message || 'Error al cambiar contraseña' };
+      const message = error instanceof Error ? error.message : 'Error al cambiar contraseña';
+      return { success: false, error: message };
     }
   },
 };

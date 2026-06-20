@@ -53,7 +53,7 @@ export function LoginHeroIllustration() {
                 <div className="login-carnet-replica__inner" data-login-visual-carnet>
                   <header className="login-carnet-replica__head" data-login-visual-carnet-part="header">
                     <span className="login-carnet-replica__chip" data-login-visual-carnet-part="chip" aria-hidden />
-                    <img src="/favicon.svg" alt="" className="login-carnet-replica__crest" width={20} height={20} draggable={false} />
+                    <img src="/favicon.svg" alt="Escudo I.E. San Ramón" className="login-carnet-replica__crest" width={20} height={20} draggable={false} />
                     <div className="login-carnet-replica__head-text">
                       <p className="login-carnet-replica__school">I.E. San Ramón</p>
                       <p className="login-carnet-replica__school-sub">Institución Educativa Pública Emblemática</p>
@@ -64,7 +64,7 @@ export function LoginHeroIllustration() {
                     <div className="login-carnet-replica__photo-wrap" data-login-visual-carnet-part="photo">
                       <div className="login-carnet-replica__photo">
                         <span className="login-carnet-replica__photo-ring" aria-hidden />
-                        <img src={STUDENT_PHOTO} alt="" className="login-carnet-replica__photo-img" draggable={false} />
+                        <img src={STUDENT_PHOTO} alt="Estudiante de ejemplo en carnet escolar" className="login-carnet-replica__photo-img" draggable={false} />
                       </div>
                     </div>
                     <div className="login-carnet-replica__info" data-login-visual-carnet-part="info">
@@ -106,7 +106,7 @@ export function LoginHeroIllustration() {
               {/* Reverso */}
               <div className="login-carnet-replica__face login-carnet-replica__face--back" data-login-visual-carnet-back>
                 <div className="login-carnet-replica__back-stripe" aria-hidden />
-                <img src="/favicon.svg" alt="" className="login-carnet-replica__back-crest" width={36} height={36} draggable={false} />
+                <img src="/favicon.svg" alt="Escudo I.E. San Ramón" className="login-carnet-replica__back-crest" width={36} height={36} draggable={false} />
                 <p className="login-carnet-replica__back-school">I.E. San Ramón</p>
                 <p className="login-carnet-replica__back-note">Documento de identificación escolar</p>
                 <div className="login-carnet-replica__back-line" aria-hidden />

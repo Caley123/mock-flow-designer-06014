@@ -47,11 +47,7 @@ export const incidentsService = {
           ),
           usuarios_registro:id_usuario_registro (
             id_usuario,
-            username,
-            nombre_completo,
-            email,
-            rol,
-            activo
+            nombre_completo
           )
         `)
         .single();
@@ -122,11 +118,7 @@ export const incidentsService = {
           ),
           usuarios_registro:id_usuario_registro (
             id_usuario,
-            username,
-            nombre_completo,
-            email,
-            rol,
-            activo
+            nombre_completo
           )
         `, { count: 'exact' });
 
@@ -165,12 +157,10 @@ export const incidentsService = {
       // Ordenar por fecha más reciente primero
       query = query.order('fecha_hora_registro', { ascending: false });
 
-      if (filters?.limit) {
+      if (filters?.limit != null && filters?.offset != null) {
+        query = query.range(filters.offset, filters.offset + filters.limit - 1);
+      } else if (filters?.limit != null) {
         query = query.limit(filters.limit);
-      }
-
-      if (filters?.offset) {
-        query = query.range(filters.offset, filters.offset + (filters.limit || 10) - 1);
       }
 
       const { data, error, count } = await query;

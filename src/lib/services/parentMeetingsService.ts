@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import { ParentMeeting, CitaPadreDB } from '@/types';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { gradeFilterValues } from '@/lib/utils/gradeAliases';
-import { fetchAllPages } from '@/lib/utils/supabasePagination';
+import { studentsService } from './studentsService';
 
 const INSERT_BATCH_SIZE = 200;
 
@@ -293,15 +293,11 @@ export const parentMeetingsService = {
     llegadaTarde: boolean = false
   ): Promise<{ success: boolean; meetingId: number | null; error: string | null }> {
     try {
-      // Buscar estudiante por código de barras
-      const { data: student, error: studentError } = await supabase
-        .from('estudiantes')
-        .select('id_estudiante')
-        .eq('codigo_barras', barcode)
-        .eq('activo', true)
-        .single();
+      const { student, error: studentLookupError } = await studentsService.getByBarcode(barcode, {
+        skipReincidence: true,
+      });
 
-      if (studentError || !student) {
+      if (studentLookupError || !student) {
         return { success: false, meetingId: null, error: 'Estudiante no encontrado con ese código de barras' };
       }
 
@@ -310,7 +306,7 @@ export const parentMeetingsService = {
       const { data: meetings, error: meetingsError } = await supabase
         .from('citas_padres')
         .select('id_cita, hora')
-        .eq('id_estudiante', student.id_estudiante)
+        .eq('id_estudiante', student.id)
         .eq('fecha', today)
         .in('estado', ['Pendiente', 'Confirmada'])
         .is('asistencia', null)
@@ -522,33 +518,27 @@ async function fetchActiveStudentIdsForBulk(meetings: {
     return { ids: [], error: 'Debe seleccionar grado y sección' };
   }
 
-  const { data, error } = await fetchAllPages<{ id_estudiante: number }>((from, to) => {
-    let query = supabase
-      .from('estudiantes')
-      .select('id_estudiante')
-      .eq('activo', true);
-
-    if (meetings.tipo === 'grade' && meetings.grade) {
-      query = query.in('grado', gradeFilterValues(meetings.grade));
-      if (meetings.level) {
-        query = query.eq('nivel_educativo', meetings.level);
-      }
-    } else if (meetings.tipo === 'section' && meetings.grade && meetings.section) {
-      query = query
-        .in('grado', gradeFilterValues(meetings.grade))
-        .eq('seccion', meetings.section);
-      if (meetings.level) {
-        query = query.eq('nivel_educativo', meetings.level);
-      }
-    }
-
-    return query.range(from, to);
+  const { students, error } = await studentsService.getAll({
+    active: true,
+    fetchAll: true,
+    grade: meetings.tipo === 'grade' || meetings.tipo === 'section' ? meetings.grade : undefined,
+    section: meetings.tipo === 'section' ? meetings.section : undefined,
+    level: meetings.level as import('@/types').EducationalLevel | undefined,
   });
 
   if (error) {
     return { ids: [], error };
   }
 
-  return { ids: data.map((row) => row.id_estudiante), error: null };
+  let filtered = students;
+  if (meetings.tipo === 'grade' && meetings.grade) {
+    const grades = gradeFilterValues(meetings.grade);
+    filtered = students.filter((s) => grades.includes(s.grade));
+  } else if (meetings.tipo === 'section' && meetings.grade && meetings.section) {
+    const grades = gradeFilterValues(meetings.grade);
+    filtered = students.filter((s) => grades.includes(s.grade) && s.section === meetings.section);
+  }
+
+  return { ids: filtered.map((s) => s.id), error: null };
 }
 

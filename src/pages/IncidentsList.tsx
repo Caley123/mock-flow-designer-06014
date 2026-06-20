@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSpring, useTrail, animated, config } from '@react-spring/web';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
@@ -40,11 +40,32 @@ import { es } from 'date-fns/locale';
 import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { useIncidentsQuery } from '@/hooks/queries/useIncidentsQuery';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
-const AnimatedDiv = animated('div');
+const PAGE_SIZE = 10;
+
+function matchesIncidentSearch(incident: Incident, term: string): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q) return true;
+  const name = incident.student?.fullName?.toLowerCase() ?? '';
+  const fault = incident.faultType?.name?.toLowerCase() ?? '';
+  return (
+    incident.id.toString().includes(q) ||
+    name.includes(q) ||
+    fault.includes(q)
+  );
+}
 
 export const IncidentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
 
@@ -87,24 +108,43 @@ export const IncidentsList = () => {
     }
   }, [isError]);
 
-  const filteredIncidents = incidents.filter(incident =>
-    incident.id.toString().includes(searchTerm) ||
-    incident.student?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    incident.faultType?.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredIncidents = useMemo(
+    () => incidents.filter((incident) => matchesIncidentSearch(incident, searchTerm)),
+    [incidents, searchTerm]
   );
 
+  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, levelFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedIncidents = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredIncidents.slice(start, start + PAGE_SIZE);
+  }, [filteredIncidents, currentPage]);
+
   const handleExportExcel = () => {
-    const filters =
-      levelFilter !== 'all' ? `Filtro: nivel ${levelFilter}` : undefined;
-    void exportIncidentsListExcel(filteredIncidents, filters);
+    const parts: string[] = [];
+    if (levelFilter !== 'all') parts.push(`Nivel: ${levelFilter}`);
+    if (searchTerm.trim()) parts.push(`Búsqueda: "${searchTerm.trim()}"`);
+    void exportIncidentsListExcel(filteredIncidents, parts.length ? parts.join(' · ') : undefined);
   };
 
   if (isLoading) {
     return <PageLoader message="Cargando incidencias..." />;
   }
 
-  const activeCount = incidents.filter((i) => i.status === 'Activa').length;
-  const withEvidence = incidents.filter((i) => i.hasEvidence).length;
+  const activeCount = filteredIncidents.filter((i) => i.status === 'Activa').length;
+  const withEvidence = filteredIncidents.filter((i) => i.hasEvidence).length;
+
+  const AnimatedDiv = animated('div');
 
   return (
     <div className="app-page app-page-shell relative overflow-hidden">
@@ -173,16 +213,16 @@ export const IncidentsList = () => {
 
       <AnimatedDiv style={panelSpring} className="space-y-6">
         <StaffToolbar title="Buscar y filtrar" description="Refine por texto o nivel educativo">
-          <div className="space-y-2 sm:col-span-2">
+          <div className="space-y-2 sm:col-span-2 lg:col-span-3">
             <Label htmlFor="incidents-search">Buscar</Label>
-            <div className="relative">
+            <div className="relative min-w-0">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="incidents-search"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ID, estudiante o tipo de falta..."
-                className="pl-10 transition-all focus-visible:ring-2 focus-visible:ring-primary/40"
+                placeholder="ID, nombre del estudiante o tipo de falta..."
+                className="min-w-[12rem] pl-10 transition-all focus-visible:ring-2 focus-visible:ring-primary/40"
               />
             </div>
           </div>
@@ -207,7 +247,11 @@ export const IncidentsList = () => {
         <StaffDataPanel className="overflow-hidden border-l-[3px] border-l-primary/40">
           <StaffDataPanelHeader
             title={`Registros (${filteredIncidents.length})`}
-            description="Detalle, evidencia y estado de cada incidencia"
+            description={
+              filteredIncidents.length > PAGE_SIZE
+                ? `Página ${currentPage} de ${totalPages} · ${PAGE_SIZE} por página`
+                : 'Detalle, evidencia y estado de cada incidencia'
+            }
           />
           <div className="p-4 pt-0 sm:p-5 sm:pt-0">
             {filteredIncidents.length === 0 ? (
@@ -232,7 +276,7 @@ export const IncidentsList = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredIncidents.map((incident, idx) => (
+                    {paginatedIncidents.map((incident, idx) => (
                       <TableRow 
                         key={incident.id}
                         role="row"
@@ -241,9 +285,9 @@ export const IncidentsList = () => {
                         style={{ animationDelay: `${Math.min(idx * 30, 400)}ms` }}
                       >
                       <TableCell className="font-mono text-sm">{incident.id}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{incident.student?.fullName || 'N/A'}</p>
+                      <TableCell className="max-w-[14rem]">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{incident.student?.fullName || 'N/A'}</p>
                           <p className="text-xs text-muted-foreground">
                             {incident.student?.level} • {incident.student?.grade} {incident.student?.section}
                           </p>
@@ -391,6 +435,64 @@ export const IncidentsList = () => {
                   </TableBody>
                 </Table>
               </div>
+            )}
+            {filteredIncidents.length > PAGE_SIZE && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.max(1, p - 1));
+                      }}
+                      className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - currentPage) <= 1
+                    )
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev != null && page - prev > 1;
+                      return (
+                        <span key={page} className="contents">
+                          {showEllipsis && (
+                            <PaginationItem>
+                              <span className="px-2 text-muted-foreground">…</span>
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              href="#"
+                              isActive={page === currentPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </span>
+                      );
+                    })}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      }}
+                      className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             )}
           </div>
         </StaffDataPanel>

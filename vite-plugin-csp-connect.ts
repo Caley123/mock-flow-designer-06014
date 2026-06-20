@@ -20,8 +20,8 @@ function resolveHttpOrigin(url: string | undefined): string | null {
 }
 
 /**
- * Añade el origen de OpenWA (y Supabase del .env) a connect-src del CSP en index.html.
- * Rutas relativas (/sc-proxy) usan 'self' y no requieren entrada extra.
+ * Añade orígenes extra a connect-src en desarrollo (cabecera del servidor Vite).
+ * En producción la CSP va en Caddy / public/_headers, no en meta tags.
  */
 export function cspConnectSrcPlugin(): Plugin {
   let env: Record<string, string> = {};
@@ -31,27 +31,37 @@ export function cspConnectSrcPlugin(): Plugin {
     config(_, { mode }) {
       env = loadEnv(mode, process.cwd(), '');
     },
-    transformIndexHtml(html) {
+    configureServer(server) {
       const origins = new Set<string>();
-
       const openwaOrigin = resolveHttpOrigin(env.VITE_OPENWA_API_URL);
       if (openwaOrigin) origins.add(openwaOrigin);
-
       const supabaseOrigin = resolveHttpOrigin(env.VITE_SUPABASE_URL);
       if (supabaseOrigin) {
         origins.add(supabaseOrigin);
         origins.add(supabaseOrigin.replace(/^https:/, 'wss:'));
       }
 
-      if (origins.size === 0) return html;
+      const connectExtra = origins.size > 0 ? ` ${[...origins].join(' ')}` : '';
+      const devCsp = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "img-src 'self' data: https: blob:",
+        `connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co${connectExtra}`,
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join('; ');
 
-      const toInject = [...origins].filter((origin) => !html.includes(origin));
-      if (toInject.length === 0) return html;
-
-      return html.replace(
-        /connect-src ([^;"]+)/,
-        (_match, current: string) => `connect-src ${current} ${toInject.join(' ')}`
-      );
+      server.middlewares.use((_req, res, next) => {
+        res.setHeader('Content-Security-Policy', devCsp);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        res.setHeader('X-Frame-Options', 'DENY');
+        next();
+      });
     },
   };
 }

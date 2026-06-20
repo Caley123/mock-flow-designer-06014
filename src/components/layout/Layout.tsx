@@ -1,16 +1,27 @@
 import { ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { GuardyMark } from '@/components/brand/GuardyMark';
 import { cn } from '@/lib/utils';
+import { authService } from '@/lib/services';
+import { getHomeRouteForRole, isStaffRole } from '@/lib/utils/roleRoutes';
+import { useRoleAccessGuard } from '@/hooks/useRoleAccessGuard';
 
 interface LayoutProps {
   children: ReactNode;
+  requiredRole?: string[];
 }
 
-export const Layout = ({ children }: LayoutProps) => {
+export const Layout = ({ children, requiredRole }: LayoutProps) => {
   const { pathname } = useLocation();
+  const user = authService.getCurrentUser();
   const isParentPortal = pathname.startsWith('/parent-portal');
+
+  useRoleAccessGuard(requiredRole);
+
+  if (user && !isStaffRole(user.role)) {
+    return <Navigate to={getHomeRouteForRole(user.role)} replace />;
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

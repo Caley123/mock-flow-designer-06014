@@ -1,15 +1,18 @@
-import React from 'react';
-import { LoadingScreen } from './loading-screen';
-
 interface PageLoaderProps {
   message?: string;
 }
 
-/**
- * Componente de carga para páginas completas
- * Muestra una pantalla de carga con animación de cartas estilo tarot
- */
-export const PageLoader: React.FC<PageLoaderProps> = ({ message }) => {
-  return <LoadingScreen message={message} fullScreen={true} />;
-};
-
+/** Loader ligero (sin react-spring) para no bloquear la carga inicial. */
+export function PageLoader({ message = 'Cargando…' }: PageLoaderProps) {
+  return (
+    <div
+      className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}

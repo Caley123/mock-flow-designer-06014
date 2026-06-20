@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { sessionService } from './services/sessionService';
 
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL || 'https://spdugaykkcgpcfslcpac.supabase.co';
@@ -11,4 +12,20 @@ if (!import.meta.env.VITE_SUPABASE_URL && import.meta.env.PROD) {
   console.warn('[SIE] VITE_SUPABASE_URL no definida; usando valor por defecto del proyecto.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+/**
+ * Cliente Supabase. Envía x-sie-token en cada petición cuando hay sesión activa
+ * para que las políticas RLS identifiquen rol y usuario.
+ */
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    fetch: (input, init) => {
+      const apiToken = sessionService.getApiToken();
+      if (!apiToken) {
+        return fetch(input, init);
+      }
+      const headers = new Headers(init?.headers);
+      headers.set('x-sie-token', apiToken);
+      return fetch(input, { ...init, headers });
+    },
+  },
+});

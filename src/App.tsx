@@ -11,6 +11,8 @@ import { PageLoader } from "./components/ui/page-loader";
 import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
+import { PageMetaManager } from "./components/seo/PageMetaManager";
+import { SiteAnalytics } from "./components/seo/SiteAnalytics";
 
 // Lazy loading de componentes para code splitting
 const Login = lazy(() => import("./pages/Login").then(m => ({ default: m.Login })));
@@ -100,7 +102,7 @@ const AppContent = () => {
               <Route 
                 path="/dashboard" 
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
                     <Layout><Dashboard /></Layout>
                   </ProtectedRoute>
                 } 
@@ -223,7 +225,13 @@ const AppContent = () => {
 // Componente wrapper para monitorear sesión dentro del Router
 const AppWithSessionMonitor = () => {
   useSessionMonitor();
-  return <AppContent />;
+  return (
+    <>
+      <PageMetaManager />
+      <SiteAnalytics />
+      <AppContent />
+    </>
+  );
 };
 
 const App = () => (

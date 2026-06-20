@@ -89,6 +89,14 @@ export function ParentDniPortal() {
             El DNI es el mismo código que aparece en el carnet escolar del estudiante.
           </p>
         </div>
+
+        <footer className="mt-8 text-center text-[11px] text-slate-500 leading-relaxed">
+          <h2 className="sr-only">Acerca del portal familiar</h2>
+          <p>
+            Portal de padres y apoderados de la I.E. San Ramón. Consulte la asistencia y llegadas
+            del día a través del Sistema de Incidencias Escolares (SIE Asiscole).
+          </p>
+        </footer>
       </div>
     </div>
   );

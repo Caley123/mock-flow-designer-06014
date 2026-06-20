@@ -70,7 +70,15 @@ import * as z from 'zod';
 import { toast } from 'sonner';
 import { studentsService } from '@/lib/services';
 import { Student, EducationalLevel } from '@/types';
-import { useStudentsQuery, useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { useStudentsQuery, useInvalidateStudents, STUDENTS_PAGE_SIZE } from '@/hooks/queries/useStudentsQuery';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 const EDUCATIONAL_LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
 
@@ -100,6 +108,7 @@ export const StudentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -154,21 +163,31 @@ export const StudentsList = () => {
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, levelFilter]);
+
   const studentFilters = useMemo(
     () => ({
       search: debouncedSearch || undefined,
       level: levelFilter === 'all' ? undefined : levelFilter,
+      page: currentPage,
     }),
-    [debouncedSearch, levelFilter]
+    [debouncedSearch, levelFilter, currentPage]
   );
 
   const {
-    data: students = [],
+    data,
     isLoading,
     isFetching,
     isError,
     refetch,
   } = useStudentsQuery(studentFilters);
+
+  const students = data?.students ?? [];
+  const totalStudents = data?.total ?? 0;
+  const serverStats = data?.stats;
+  const totalPages = Math.max(1, Math.ceil(totalStudents / STUDENTS_PAGE_SIZE));
 
   useEffect(() => {
     if (isError) {
@@ -182,6 +201,12 @@ export const StudentsList = () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const filteredStudents = students;
 
@@ -349,17 +374,27 @@ export const StudentsList = () => {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const filters =
       levelFilter !== 'all' ? `Nivel: ${levelFilter}` : searchTerm ? `Búsqueda: ${searchTerm}` : undefined;
-    void exportStudentsListExcel(students, filters);
+    const { students: allRows, error } = await studentsService.getAll({
+      active: true,
+      fetchAll: true,
+      search: debouncedSearch || undefined,
+      level: levelFilter === 'all' ? undefined : levelFilter,
+    });
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    void exportStudentsListExcel(allRows, filters);
   };
 
   const stats = {
-    total: students.length,
-    sinIncidencias: students.filter(s => (s.reincidenceLevel || 0) === 0).length,
-    nivelModerado: students.filter(s => (s.reincidenceLevel || 0) >= 1 && (s.reincidenceLevel || 0) <= 2).length,
-    nivelAlto: students.filter(s => (s.reincidenceLevel || 0) >= 3).length,
+    total: totalStudents,
+    sinIncidencias: serverStats?.sinIncidencias ?? 0,
+    nivelModerado: serverStats?.nivelModerado ?? 0,
+    nivelAlto: serverStats?.nivelAlto ?? 0,
   };
 
   if (isLoading && students.length === 0) {
@@ -379,7 +414,7 @@ export const StudentsList = () => {
           <Button
             variant="outline-primary"
             onClick={handleExportExcel}
-            disabled={students.length === 0}
+            disabled={totalStudents === 0}
           >
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Exportar Excel
@@ -908,8 +943,8 @@ export const StudentsList = () => {
       <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
         <StaffKpiStat
           label="En listado"
-          value={filteredStudents.length}
-          hint={`${stats.total} cargados`}
+          value={stats.total}
+          hint="Activos que coinciden con el filtro"
           icon={Users}
           tone="info"
         />
@@ -982,8 +1017,12 @@ export const StudentsList = () => {
 
       <StaffDataPanel>
         <StaffDataPanelHeader
-          title={`Estudiantes (${filteredStudents.length})`}
-          description="Datos del alumno, contacto familiar y nivel de reincidencia"
+          title={`Estudiantes (${totalStudents})`}
+          description={
+            totalStudents > STUDENTS_PAGE_SIZE
+              ? `Página ${currentPage} de ${totalPages} · ${STUDENTS_PAGE_SIZE} por página`
+              : 'Datos del alumno, contacto familiar y nivel de reincidencia'
+          }
         />
         <div className="p-4 pt-0 sm:p-5 sm:pt-0">
           {filteredStudents.length === 0 ? (
@@ -993,6 +1032,7 @@ export const StudentsList = () => {
               description="Prueba otro término de búsqueda o cambia el filtro de nivel"
             />
           ) : (
+            <>
             <div className="app-table-wrap">
             <Table role="table" aria-label="Lista de estudiantes">
               <TableHeader>
@@ -1079,6 +1119,65 @@ export const StudentsList = () => {
               </TableBody>
             </Table>
             </div>
+            {totalStudents > STUDENTS_PAGE_SIZE && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.max(1, p - 1));
+                      }}
+                      className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - currentPage) <= 1
+                    )
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev !== undefined && page - prev > 1;
+                      return (
+                        <span key={page} className="contents">
+                          {showEllipsis && (
+                            <PaginationItem>
+                              <span className="px-2 text-muted-foreground">…</span>
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              href="#"
+                              isActive={page === currentPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </span>
+                      );
+                    })}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      }}
+                      className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+            </>
           )}
         </div>
       </StaffDataPanel>

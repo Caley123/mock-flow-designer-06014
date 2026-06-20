@@ -1,31 +1,10 @@
 import { supabase } from '../supabaseClient';
-import { Student, EstudianteDB, EducationalLevel } from '@/types';
+import { Student, EducationalLevel } from '@/types';
 import { resolveStudentProfilePhotoUrl } from '@/lib/utils/profilePhoto';
-import { getCached, setCached, invalidateCache } from '@/lib/utils/memoryCache';
+import { sessionService } from './sessionService';
 
-const SCANNER_BARCODE_INDEX_KEY = 'students:scanner-barcode-index';
-const SCANNER_BARCODE_INDEX_TTL = 10 * 60 * 1000;
-
-const SCANNER_SELECT =
-  'id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, foto_perfil, activo, telefono_contacto, telefono_emergencia';
-
-let scannerIndexPromise: Promise<Map<string, Student>> | null = null;
-
-function mapScannerRow(data: EstudianteDB): Student {
-  return {
-    id: data.id_estudiante,
-    fullName: data.nombre_completo,
-    grade: data.grado,
-    section: data.seccion,
-    level: data.nivel_educativo as EducationalLevel,
-    barcode: data.codigo_barras,
-    profilePhoto: mapProfilePhoto(data.foto_perfil),
-    reincidenceLevel: 0,
-    faultsLast60Days: 0,
-    active: data.activo,
-    contactPhone: data.telefono_contacto || null,
-    emergencyPhone: data.telefono_emergencia || null,
-  };
+function requireApiToken(): string | null {
+  return sessionService.getApiToken();
 }
 
 function mapProfilePhoto(raw: string | null | undefined): string | null | undefined {
@@ -33,334 +12,279 @@ function mapProfilePhoto(raw: string | null | undefined): string | null | undefi
   return resolved ?? raw ?? null;
 }
 
+function mapRpcStudent(raw: Record<string, unknown>): Student {
+  return {
+    id: Number(raw.id),
+    fullName: String(raw.fullName ?? ''),
+    grade: String(raw.grade ?? ''),
+    section: String(raw.section ?? ''),
+    level: raw.level as EducationalLevel,
+    barcode: String(raw.barcode ?? ''),
+    profilePhoto: mapProfilePhoto(raw.profilePhoto as string | null | undefined),
+    reincidenceLevel: (Number(raw.reincidenceLevel) || 0) as Student['reincidenceLevel'],
+    faultsLast60Days: Number(raw.faultsLast60Days) || 0,
+    active: raw.active !== false,
+    contactPhone: (raw.contactPhone as string | null) ?? null,
+    contactEmail: (raw.contactEmail as string | null) ?? null,
+    responsibleName: (raw.responsibleName as string | null) ?? null,
+    responsibleRelationship: (raw.responsibleRelationship as string | null) ?? null,
+    emergencyPhone: (raw.emergencyPhone as string | null) ?? null,
+  };
+}
+
+function mapRpcStudents(rows: unknown): Student[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => mapRpcStudent(row as Record<string, unknown>));
+}
+
+export interface StudentsListStats {
+  sinIncidencias: number;
+  nivelModerado: number;
+  nivelAlto: number;
+}
+
+function mapRpcStudentsStats(raw: unknown): StudentsListStats {
+  const stats = raw as Record<string, unknown> | null | undefined;
+  return {
+    sinIncidencias: Number(stats?.sinIncidencias) || 0,
+    nivelModerado: Number(stats?.nivelModerado) || 0,
+    nivelAlto: Number(stats?.nivelAlto) || 0,
+  };
+}
+
 /**
- * Servicio de estudiantes
+ * Servicio de estudiantes (acceso solo vía RPC con token de sesión)
  */
 export const studentsService = {
-  /**
-   * Índice en memoria de carnets activos para escaneo instantáneo (tutor).
-   */
+  /** Caché local en memoria del escáner; ya no precarga toda la nómina. */
   async prefetchBarcodeIndex(): Promise<Map<string, Student>> {
-    const cached = getCached<Map<string, Student>>(SCANNER_BARCODE_INDEX_KEY);
-    if (cached) return cached;
-
-    if (!scannerIndexPromise) {
-      scannerIndexPromise = (async () => {
-        try {
-          const { data, error } = await supabase
-            .from('estudiantes')
-            .select(SCANNER_SELECT)
-            .eq('activo', true);
-
-          if (error) throw error;
-
-          const map = new Map<string, Student>();
-          for (const row of data || []) {
-            const code = (row as EstudianteDB).codigo_barras?.trim();
-            if (!code) continue;
-            map.set(code, mapScannerRow(row as EstudianteDB));
-          }
-
-          setCached(SCANNER_BARCODE_INDEX_KEY, map, SCANNER_BARCODE_INDEX_TTL);
-          return map;
-        } finally {
-          scannerIndexPromise = null;
-        }
-      })();
-    }
-
-    return scannerIndexPromise;
+    return new Map();
   },
 
   lookupBarcodeInIndex(index: Map<string, Student>, barcode: string): Student | null {
     return index.get(barcode.trim()) ?? null;
   },
 
-  /** Invalida caché tras alta/edición de estudiantes (opcional desde admin). */
   invalidateScannerBarcodeIndex(): void {
-    invalidateCache(SCANNER_BARCODE_INDEX_KEY);
+    /* sin índice global */
   },
 
-  /**
-   * Buscar estudiante por código de barras
-   */
   async getByBarcode(
     barcode: string,
     options?: { skipReincidence?: boolean }
   ): Promise<{ student: Student | null; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { student: null, error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
     try {
-      const columns = options?.skipReincidence
-        ? 'id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, foto_perfil, activo, telefono_contacto, telefono_emergencia'
-        : '*';
+      const { data, error } = await supabase.rpc('sie_buscar_estudiante_carnet', {
+        p_token: token,
+        p_codigo: barcode.trim(),
+        p_skip_reincidencia: options?.skipReincidence ?? false,
+      });
 
-      const { data: rawData, error } = await supabase
-        .from('estudiantes')
-        .select(columns)
-        .eq('codigo_barras', barcode.trim())
-        .eq('activo', true)
-        .single();
+      if (error) {
+        return { student: null, error: error.message };
+      }
 
-      if (error || !rawData) {
+      const payload = data as { student?: Record<string, unknown> | null; error?: string | null };
+      if (payload?.error) {
+        return { student: null, error: payload.error };
+      }
+      if (!payload?.student) {
         return { student: null, error: 'Estudiante no encontrado' };
       }
-      const data = rawData as any;
 
-      let reincidenceLevel = 0;
-      let faultsLast60Days = 0;
-
-      if (!options?.skipReincidence) {
-        const { data: nivelData } = await supabase
-          .from('v_estudiantes_nivel_actual')
-          .select('nivel_actual, total_faltas_60_dias')
-          .eq('id_estudiante', data.id_estudiante)
-          .single();
-        reincidenceLevel = nivelData?.nivel_actual || 0;
-        faultsLast60Days = nivelData?.total_faltas_60_dias || 0;
-      }
-
-      const student: Student = {
-        id: data.id_estudiante,
-        fullName: data.nombre_completo,
-        grade: data.grado,
-        section: data.seccion,
-        level: data.nivel_educativo as EducationalLevel,
-        barcode: data.codigo_barras,
-        profilePhoto: mapProfilePhoto(data.foto_perfil),
-        reincidenceLevel: reincidenceLevel as Student['reincidenceLevel'],
-        faultsLast60Days,
-        active: data.activo,
-        contactPhone: data.telefono_contacto || null,
-        contactEmail: data.email_contacto || null,
-        responsibleName: data.nombre_responsable || null,
-        responsibleRelationship: data.parentesco_responsable || null,
-        emergencyPhone: data.telefono_emergencia || null,
-      };
-
-      return { student, error: null };
-    } catch (error: any) {
+      return { student: mapRpcStudent(payload.student), error: null };
+    } catch (error: unknown) {
       console.error('Error en getByBarcode:', error);
-      return { student: null, error: error.message || 'Error al buscar estudiante' };
+      const message = error instanceof Error ? error.message : 'Error al buscar estudiante';
+      return { student: null, error: message };
     }
   },
 
-  /**
-   * Buscar estudiantes por nombre (autocompletado)
-   */
   async searchByName(query: string, limit: number = 10): Promise<{ students: Student[]; error: string | null }> {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return { students: [], error: null };
+    }
+
+    const token = requireApiToken();
+    if (!token) {
+      return { students: [], error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .ilike('nombre_completo', `%${query}%`)
-        .eq('activo', true)
-        .limit(limit);
+      const { data, error } = await supabase.rpc('sie_buscar_estudiantes_nombre', {
+        p_token: token,
+        p_query: trimmed,
+        p_limit: limit,
+      });
 
       if (error) {
         return { students: [], error: error.message };
       }
 
-      const students: Student[] = (data || []).map((est: EstudianteDB) => ({
-        id: est.id_estudiante,
-        fullName: est.nombre_completo,
-        grade: est.grado,
-        section: est.seccion,
-        level: est.nivel_educativo as EducationalLevel,
-        barcode: est.codigo_barras,
-        profilePhoto: mapProfilePhoto(est.foto_perfil),
-        active: est.activo,
-        contactPhone: est.telefono_contacto || null,
-        contactEmail: est.email_contacto || null,
-        responsibleName: est.nombre_responsable || null,
-        responsibleRelationship: est.parentesco_responsable || null,
-        emergencyPhone: est.telefono_emergencia || null,
-      }));
+      const payload = data as { students?: unknown; error?: string | null };
+      if (payload?.error) {
+        return { students: [], error: payload.error };
+      }
 
-      return { students, error: null };
-    } catch (error: any) {
+      return { students: mapRpcStudents(payload?.students), error: null };
+    } catch (error: unknown) {
       console.error('Error en searchByName:', error);
-      return { students: [], error: error.message || 'Error al buscar estudiantes' };
+      const message = error instanceof Error ? error.message : 'Error al buscar estudiantes';
+      return { students: [], error: message };
     }
   },
 
-  /**
-   * Obtener todos los estudiantes con filtros
-   */
   async getAll(filters?: {
     grade?: string;
     section?: string;
     level?: EducationalLevel;
     active?: boolean;
     search?: string;
-  }): Promise<{ students: Student[]; error: string | null }> {
+    /** Página 1-based (solo listados paginados) */
+    page?: number;
+    /** Tamaño de página; por defecto 10 */
+    pageSize?: number;
+    /** Reportes / exportación: traer todos los que coincidan con filtros */
+    fetchAll?: boolean;
+  }): Promise<{
+    students: Student[];
+    total: number;
+    stats: StudentsListStats;
+    error: string | null;
+  }> {
+    const token = requireApiToken();
+    if (!token) {
+      return {
+        students: [],
+        total: 0,
+        stats: { sinIncidencias: 0, nivelModerado: 0, nivelAlto: 0 },
+        error: 'Sesión expirada. Vuelva a iniciar sesión.',
+      };
+    }
+
+    const pageSize = filters?.pageSize ?? 10;
+    const page = Math.max(1, filters?.page ?? 1);
+    const offset = (page - 1) * pageSize;
+
     try {
-      let studentIds: number[] | undefined = undefined;
+      const { data, error } = await supabase.rpc('sie_lista_estudiantes', {
+        p_token: token,
+        p_filtros: {
+          grade: filters?.grade ?? null,
+          section: filters?.section ?? null,
+          level: filters?.level ?? null,
+          active: filters?.active ?? null,
+          search: filters?.search ?? null,
+          fetchAll: filters?.fetchAll ?? false,
+          limit: filters?.fetchAll ? null : pageSize,
+          offset: filters?.fetchAll ? 0 : offset,
+        },
+      });
 
-      // Si hay búsqueda, hacer consultas separadas para evitar problemas con caracteres especiales
-      if (filters?.search) {
-        // Escapar caracteres especiales para PostgREST ilike
-        // Los caracteres que necesitan escape en ilike: %, _, \
-        const escapedSearch = filters.search
-          .replace(/\\/g, '\\\\')  // Escapar backslashes primero
-          .replace(/%/g, '\\%')    // Escapar %
-          .replace(/_/g, '\\_');   // Escapar _
-        
-        const searchPattern = `%${escapedSearch}%`;
-        
-        // Hacer dos consultas separadas y combinar resultados para evitar problemas con .or()
-        // cuando hay caracteres especiales como comas en el texto de búsqueda
-        const [nameResult, barcodeResult] = await Promise.all([
-          supabase
-            .from('estudiantes')
-            .select('id_estudiante')
-            .ilike('nombre_completo', searchPattern),
-          supabase
-            .from('estudiantes')
-            .select('id_estudiante')
-            .ilike('codigo_barras', searchPattern),
-        ]);
-        
-        const nameIds = (nameResult.data || []).map((r: any) => r.id_estudiante);
-        const barcodeIds = (barcodeResult.data || []).map((r: any) => r.id_estudiante);
-        studentIds = [...new Set([...nameIds, ...barcodeIds])];
-        
-        // Si no hay resultados de búsqueda, retornar lista vacía
-        if (studentIds.length === 0) {
-          return { students: [], error: null };
-        }
+      if (error) {
+        return {
+          students: [],
+          total: 0,
+          stats: { sinIncidencias: 0, nivelModerado: 0, nivelAlto: 0 },
+          error: error.message,
+        };
       }
 
-      // Construir la consulta principal
-      let query = supabase
-        .from('estudiantes')
-        .select('*');
-
-      // Aplicar filtro de IDs si hay búsqueda
-      if (studentIds) {
-        query = query.in('id_estudiante', studentIds);
+      const payload = data as {
+        students?: unknown;
+        total?: number;
+        stats?: unknown;
+        error?: string | null;
+      };
+      if (payload?.error) {
+        return {
+          students: [],
+          total: 0,
+          stats: { sinIncidencias: 0, nivelModerado: 0, nivelAlto: 0 },
+          error: payload.error,
+        };
       }
 
-      if (filters?.grade) {
-        query = query.eq('grado', filters.grade);
+      return {
+        students: mapRpcStudents(payload?.students),
+        total: Number(payload?.total) || 0,
+        stats: mapRpcStudentsStats(payload?.stats),
+        error: null,
+      };
+    } catch (error: unknown) {
+      console.error('Error en getAll:', error);
+      const message = error instanceof Error ? error.message : 'Error al obtener estudiantes';
+      return {
+        students: [],
+        total: 0,
+        stats: { sinIncidencias: 0, nivelModerado: 0, nivelAlto: 0 },
+        error: message,
+      };
+    }
+  },
+
+  async getById(id: number): Promise<{ student: Student | null; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { student: null, error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('sie_estudiante_por_id', {
+        p_token: token,
+        p_id: id,
+      });
+
+      if (error) {
+        return { student: null, error: error.message };
       }
 
-      if (filters?.section) {
-        query = query.eq('seccion', filters.section);
+      const payload = data as { student?: Record<string, unknown> | null; error?: string | null };
+      if (payload?.error) {
+        return { student: null, error: payload.error };
+      }
+      if (!payload?.student) {
+        return { student: null, error: 'Estudiante no encontrado' };
       }
 
-      if (filters?.level) {
-        query = query.eq('nivel_educativo', filters.level);
-      }
+      return { student: mapRpcStudent(payload.student), error: null };
+    } catch (error: unknown) {
+      console.error('Error en getById:', error);
+      const message = error instanceof Error ? error.message : 'Error al obtener estudiante';
+      return { student: null, error: message };
+    }
+  },
 
-      if (filters?.active !== undefined) {
-        query = query.eq('activo', filters.active);
-      }
+  async getLinkedForParent(): Promise<{ students: Student[]; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { students: [], error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
 
-      const { data, error } = await query.order('nombre_completo', { ascending: true });
-
+    try {
+      const { data, error } = await supabase.rpc('sie_padre_mis_estudiantes', { p_token: token });
       if (error) {
         return { students: [], error: error.message };
       }
 
-      // Obtener niveles de reincidencia para todos los estudiantes desde la vista
-      const allStudentIds = (data || []).map((est: EstudianteDB) => est.id_estudiante);
-      
-      let nivelDataMap: Record<number, { nivel_actual: number; total_faltas_60_dias: number }> = {};
-      
-      if (allStudentIds.length > 0) {
-        // Consultar la vista para obtener los niveles
-        const { data: nivelesData } = await supabase
-          .from('v_estudiantes_nivel_actual')
-          .select('id_estudiante, nivel_actual, total_faltas_60_dias')
-          .in('id_estudiante', allStudentIds);
-        
-        if (nivelesData) {
-          nivelesData.forEach((nivel: any) => {
-            nivelDataMap[nivel.id_estudiante] = {
-              nivel_actual: nivel.nivel_actual || 0,
-              total_faltas_60_dias: nivel.total_faltas_60_dias || 0,
-            };
-          });
-        }
+      const payload = data as { students?: unknown; error?: string | null };
+      if (payload?.error) {
+        return { students: [], error: payload.error };
       }
 
-      const students: Student[] = (data || []).map((est: EstudianteDB) => {
-        const nivelData = nivelDataMap[est.id_estudiante] || { nivel_actual: 0, total_faltas_60_dias: 0 };
-        return {
-          id: est.id_estudiante,
-          fullName: est.nombre_completo,
-          grade: est.grado,
-          section: est.seccion,
-          level: est.nivel_educativo as EducationalLevel,
-          barcode: est.codigo_barras,
-          profilePhoto: mapProfilePhoto(est.foto_perfil),
-          active: est.activo,
-          reincidenceLevel: nivelData.nivel_actual as any,
-          faultsLast60Days: nivelData.total_faltas_60_dias,
-          contactPhone: est.telefono_contacto || null,
-          contactEmail: est.email_contacto || null,
-          responsibleName: est.nombre_responsable || null,
-          responsibleRelationship: est.parentesco_responsable || null,
-          emergencyPhone: est.telefono_emergencia || null,
-        };
-      });
-
-      return { students, error: null };
-    } catch (error: any) {
-      console.error('Error en getAll:', error);
-      return { students: [], error: error.message || 'Error al obtener estudiantes' };
+      return { students: mapRpcStudents(payload?.students), error: null };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al cargar estudiantes';
+      return { students: [], error: message };
     }
   },
 
-  /**
-   * Obtener estudiante por ID con información completa (nivel de reincidencia)
-   */
-  async getById(id: number): Promise<{ student: Student | null; error: string | null }> {
-    try {
-      const { data, error } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .eq('id_estudiante', id)
-        .single();
-
-      if (error || !data) {
-        return { student: null, error: 'Estudiante no encontrado' };
-      }
-
-      // Obtener nivel de reincidencia usando la vista
-      const { data: nivelData } = await supabase
-        .from('v_estudiantes_nivel_actual')
-        .select('nivel_actual, total_faltas_60_dias, ultima_falta')
-        .eq('id_estudiante', data.id_estudiante)
-        .single();
-
-      const student: Student = {
-        id: data.id_estudiante,
-        fullName: data.nombre_completo,
-        grade: data.grado,
-        section: data.seccion,
-        level: data.nivel_educativo as EducationalLevel,
-        barcode: data.codigo_barras,
-        profilePhoto: mapProfilePhoto(data.foto_perfil),
-        reincidenceLevel: (nivelData?.nivel_actual || 0) as any,
-        faultsLast60Days: nivelData?.total_faltas_60_dias || 0,
-        active: data.activo,
-        contactPhone: data.telefono_contacto || null,
-        contactEmail: data.email_contacto || null,
-        responsibleName: data.nombre_responsable || null,
-        responsibleRelationship: data.parentesco_responsable || null,
-        emergencyPhone: data.telefono_emergencia || null,
-      };
-
-      return { student, error: null };
-    } catch (error: any) {
-      console.error('Error en getById:', error);
-      return { student: null, error: error.message || 'Error al obtener estudiante' };
-    }
-  },
-
-  /**
-   * Crear nuevo estudiante
-   */
   async create(student: {
     codigo_barras: string;
     nombre_completo: string;
@@ -374,43 +298,34 @@ export const studentsService = {
     parentesco_responsable?: string;
     telefono_emergencia?: string;
   }): Promise<{ student: Student | null; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { student: null, error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('estudiantes')
-        .insert(student)
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('sie_crear_estudiante', {
+        p_token: token,
+        p_payload: student,
+      });
 
       if (error) {
         return { student: null, error: error.message };
       }
 
-      const newStudent: Student = {
-        id: data.id_estudiante,
-        fullName: data.nombre_completo,
-        grade: data.grado,
-        section: data.seccion,
-        level: data.nivel_educativo as EducationalLevel,
-        barcode: data.codigo_barras,
-        profilePhoto: mapProfilePhoto(data.foto_perfil),
-        active: data.activo,
-        contactPhone: data.telefono_contacto || null,
-        contactEmail: data.email_contacto || null,
-        responsibleName: data.nombre_responsable || null,
-        responsibleRelationship: data.parentesco_responsable || null,
-        emergencyPhone: data.telefono_emergencia || null,
-      };
+      const payload = data as { student?: Record<string, unknown>; error?: string | null };
+      if (payload?.error || !payload?.student) {
+        return { student: null, error: payload?.error || 'Error al crear estudiante' };
+      }
 
-      return { student: newStudent, error: null };
-    } catch (error: any) {
+      return { student: mapRpcStudent(payload.student), error: null };
+    } catch (error: unknown) {
       console.error('Error en create:', error);
-      return { student: null, error: error.message || 'Error al crear estudiante' };
+      const message = error instanceof Error ? error.message : 'Error al crear estudiante';
+      return { student: null, error: message };
     }
   },
 
-  /**
-   * Subir foto de perfil al bucket fotos-perfil
-   */
   async uploadProfilePhoto(file: File): Promise<{ url: string | null; error: string | null }> {
     try {
       const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -428,13 +343,11 @@ export const studentsService = {
       const fileName = `${Date.now()}.${ext || 'jpg'}`;
       const filePath = `profile/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('fotos-perfil')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: normalizedMime,
-        });
+      const { error: uploadError } = await supabase.storage.from('fotos-perfil').upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: normalizedMime,
+      });
 
       if (uploadError) {
         console.error('Error al subir foto de perfil:', uploadError);
@@ -450,9 +363,6 @@ export const studentsService = {
     }
   },
 
-  /**
-   * Actualizar estudiante
-   */
   async update(
     id: number,
     updates: Partial<{
@@ -469,20 +379,32 @@ export const studentsService = {
       telefono_emergencia?: string;
     }>
   ): Promise<{ success: boolean; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { success: false, error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
     try {
-      const { error } = await supabase
-        .from('estudiantes')
-        .update(updates)
-        .eq('id_estudiante', id);
+      const { data, error } = await supabase.rpc('sie_actualizar_estudiante', {
+        p_token: token,
+        p_id: id,
+        p_payload: updates,
+      });
 
       if (error) {
         return { success: false, error: error.message };
       }
 
-      return { success: true, error: null };
-    } catch (error: any) {
+      const payload = data as { ok?: boolean; error?: string | null };
+      if (payload?.error) {
+        return { success: false, error: payload.error };
+      }
+
+      return { success: payload?.ok !== false, error: null };
+    } catch (error: unknown) {
       console.error('Error en update:', error);
-      return { success: false, error: error.message || 'Error al actualizar estudiante' };
+      const message = error instanceof Error ? error.message : 'Error al actualizar estudiante';
+      return { success: false, error: message };
     }
   },
 };
