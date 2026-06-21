@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import {
   DEFAULT_PAGE_META,
   NOINDEX_PREFIXES,
+  OG_IMAGE_URL,
   PUBLIC_ROUTE_META,
 } from '@/config/siteSeo';
 
@@ -54,5 +55,14 @@ export function usePageMeta() {
       isArrivalRoute ? `${window.location.origin}${pathname}` : meta.canonical
     );
     upsertRobots(isStaffRoute || isArrivalRoute);
+
+    // Open Graph — vista previa en WhatsApp / redes al compartir enlaces del portal
+    const pageUrl = isArrivalRoute ? `${window.location.origin}${pathname}` : meta.canonical;
+    upsertMeta('og:title', meta.title, 'property');
+    upsertMeta('og:description', meta.description, 'property');
+    upsertMeta('og:url', pageUrl, 'property');
+    upsertMeta('og:image', OG_IMAGE_URL, 'property');
+    upsertMeta('og:image:alt', 'SIE Asiscole — I.E. San Ramón', 'property');
+    upsertMeta('twitter:image', OG_IMAGE_URL);
   }, [pathname]);
 }

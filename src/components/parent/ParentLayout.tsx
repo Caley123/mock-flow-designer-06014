@@ -6,6 +6,7 @@ import { authService, sessionService } from '@/lib/services';
 import { useParentPortalOptional } from '@/contexts/ParentPortalContext';
 import { toast } from 'sonner';
 import { useParentShellAnimation } from '@/hooks/useParentPortalAnimations';
+import { GuardyMark } from '@/components/brand/GuardyMark';
 
 interface ParentLayoutProps {
   children: ReactNode;
@@ -48,7 +49,7 @@ export function ParentLayout({ children }: ParentLayoutProps) {
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/15"
               aria-hidden
             >
-              <img src="/favicon.svg" alt="Escudo SIE I.E. San Ramón" className="h-6 w-6 shrink-0" width={24} height={24} />
+              <GuardyMark size="sm" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-foreground">

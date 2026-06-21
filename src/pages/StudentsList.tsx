@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { 
   Table, 
@@ -698,10 +699,11 @@ export const StudentsList = () => {
               {selectedStudent && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
-                    <Avatar className="w-24 h-24">
-                      <AvatarImage src={selectedStudent.profilePhoto} alt={selectedStudent.fullName} />
-                      <AvatarFallback className="text-2xl">{selectedStudent.fullName.charAt(0)}</AvatarFallback>
-                    </Avatar>
+                    <StudentPhoto
+                      src={selectedStudent.profilePhoto}
+                      name={selectedStudent.fullName}
+                      className="w-24 h-24 shrink-0"
+                    />
                     <div>
                       <h3 className="text-2xl font-bold">{selectedStudent.fullName}</h3>
                       <p className="text-muted-foreground">Código: {selectedStudent.barcode}</p>
@@ -890,10 +892,18 @@ export const StudentsList = () => {
                   <div className="space-y-2">
                     <FormLabel>Foto de Perfil</FormLabel>
                     <div className="flex items-center gap-4">
-                      <Avatar className="w-20 h-20">
-                        <AvatarImage src={photoPreview || selectedStudent?.profilePhoto} alt="Preview" />
-                        <AvatarFallback>IMG</AvatarFallback>
-                      </Avatar>
+                      {photoPreview ? (
+                        <Avatar className="w-20 h-20">
+                          <AvatarImage src={photoPreview} alt="Preview" />
+                          <AvatarFallback>IMG</AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <StudentPhoto
+                          src={selectedStudent?.profilePhoto}
+                          name={selectedStudent?.fullName ?? ''}
+                          className="w-20 h-20 shrink-0"
+                        />
+                      )}
                       <div className="flex-1">
                         <input
                           type="file"
@@ -1057,17 +1067,11 @@ export const StudentsList = () => {
                     <TableCell className="font-mono text-sm">{student.barcode}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={student.profilePhoto} alt={student.fullName} />
-                          <AvatarFallback>
-                            {student.fullName
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .slice(0, 2)
-                              .toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <StudentPhoto
+                          src={student.profilePhoto}
+                          name={student.fullName}
+                          className="h-9 w-9 shrink-0"
+                        />
                         <div>
                           <p className="font-medium">{student.fullName}</p>
                           <p className="text-xs text-muted-foreground">{student.barcode}</p>

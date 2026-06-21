@@ -53,6 +53,8 @@ export const StudentPhoto = ({
         <AvatarImage
           src={photoSrc}
           alt={name}
+          loading="lazy"
+          decoding="async"
           className={cn('object-cover', imageClassName)}
           onError={() => {
             void handleError();

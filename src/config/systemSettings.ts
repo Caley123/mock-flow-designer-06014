@@ -5,6 +5,7 @@
 export const SYSTEM_SETTING_KEYS = {
   arrivalLimit: 'hora_limite_llegada',
   departureLimit: 'hora_limite_salida',
+  schoolClose: 'hora_cierre_colegio',
 } as const;
 
 export type SystemSettingKey =
@@ -38,6 +39,15 @@ export const SYSTEM_SETTINGS: SystemSettingDefinition[] = [
     defaultValue: '15:00',
     inputType: 'time',
     usedIn: 'Control de llegadas · Alertas de salida',
+  },
+  {
+    key: SYSTEM_SETTING_KEYS.schoolClose,
+    label: 'Hora de cierre del colegio',
+    description:
+      'A partir de esta hora el escáner muestra el aviso «Fuera de jornada». Antes de esta hora el registro sigue activo (talleres, actividades).',
+    defaultValue: '18:00',
+    inputType: 'time',
+    usedIn: 'Escáner del tutor · Control de llegadas',
   },
 ];
 

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, Suspense } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { GuardyMark } from '@/components/brand/GuardyMark';
@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { authService } from '@/lib/services';
 import { getHomeRouteForRole, isStaffRole } from '@/lib/utils/roleRoutes';
 import { useRoleAccessGuard } from '@/hooks/useRoleAccessGuard';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 
 interface LayoutProps {
   children: ReactNode;
@@ -32,7 +33,9 @@ export const Layout = ({ children, requiredRole }: LayoutProps) => {
           isParentPortal && 'parent-layout-main bg-gradient-to-b from-muted/30 via-background to-background'
         )}
       >
-        <div className="flex-1 pb-3 md:pb-4">{children}</div>
+        <Suspense fallback={<LoadingScreen message="Cargando…" fullScreen={false} />}>
+          <div className="flex-1 pb-3 md:pb-4">{children}</div>
+        </Suspense>
         <footer className="hidden border-t border-border/70 bg-card/55 px-6 py-2 md:flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground/70 backdrop-blur">
           <GuardyMark size="xs" />
           <span>Guardy</span>

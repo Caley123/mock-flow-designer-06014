@@ -1,10 +1,10 @@
+import { BRAND_LOGIN_MARK } from '@/config/brandAssets';
+
 interface LoginBrandBlockProps {
   compact?: boolean;
 }
 
-const GUARDY_LOGO = '/guardy-logo.png';
-
-/** Marca Guardy — máscara circular suave, escudo + texto acercados. */
+/** Marca Guardy — escudo SIE (PNG). */
 export function LoginBrandBlock({ compact = false }: LoginBrandBlockProps) {
   const rootClass = compact ? 'login-brand login-brand--compact' : 'login-brand';
 
@@ -14,7 +14,7 @@ export function LoginBrandBlock({ compact = false }: LoginBrandBlockProps) {
         <span className="login-brand__logo-halo" aria-hidden />
         <div className="login-brand__logo-clip" data-login-brand-mark>
           <img
-            src={GUARDY_LOGO}
+            src={BRAND_LOGIN_MARK}
             alt="Guardy"
             className="login-brand__logo"
             draggable={false}

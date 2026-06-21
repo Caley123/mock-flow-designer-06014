@@ -7,7 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { PageLoader } from "./components/ui/page-loader";
+import { LoadingScreen } from "./components/ui/loading-screen";
 import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
@@ -34,18 +34,20 @@ const ParentPortalRoute = lazy(() =>
 const JustifyFaults = lazy(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
 const ArrivalView = lazy(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
 const ParentDniPortal = lazy(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
+const ChangePassword = lazy(() => import("./pages/ChangePassword").then(m => ({ default: m.ChangePassword })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      // Refrescar al volver a la pestaña/ventana para que las listas muestren
-      // cambios hechos desde otra página (ej. TutorScanner → IncidentsList).
+      // Solo refrescar en foco si los datos superan el staleTime (3 min).
+      // Así las listas recogen cambios de otras páginas sin refetch excesivo.
       refetchOnWindowFocus: true,
-      // 90 s: datos suficientemente frescos sin exceso de peticiones.
-      staleTime: 90 * 1000,
-      gcTime: 10 * 60 * 1000,
+      refetchOnReconnect: false,
+      // 3 min: evita refetches en cada cambio de pestaña/ventana.
+      staleTime: 3 * 60 * 1000,
+      gcTime: 15 * 60 * 1000,
     },
   },
 });
@@ -63,27 +65,21 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 const RootRoute = () => {
   const user = authService.getCurrentUser();
   
-  // Si no hay usuario, redirigir al login
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  // A07: Forzar cambio de contraseña antes de acceder al sistema
+  if (user.cambioPasswordObligatorio) {
+    return <Navigate to="/cambiar-password" replace />;
   }
-  
-  // Si es tutor, redirigir a la página de escaneo
-  if (user.role === 'Tutor') {
-    return <Navigate to="/tutor-scanner" replace />;
-  }
-  
-  // Si es padre, redirigir al portal de padres
-  if (user.role === 'Padre') {
-    return <Navigate to="/parent-portal" replace />;
-  }
-  
-  // Para otros roles, redirigir al dashboard
+
+  if (user.role === 'Tutor') return <Navigate to="/tutor-scanner" replace />;
+  if (user.role === 'Padre') return <Navigate to="/parent-portal" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 
-// Componente de carga para Suspense
-const LoadingFallback = () => <PageLoader message="Cargando..." />;
+// Pantalla animada para la primera carga de cada sección (chunk aún no descargado).
+// Tiene 300 ms de fade-in: si el chunk carga antes, el usuario no la ve.
+const LoadingFallback = () => <LoadingScreen message="Cargando SIE…" />;
 
 // Componente interno que usa el Router
 const AppContent = () => {
@@ -214,6 +210,8 @@ const AppContent = () => {
                   </ProtectedRoute>
                 } 
               />
+              {/* A07: Cambio obligatorio de contraseña */}
+              <Route path="/cambiar-password" element={<ChangePassword />} />
               {/* Rutas públicas para padres */}
               <Route path="/portal-padres" element={<ParentDniPortal />} />
               <Route path="/llegada/dni/:dni" element={<ArrivalView />} />

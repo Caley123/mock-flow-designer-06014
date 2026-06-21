@@ -28,12 +28,12 @@ export default defineConfig(({ mode }) => ({
     target: 'esnext',
     modulePreload: {
       resolveDependencies(_filename, deps) {
-        // No precargar librerías pesadas de reportes en la primera pantalla.
+        // No precargar librerías de reportes en la primera pantalla.
+        // spring-vendor sí se precarga porque LoadingScreen lo necesita desde el arranque.
         return deps.filter(
           (dep) =>
             !dep.includes('report-excel') &&
-            !dep.includes('report-pdf') &&
-            !dep.includes('spring-vendor')
+            !dep.includes('report-pdf')
         );
       },
     },
@@ -42,14 +42,17 @@ export default defineConfig(({ mode }) => ({
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
 
-          // No separar recharts: crear un chunk compartido provoca ciclo react-vendor ↔ chart-vendor
-          // (Rollup reutiliza helpers en chart-vendor que react-vendor termina importando).
-
+          // Reportes: sólo se cargan al generar Excel/PDF
           if (id.includes('/exceljs/')) return 'report-excel';
           if (id.includes('/jspdf')) return 'report-pdf';
-          if (id.includes('/@react-spring/')) return 'spring-vendor';
+
+          // GSAP: animaciones del portal de padres/login
           if (id.includes('/gsap/') || id.includes('/@gsap/')) return 'gsap-vendor';
 
+          // React-spring: LoadingScreen (necesario en el arranque, no se difiere)
+          if (id.includes('/@react-spring/')) return 'spring-vendor';
+
+          // React core
           if (
             id.includes('/react-dom/') ||
             id.includes('/react-router-dom/') ||
@@ -59,7 +62,13 @@ export default defineConfig(({ mode }) => ({
             return 'react-vendor';
           }
 
+          // TanStack Query
+          if (id.includes('/@tanstack/')) return 'query-vendor';
+
+          // Radix UI / shadcn
           if (id.includes('/@radix-ui/')) return 'ui-vendor';
+
+          // date-fns + zod
           if (id.includes('/date-fns/') || id.includes('/zod/')) return 'utils-vendor';
         },
       },
@@ -68,6 +77,15 @@ export default defineConfig(({ mode }) => ({
     sourcemap: mode === 'development',
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', 'gsap', '@gsap/react'],
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@supabase/supabase-js',
+      'gsap',
+      '@gsap/react',
+      '@react-spring/web',
+      '@tanstack/react-query',
+    ],
   },
 }));

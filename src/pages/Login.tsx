@@ -15,6 +15,7 @@ import { LoginHeroPanel, LoginMobileIntro } from '@/components/login/LoginHeroPa
 import { LoginCinematicBackdrop } from '@/components/login/LoginCinematicBackdrop';
 import { useLoginEnterAnimation } from '@/hooks/useLoginEnterAnimation';
 import { useLoginAmbientAnimation } from '@/hooks/useLoginAmbientAnimation';
+import { BRAND_ICON_SM } from '@/config/brandAssets';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -76,8 +77,10 @@ export const Login = () => {
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         }
+        // A07: Si el cambio de contraseña es obligatorio, redirigir antes de acceder
         if (user.cambioPasswordObligatorio) {
-          toast.info('Debe cambiar su contraseña');
+          navigate('/cambiar-password', { replace: true });
+          return;
         }
         navigate(getHomeRouteForRole(user.role));
       }
@@ -214,7 +217,7 @@ export const Login = () => {
                 I.E. San Ramón.
               </span>
               <img
-                src="/guardy-logo.png"
+                src={BRAND_ICON_SM}
                 alt="Guardy — software educativo"
                 className="login-form-card__footer-logo mx-auto"
                 width={96}

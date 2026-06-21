@@ -66,7 +66,6 @@ export const evidenceService = {
         p_id_usuario_subida: userId
       });
 
-      console.log('Respuesta de insertar_evidencia:', { data, error });
 
       if (error || !data) {
         // Si falla, eliminar el archivo subido
@@ -77,9 +76,7 @@ export const evidenceService = {
         };
       }
 
-      // La función devuelve un JSON con los datos insertados
       const evidenceData = data;
-      console.log('Datos de evidencia procesados:', evidenceData);
 
       const evidence: IncidentEvidence = {
         id: evidenceData.id_evidencia,

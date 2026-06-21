@@ -1,10 +1,11 @@
-/** Logo Guardy para reportes Excel (marca de agua) y PDF */
+import {
+  BRAND_WATERMARK,
+  BRAND_REPORT_LOGO,
+} from '@/config/brandAssets';
 
-const WATERMARK_SOURCES = [
-  '/guardy-watermark.png',
-  '/guardy-report-logo.png',
-  '/guardy-mark.png',
-] as const;
+/** Logo Guardy para reportes Excel (marca de agua) y PDF — solo PNG SIE */
+
+const WATERMARK_SOURCES = [BRAND_WATERMARK, BRAND_REPORT_LOGO] as const;
 
 let headerLogoCache: ArrayBuffer | null = null;
 let watermarkCache: ArrayBuffer | null = null;
@@ -119,8 +120,8 @@ export async function loadReportLogoForPdf(): Promise<HTMLImageElement | null> {
   }
 }
 
-export const REPORT_LOGO_PATH = '/guardy-watermark.png';
-export const WATERMARK_LOGO_PATH = '/guardy-watermark.png';
+export const REPORT_LOGO_PATH = BRAND_WATERMARK;
+export const WATERMARK_LOGO_PATH = BRAND_WATERMARK;
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);

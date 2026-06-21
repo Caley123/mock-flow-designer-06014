@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { BRAND_ICON_SM } from '@/config/brandAssets';
 
 const sizeMap = {
   xs: { box: 'h-4 w-4', img: 16 },
@@ -26,8 +27,8 @@ export const GuardyMark = ({
   showWordmark = false,
 }: GuardyMarkProps) => {
   const s = sizeMap[size];
-  /** SVG del escudo — evita la mancha oscura del PNG guardy-mark */
-  const src = '/favicon.svg';
+  /** Escudo SIE (PNG) */
+  const src = BRAND_ICON_SM;
 
   return (
     <span

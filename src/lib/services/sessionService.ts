@@ -42,9 +42,16 @@ export const sessionService = {
       lastActivity: now,
     };
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
-      localStorage.setItem('user', JSON.stringify(user));
-      localStorage.setItem('userId', user.id.toString());
+      // sessionStorage se borra automáticamente al cerrar la pestaña/navegador,
+      // reduciendo el riesgo en equipos compartidos del colegio.
+      // No guardamos 'user' ni 'userId' por separado: toda la sesión vive en una
+      // sola entrada y se purga junto con el token al cerrar.
+      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(sessionData));
+
+      // Limpiar cualquier dato residual que pudiera quedar de versiones anteriores.
+      localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
     } catch (error) {
       console.error('Error al guardar sesión:', error);
     }
@@ -62,7 +69,7 @@ export const sessionService = {
 
   readSessionRaw(): SessionData | null {
     try {
-      const sessionStr = localStorage.getItem(this.STORAGE_KEY);
+      const sessionStr = sessionStorage.getItem(this.STORAGE_KEY);
       if (!sessionStr) return null;
       const parsed = JSON.parse(sessionStr) as SessionData;
       if (!parsed.apiToken) {
@@ -108,7 +115,7 @@ export const sessionService = {
     session.expiresAt = now + duration;
 
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
+      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
     } catch (error) {
       console.error('Error al actualizar actividad:', error);
     }
@@ -121,6 +128,8 @@ export const sessionService = {
 
   clearSession(): void {
     try {
+      sessionStorage.removeItem(this.STORAGE_KEY);
+      // Purgar también entradas de versiones anteriores que usaban localStorage.
       localStorage.removeItem(this.STORAGE_KEY);
       localStorage.removeItem('user');
       localStorage.removeItem('userId');

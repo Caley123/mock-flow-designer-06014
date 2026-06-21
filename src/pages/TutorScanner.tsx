@@ -51,8 +51,9 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { configService } from '@/lib/services';
 import { getLimaNow } from '@/lib/utils/limaDateTime';
+import { configService } from '@/lib/services';
+import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 
@@ -76,6 +77,7 @@ export const TutorScanner = () => {
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [arrivalRecord, setArrivalRecord] = useState<ArrivalRecord | null>(null);
   const [arrivalLimit, setArrivalLimit] = useState<string>('08:00');
+  const [schoolCloseTime, setSchoolCloseTime] = useState<string>('18:00');
   const [nowHHMM, setNowHHMM] = useState<string>('');
   const [sessionCount, setSessionCount] = useState<{ total: number; onTime: number; late: number }>({
     total: 0,
@@ -220,15 +222,22 @@ export const TutorScanner = () => {
 
   const loadArrivalLimit = async () => {
     try {
-      const { config } = await configService.getByKey('hora_limite_llegada');
-      const raw = config?.value?.trim() || '08:00';
-      const match = raw.match(/^(\d{1,2}):(\d{2})$/);
-      if (!match) return;
-      const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
-      const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
-      setArrivalLimit(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+      // Límite de llegada: fin de ventana de entrada según horario configurado
+      const schedConfig = await scheduleService.getConfig();
+      const rawLimit = schedConfig.defaults.entradaFin?.trim() || '08:00';
+      const mLimit = rawLimit.match(/^(\d{1,2}):(\d{2})$/);
+      if (mLimit) {
+        const h = Math.min(23, Math.max(0, parseInt(mLimit[1], 10)));
+        const m = Math.min(59, Math.max(0, parseInt(mLimit[2], 10)));
+        setArrivalLimit(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+      }
+
+      // Hora de cierre: desde cuándo mostrar "Fuera de jornada"
+      const { config: closeCfg } = await configService.getByKey(SYSTEM_SETTING_KEYS.schoolClose);
+      const normalized = normalizeTimeValue(closeCfg?.value, '18:00');
+      setSchoolCloseTime(normalized);
     } catch {
-      // Silencioso: mostramos valor por defecto
+      // Silencioso: usamos valores por defecto
     }
   };
 
@@ -1010,11 +1019,13 @@ export const TutorScanner = () => {
                         </Badge>
                       </div>
                       <p className="tutor-schedule__summary">{studentSchedule.summary}</p>
-                      {!studentSchedule.shouldBeAtSchool && studentSchedule.phase === 'after_school' && (
-                        <p className="tutor-schedule__alert">
-                          Fuera de jornada — verifique si tiene taller o permiso especial.
-                        </p>
-                      )}
+                      {!studentSchedule.shouldBeAtSchool &&
+                        studentSchedule.phase === 'after_school' &&
+                        nowHHMM >= schoolCloseTime && (
+                          <p className="tutor-schedule__alert">
+                            Fuera de jornada — verifique si tiene taller o permiso especial.
+                          </p>
+                        )}
                     </div>
                   )}
 
@@ -1087,7 +1098,7 @@ export const TutorScanner = () => {
                   <p className="tutor-meta__v">{nowHHMM || '—:—'}</p>
                 </div>
                 <div className="tutor-meta__item">
-                  <p className="tutor-meta__k">Límite</p>
+                  <p className="tutor-meta__k">Límite entrada</p>
                   <p className="tutor-meta__v">{arrivalLimit}</p>
                 </div>
               </div>

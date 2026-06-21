@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSpring, animated } from '@react-spring/web';
 import { ParentSidebarNav } from '@/components/parent/ParentSidebarNav';
+import { GuardyMark } from '@/components/brand/GuardyMark';
 import {
   getStaffNavDefaultPath,
   getStaffNavItems,
@@ -108,14 +109,7 @@ export const Sidebar = () => {
             className="group flex flex-col items-center justify-center gap-2 text-center"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <img
-              src="/favicon.svg"
-              alt=""
-              className="h-10 w-10 object-contain transition-transform duration-200 group-hover:scale-105"
-              width={40}
-              height={40}
-              draggable={false}
-            />
+            <GuardyMark size="lg" className="transition-transform duration-200 group-hover:scale-105" />
             <div className="flex flex-col items-center gap-0.5">
               <span className="text-lg font-bold leading-none tracking-wide text-sidebar-foreground">
                 SIE

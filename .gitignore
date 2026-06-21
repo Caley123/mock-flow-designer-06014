@@ -17,6 +17,9 @@ dist-ssr
 # OpenWA (clonar aparte; ver OPENWA_WHATSAPP.md)
 OpenWA/
 
+# Pruebas de carga — informes JSON generados
+scripts/load/reports/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

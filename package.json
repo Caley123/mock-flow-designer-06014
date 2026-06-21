@@ -10,6 +10,10 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:load:padres": "node scripts/load/parent-consultation-load.mjs",
+    "test:load:tutores": "node scripts/load/tutor-scanner-load.mjs",
+    "test:load:whatsapp": "node scripts/load/whatsapp-load.mjs",
+    "test:load:all": "node scripts/load/run-load-suite.mjs --all",
     "preview": "vite preview",
     "build:cf": "vite build",
     "cf:deploy": "npx wrangler@4.101.0 deploy",
@@ -19,6 +23,7 @@
     "import:nomina:primaria": "node scripts/import-nomina.mjs --nivel Primaria",
     "import:nomina:secundaria": "node scripts/import-nomina.mjs --nivel Secundaria",
     "upload:fotos": "node scripts/upload-student-photos.mjs",
+    "generate:favicons": "node scripts/generate-favicons.mjs",
     "openwa": "npm run dev --prefix OpenWA",
     "openwa:install": "powershell -ExecutionPolicy Bypass -File scripts/instalar-openwa.ps1"
   },

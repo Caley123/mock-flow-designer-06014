@@ -1,6 +1,8 @@
 /** Metadatos SEO centralizados — asiscole.com / I.E. San Ramón */
 export const SITE_URL = 'https://asiscole.com';
 
+export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`;
+
 export const SITE_NAME = 'SIE Asiscole';
 
 export const SCHOOL_NAME = 'Institución Educativa San Ramón';
