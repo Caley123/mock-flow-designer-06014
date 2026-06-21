@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,6 +52,8 @@ import {
   Calendar as CalendarIcon,
   List,
   FileSpreadsheet,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { exportParentMeetingsExcel } from '@/lib/utils/excelListExports';
 import { ModernCalendar } from '@/components/calendar/ModernCalendar';
@@ -171,6 +173,7 @@ export const ParentMeetings = () => {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<{
     total: number;
     pendientes: number;
@@ -460,6 +463,54 @@ export const ParentMeetings = () => {
     return matchesSearch;
   });
 
+  // Agrupar citas con el mismo motivo+fecha+hora en un solo evento (citas masivas).
+  // Los grupos con 1 sola cita se tratan como individuales.
+  type MeetingGroup = {
+    key: string;
+    motivo: string;
+    fecha: string;
+    hora: string;
+    isBulk: boolean;
+    meetings: ParentMeeting[];
+    pendientes: number;
+    confirmadas: number;
+    completadas: number;
+    noAsistieron: number;
+  };
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const meetingGroups = useMemo<MeetingGroup[]>(() => {
+    const map = new Map<string, ParentMeeting[]>();
+    for (const m of filteredMeetings) {
+      const k = `${m.motivo}||${m.fecha}||${m.hora}`;
+      const arr = map.get(k) ?? [];
+      arr.push(m);
+      map.set(k, arr);
+    }
+    return Array.from(map.entries()).map(([key, arr]) => ({
+      key,
+      motivo: arr[0].motivo,
+      fecha: arr[0].fecha,
+      hora: arr[0].hora,
+      isBulk: arr.length > 1,
+      meetings: arr,
+      pendientes: arr.filter(m => m.estado === 'Pendiente').length,
+      confirmadas: arr.filter(m => m.estado === 'Confirmada').length,
+      completadas: arr.filter(m => m.estado === 'Completada').length,
+      noAsistieron: arr.filter(m => m.estado === 'No asistió').length,
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredMeetings]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const getMeetingColor = (estado: ParentMeeting['estado']) => {
     switch (estado) {
       case 'Pendiente':
@@ -708,136 +759,205 @@ export const ParentMeetings = () => {
                 <div className="py-8 text-center text-muted-foreground">No hay citas para mostrar</div>
               ) : (
                 <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Estudiante</TableHead>
-                  <TableHead>Motivo</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Hora</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Asistencia</TableHead>
-                  <TableHead>Puntualidad</TableHead>
-                  <TableHead>Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMeetings.map((meeting) => (
-                  <TableRow key={meeting.id}>
-                    <TableCell className="font-medium">
-                      {meeting.student?.fullName}
-                      <div className="text-sm text-muted-foreground">
-                        {meeting.student?.level} • {meeting.student?.grade} {meeting.student?.section}
-                      </div>
-                    </TableCell>
-                    <TableCell>{meeting.motivo}</TableCell>
-                    <TableCell>
-                      {format(new Date(meeting.fecha), 'dd/MM/yyyy', { locale: es })}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        {meeting.hora}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(meeting.estado)}</TableCell>
-                    <TableCell>
-                      {meeting.asistencia === null ? (
-                        <span className="text-muted-foreground text-sm">Pendiente</span>
-                      ) : meeting.asistencia ? (
-                        <Badge variant="default" className="bg-green-100 text-green-700">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Asistió
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          <XCircle className="h-3 w-3 mr-1" />
-                          No asistió
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {meeting.asistencia === true ? (
-                        meeting.llegadaTarde ? (
-                          <Badge variant="outline" className="border-amber-500 text-amber-700 bg-amber-50">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Llegó tarde
-                            {meeting.horaLlegadaReal && (
-                              <span className="ml-1 text-xs">({meeting.horaLlegadaReal})</span>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8" />
+                      <TableHead>Estudiante / Evento</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Hora</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Asistencia</TableHead>
+                      <TableHead>Puntualidad</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {meetingGroups.map((group) => {
+                      const isExpanded = expandedGroups.has(group.key);
+                      if (group.isBulk) {
+                        return (
+                          <>
+                            {/* Fila de cabecera del grupo masivo */}
+                            <TableRow
+                              key={`group-${group.key}`}
+                              className="bg-primary/5 hover:bg-primary/10 cursor-pointer font-medium"
+                              onClick={() => toggleGroup(group.key)}
+                            >
+                              <TableCell>
+                                {isExpanded
+                                  ? <ChevronDown className="h-4 w-4 text-primary" />
+                                  : <ChevronRight className="h-4 w-4 text-primary" />}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-primary shrink-0" />
+                                  <span>Evento masivo</span>
+                                  <Badge variant="outline" className="border-primary/40 text-primary text-xs">
+                                    {group.meetings.length} padres
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-2">
+                                  {group.pendientes > 0 && <span className="text-amber-600">{group.pendientes} pendientes</span>}
+                                  {group.confirmadas > 0 && <span className="text-blue-600">{group.confirmadas} confirmadas</span>}
+                                  {group.completadas > 0 && <span className="text-green-600">{group.completadas} completadas</span>}
+                                  {group.noAsistieron > 0 && <span className="text-red-600">{group.noAsistieron} no asistieron</span>}
+                                </div>
+                              </TableCell>
+                              <TableCell>{group.motivo}</TableCell>
+                              <TableCell>{format(new Date(group.fecha), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  {group.hora}
+                                </div>
+                              </TableCell>
+                              <TableCell colSpan={4}>
+                                <span className="text-xs text-muted-foreground italic">
+                                  {isExpanded ? 'Haz clic para contraer' : 'Haz clic para ver padres'}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                            {/* Filas individuales cuando está expandido */}
+                            {isExpanded && group.meetings.map((meeting) => (
+                              <TableRow key={meeting.id} className="bg-muted/30">
+                                <TableCell />
+                                <TableCell className="pl-8 font-medium">
+                                  {meeting.student?.fullName}
+                                  <div className="text-xs text-muted-foreground">
+                                    {meeting.student?.level} · {meeting.student?.grade} {meeting.student?.section}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-sm">{meeting.motivo}</TableCell>
+                                <TableCell>{format(new Date(meeting.fecha), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-muted-foreground" />
+                                    {meeting.hora}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{getStatusBadge(meeting.estado)}</TableCell>
+                                <TableCell>
+                                  {meeting.asistencia === null ? (
+                                    <span className="text-muted-foreground text-sm">Pendiente</span>
+                                  ) : meeting.asistencia ? (
+                                    <Badge variant="default" className="bg-green-100 text-green-700">
+                                      <CheckCircle className="h-3 w-3 mr-1" />Asistió
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="destructive">
+                                      <XCircle className="h-3 w-3 mr-1" />No asistió
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {meeting.asistencia === true ? (
+                                    meeting.llegadaTarde ? (
+                                      <Badge variant="outline" className="border-amber-500 text-amber-700 bg-amber-50">
+                                        <Clock className="h-3 w-3 mr-1" />Llegó tarde
+                                        {meeting.horaLlegadaReal && <span className="ml-1 text-xs">({meeting.horaLlegadaReal})</span>}
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="border-green-500 text-green-700 bg-green-50">
+                                        <CheckCircle className="h-3 w-3 mr-1" />A tiempo
+                                      </Badge>
+                                    )
+                                  ) : <span className="text-muted-foreground text-sm">-</span>}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-1 flex-wrap">
+                                    <Button size="sm" variant="outline" onClick={() => { setSelectedMeeting(meeting); setViewDialogOpen(true); }}>Ver</Button>
+                                    {meeting.estado === 'Pendiente' && (
+                                      <>
+                                        <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(meeting.id, 'Confirmada')}>Confirmar</Button>
+                                        <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(meeting.id, 'Cancelada')}>Cancelar</Button>
+                                      </>
+                                    )}
+                                    {(meeting.estado === 'Confirmada' || meeting.estado === 'Pendiente') && (
+                                      <>
+                                        <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => handleMarkAttendance(meeting.id, true, false)}>A tiempo</Button>
+                                        <Button size="sm" variant="outline" className="border-amber-500 text-amber-700 hover:bg-amber-50" onClick={() => handleMarkAttendance(meeting.id, true, true)}>Tarde</Button>
+                                        <Button size="sm" variant="destructive" onClick={() => handleMarkAttendance(meeting.id, false)}>No Asistió</Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        );
+                      }
+
+                      // Cita individual (sin agrupar)
+                      const meeting = group.meetings[0];
+                      return (
+                        <TableRow key={meeting.id}>
+                          <TableCell />
+                          <TableCell className="font-medium">
+                            {meeting.student?.fullName}
+                            <div className="text-sm text-muted-foreground">
+                              {meeting.student?.level} · {meeting.student?.grade} {meeting.student?.section}
+                            </div>
+                          </TableCell>
+                          <TableCell>{meeting.motivo}</TableCell>
+                          <TableCell>{format(new Date(meeting.fecha), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              {meeting.hora}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(meeting.estado)}</TableCell>
+                          <TableCell>
+                            {meeting.asistencia === null ? (
+                              <span className="text-muted-foreground text-sm">Pendiente</span>
+                            ) : meeting.asistencia ? (
+                              <Badge variant="default" className="bg-green-100 text-green-700">
+                                <CheckCircle className="h-3 w-3 mr-1" />Asistió
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">
+                                <XCircle className="h-3 w-3 mr-1" />No asistió
+                              </Badge>
                             )}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="border-green-500 text-green-700 bg-green-50">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            A tiempo
-                          </Badge>
-                        )
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedMeeting(meeting);
-                            setViewDialogOpen(true);
-                          }}
-                        >
-                          Ver
-                        </Button>
-                        {meeting.estado === 'Pendiente' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleUpdateStatus(meeting.id, 'Confirmada')}
-                            >
-                              Confirmar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleUpdateStatus(meeting.id, 'Cancelada')}
-                            >
-                              Cancelar
-                            </Button>
-                          </>
-                        )}
-                        {(meeting.estado === 'Confirmada' || meeting.estado === 'Pendiente') && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="bg-green-600 hover:bg-green-700"
-                              onClick={() => handleMarkAttendance(meeting.id, true, false)}
-                            >
-                              A tiempo
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                              onClick={() => handleMarkAttendance(meeting.id, true, true)}
-                            >
-                              Tarde
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleMarkAttendance(meeting.id, false)}
-                            >
-                              No Asistió
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          </TableCell>
+                          <TableCell>
+                            {meeting.asistencia === true ? (
+                              meeting.llegadaTarde ? (
+                                <Badge variant="outline" className="border-amber-500 text-amber-700 bg-amber-50">
+                                  <Clock className="h-3 w-3 mr-1" />Llegó tarde
+                                  {meeting.horaLlegadaReal && <span className="ml-1 text-xs">({meeting.horaLlegadaReal})</span>}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-green-500 text-green-700 bg-green-50">
+                                  <CheckCircle className="h-3 w-3 mr-1" />A tiempo
+                                </Badge>
+                              )
+                            ) : <span className="text-muted-foreground text-sm">-</span>}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => { setSelectedMeeting(meeting); setViewDialogOpen(true); }}>Ver</Button>
+                              {meeting.estado === 'Pendiente' && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(meeting.id, 'Confirmada')}>Confirmar</Button>
+                                  <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(meeting.id, 'Cancelada')}>Cancelar</Button>
+                                </>
+                              )}
+                              {(meeting.estado === 'Confirmada' || meeting.estado === 'Pendiente') && (
+                                <>
+                                  <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => handleMarkAttendance(meeting.id, true, false)}>A tiempo</Button>
+                                  <Button size="sm" variant="outline" className="border-amber-500 text-amber-700 hover:bg-amber-50" onClick={() => handleMarkAttendance(meeting.id, true, true)}>Tarde</Button>
+                                  <Button size="sm" variant="destructive" onClick={() => handleMarkAttendance(meeting.id, false)}>No Asistió</Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               )}
             </div>
           )}
