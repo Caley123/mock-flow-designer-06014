@@ -4,10 +4,13 @@
  * - UI del sistema: SVG (favicon.svg) — nítido en sidebar, login, etc.
  * - WhatsApp / Open Graph: solo PNG (og-image.png) — el crawler no usa SVG.
  *
- * No usar assets Lovable heredados (guardy-mark, guardy-logo antiguos).
+ * No usar guardy-mark.png (asset Lovable heredado).
  */
 /** Escudo vectorial para componentes de la app */
 export const BRAND_ICON_SVG = '/favicon.svg';
+
+/** Logo completo (escudo + wordmark) — solo hero/login */
+export const BRAND_LOGIN_LOGO = '/guardy-logo.png';
 
 /** PNG para favicon del navegador y PWA */
 export const BRAND_ICON_SM = '/favicon-192.png';
