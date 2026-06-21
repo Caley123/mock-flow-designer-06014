@@ -4,7 +4,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Layout } from "./components/layout/Layout";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/ui/loading-screen";
@@ -13,46 +12,43 @@ import { authService } from "./lib/services";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
 import { PageMetaManager } from "./components/seo/PageMetaManager";
 import { SiteAnalytics } from "./components/seo/SiteAnalytics";
+import { StaffLayoutShell } from "./components/layout/StaffLayoutShell";
+import { lazyPage } from "./lib/lazyPage";
 
-// Lazy loading de componentes para code splitting
-const Login = lazy(() => import("./pages/Login").then(m => ({ default: m.Login })));
-const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
-const RegisterIncident = lazy(() => import("./pages/RegisterIncident").then(m => ({ default: m.RegisterIncident })));
-const IncidentsList = lazy(() => import("./pages/IncidentsList").then(m => ({ default: m.IncidentsList })));
-const StudentsList = lazy(() => import("./pages/StudentsList").then(m => ({ default: m.StudentsList })));
-const FaultsCatalog = lazy(() => import("./pages/FaultsCatalog").then(m => ({ default: m.FaultsCatalog })));
-const Reports = lazy(() => import("./pages/Reports").then(m => ({ default: m.Reports })));
-const AttendanceReport = lazy(() => import("./pages/AttendanceReport").then(m => ({ default: m.AttendanceReport })));
-const TutorScanner = lazy(() => import("./pages/TutorScanner").then(m => ({ default: m.TutorScanner })));
-const AuditLogs = lazy(() => import("./pages/AuditLogs").then(m => ({ default: m.AuditLogs })));
-const SystemConfig = lazy(() => import("./pages/SystemConfig").then(m => ({ default: m.SystemConfig })));
-const ArrivalControl = lazy(() => import("./pages/ArrivalControl").then(m => ({ default: m.ArrivalControl })));
-const ParentMeetings = lazy(() => import("./pages/ParentMeetings").then(m => ({ default: m.ParentMeetings })));
-const ParentPortalRoute = lazy(() =>
+const Login = lazyPage(() => import("./pages/Login").then(m => ({ default: m.Login })));
+const Dashboard = lazyPage(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
+const RegisterIncident = lazyPage(() => import("./pages/RegisterIncident").then(m => ({ default: m.RegisterIncident })));
+const IncidentsList = lazyPage(() => import("./pages/IncidentsList").then(m => ({ default: m.IncidentsList })));
+const StudentsList = lazyPage(() => import("./pages/StudentsList").then(m => ({ default: m.StudentsList })));
+const FaultsCatalog = lazyPage(() => import("./pages/FaultsCatalog").then(m => ({ default: m.FaultsCatalog })));
+const Reports = lazyPage(() => import("./pages/Reports").then(m => ({ default: m.Reports })));
+const AttendanceReport = lazyPage(() => import("./pages/AttendanceReport").then(m => ({ default: m.AttendanceReport })));
+const TutorScanner = lazyPage(() => import("./pages/TutorScanner").then(m => ({ default: m.TutorScanner })));
+const AuditLogs = lazyPage(() => import("./pages/AuditLogs").then(m => ({ default: m.AuditLogs })));
+const SystemConfig = lazyPage(() => import("./pages/SystemConfig").then(m => ({ default: m.SystemConfig })));
+const ArrivalControl = lazyPage(() => import("./pages/ArrivalControl").then(m => ({ default: m.ArrivalControl })));
+const ParentMeetings = lazyPage(() => import("./pages/ParentMeetings").then(m => ({ default: m.ParentMeetings })));
+const ParentPortalRoute = lazyPage(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
 );
-const JustifyFaults = lazy(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
-const ArrivalView = lazy(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
-const ParentDniPortal = lazy(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
-const ChangePassword = lazy(() => import("./pages/ChangePassword").then(m => ({ default: m.ChangePassword })));
+const JustifyFaults = lazyPage(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
+const ArrivalView = lazyPage(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
+const ParentDniPortal = lazyPage(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
+const ChangePassword = lazyPage(() => import("./pages/ChangePassword").then(m => ({ default: m.ChangePassword })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      // Solo refrescar en foco si los datos superan el staleTime (3 min).
-      // Así las listas recogen cambios de otras páginas sin refetch excesivo.
       refetchOnWindowFocus: true,
       refetchOnReconnect: false,
-      // 3 min: evita refetches en cada cambio de pestaña/ventana.
       staleTime: 3 * 60 * 1000,
       gcTime: 15 * 60 * 1000,
     },
   },
 });
 
-// Componente para redirigir si ya está autenticado
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const user = authService.getCurrentUser();
   if (user) {
@@ -61,13 +57,11 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   return children as React.ReactElement;
 };
 
-// Componente para manejar la ruta raíz - redirige según el rol
 const RootRoute = () => {
   const user = authService.getCurrentUser();
-  
+
   if (!user) return <Navigate to="/login" replace />;
 
-  // A07: Forzar cambio de contraseña antes de acceder al sistema
   if (user.cambioPasswordObligatorio) {
     return <Navigate to="/cambiar-password" replace />;
   }
@@ -77,153 +71,134 @@ const RootRoute = () => {
   return <Navigate to="/dashboard" replace />;
 };
 
-// Pantalla animada para la primera carga de cada sección (chunk aún no descargado).
-// Tiene 300 ms de fade-in: si el chunk carga antes, el usuario no la ve.
-const LoadingFallback = () => <LoadingScreen message="Cargando SIE…" />;
+/** Pantalla completa para rutas sin Layout (login, tutor, etc.). */
+const FullScreenLoading = () => <LoadingScreen message="Cargando SIE…" />;
 
-// Componente interno que usa el Router
+const LazyFullScreen = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<FullScreenLoading />}>{children}</Suspense>
+);
+
 const AppContent = () => {
   return (
-    <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              <Route 
-                path="/login" 
-                element={
-                  <PublicRoute>
-                    <Login />
-                  </PublicRoute>
-                } 
-              />
-              <Route 
-                path="/" 
-                element={<RootRoute />}
-              />
-              <Route 
-                path="/dashboard" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><Dashboard /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/tutor-scanner" 
-                element={
-                  <ProtectedRoute requiredRole={['Tutor']}>
-                    <TutorScanner />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/register" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><RegisterIncident /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/incidents" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><IncidentsList /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/students" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><StudentsList /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/faults" 
-                element={
-                  <ProtectedRoute requiredRole={['Director', 'Admin']}>
-                    <Layout><FaultsCatalog /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/reports" 
-                element={
-                  <ProtectedRoute requiredRole={['Director', 'Admin']}>
-                    <Layout><Reports /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route
-                path="/attendance-report"
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><AttendanceReport /></Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route 
-                path="/audit" 
-                element={
-                  <ProtectedRoute requiredRole={['Admin']}>
-                    <Layout><AuditLogs /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/system-config" 
-                element={
-                  <ProtectedRoute requiredRole={['Admin']}>
-                    <Layout><SystemConfig /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/arrival-control" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><ArrivalControl /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/parent-meetings" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><ParentMeetings /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/parent-portal" 
-                element={
-                  <ProtectedRoute requiredRole={['Padre', 'Supervisor', 'Director', 'Admin']}>
-                    <ParentPortalRoute />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/justify-faults" 
-                element={
-                  <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
-                    <Layout><JustifyFaults /></Layout>
-                  </ProtectedRoute>
-                } 
-              />
-              {/* A07: Cambio obligatorio de contraseña */}
-              <Route path="/cambiar-password" element={<ChangePassword />} />
-              {/* Rutas públicas para padres */}
-              <Route path="/portal-padres" element={<ParentDniPortal />} />
-              <Route path="/llegada/dni/:dni" element={<ArrivalView />} />
-              <Route path="/llegada/:id" element={<ArrivalView />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <LazyFullScreen>
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          </LazyFullScreen>
+        }
+      />
+      <Route path="/" element={<RootRoute />} />
+
+      {/* Staff — supervisor, director, admin */}
+      <Route
+        element={
+          <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
+            <StaffLayoutShell requiredRole={['Supervisor', 'Director', 'Admin']} />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/register" element={<RegisterIncident />} />
+        <Route path="/incidents" element={<IncidentsList />} />
+        <Route path="/students" element={<StudentsList />} />
+        <Route path="/attendance-report" element={<AttendanceReport />} />
+        <Route path="/arrival-control" element={<ArrivalControl />} />
+        <Route path="/parent-meetings" element={<ParentMeetings />} />
+        <Route path="/justify-faults" element={<JustifyFaults />} />
+      </Route>
+
+      {/* Staff — director y admin */}
+      <Route
+        element={
+          <ProtectedRoute requiredRole={['Director', 'Admin']}>
+            <StaffLayoutShell requiredRole={['Director', 'Admin']} />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/faults" element={<FaultsCatalog />} />
+        <Route path="/reports" element={<Reports />} />
+      </Route>
+
+      {/* Staff — solo admin */}
+      <Route
+        element={
+          <ProtectedRoute requiredRole={['Admin']}>
+            <StaffLayoutShell requiredRole={['Admin']} />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/audit" element={<AuditLogs />} />
+        <Route path="/system-config" element={<SystemConfig />} />
+      </Route>
+
+      <Route
+        path="/tutor-scanner"
+        element={
+          <ProtectedRoute requiredRole={['Tutor']}>
+            <LazyFullScreen>
+              <TutorScanner />
+            </LazyFullScreen>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parent-portal"
+        element={
+          <ProtectedRoute requiredRole={['Padre', 'Supervisor', 'Director', 'Admin']}>
+            <LazyFullScreen>
+              <ParentPortalRoute />
+            </LazyFullScreen>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cambiar-password"
+        element={
+          <LazyFullScreen>
+            <ChangePassword />
+          </LazyFullScreen>
+        }
+      />
+      <Route
+        path="/portal-padres"
+        element={
+          <LazyFullScreen>
+            <ParentDniPortal />
+          </LazyFullScreen>
+        }
+      />
+      <Route
+        path="/llegada/dni/:dni"
+        element={
+          <LazyFullScreen>
+            <ArrivalView />
+          </LazyFullScreen>
+        }
+      />
+      <Route
+        path="/llegada/:id"
+        element={
+          <LazyFullScreen>
+            <ArrivalView />
+          </LazyFullScreen>
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <LazyFullScreen>
+            <NotFound />
+          </LazyFullScreen>
+        }
+      />
+    </Routes>
   );
 };
 
-// Componente wrapper para monitorear sesión dentro del Router
 const AppWithSessionMonitor = () => {
   useSessionMonitor();
   return (

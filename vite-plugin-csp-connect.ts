@@ -48,6 +48,7 @@ export function cspConnectSrcPlugin(): Plugin {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' data: https://fonts.gstatic.com",
         "img-src 'self' data: https: blob:",
+        "media-src 'self' blob: data:",
         `connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co${connectExtra}`,
         "base-uri 'self'",
         "form-action 'self'",

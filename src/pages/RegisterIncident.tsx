@@ -50,32 +50,51 @@ export const RegisterIncident = () => {
   const [observations, setObservations] = useState('');
   const [showReincidenceAlert, setShowReincidenceAlert] = useState(false);
   const [faults, setFaults] = useState<FaultType[]>([]);
+  const [faultsLoadState, setFaultsLoadState] = useState<
+    'loading' | 'ready' | 'error' | 'empty'
+  >('loading');
+  const [faultsError, setFaultsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const { errorDialog, showError, closeError } = useErrorDialog();
   const isMountedRef = useRef(true);
+  const previewUrlsRef = useRef<string[]>([]);
   const invalidateIncidents = useInvalidateIncidents();
   const invalidateStudents = useInvalidateStudents();
   const queryClient = useQueryClient();
 
+  const loadFaults = async () => {
+    setFaultsLoadState('loading');
+    setFaultsError(null);
+    const { faults: faultList, error } = await faultsService.getAll(true);
+    if (!isMountedRef.current) return;
+    if (error) {
+      setFaults([]);
+      setFaultsLoadState('error');
+      setFaultsError(error);
+      toast.error('Error al cargar catálogo de faltas');
+      return;
+    }
+    if (faultList.length === 0) {
+      setFaults([]);
+      setFaultsLoadState('empty');
+      return;
+    }
+    setFaults(faultList);
+    setFaultsLoadState('ready');
+  };
+
   // Cargar faltas al montar el componente
   useEffect(() => {
     isMountedRef.current = true;
-    const loadFaults = async () => {
-      const { faults: faultList, error } = await faultsService.getAll(true);
-      if (!isMountedRef.current) return;
-      if (error) {
-        toast.error('Error al cargar catálogo de faltas');
-      } else {
-        setFaults(faultList);
-      }
-    };
-    loadFaults();
-    
+    void loadFaults();
+
     return () => {
       isMountedRef.current = false;
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current = [];
     };
   }, []);
 
@@ -184,15 +203,18 @@ export const RegisterIncident = () => {
     setEvidenceFiles(prev => [...prev, ...validFiles]);
 
     validFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEvidencePreviews(prev => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
+      const url = URL.createObjectURL(file);
+      previewUrlsRef.current.push(url);
+      setEvidencePreviews(prev => [...prev, url]);
     });
   };
 
   const removeEvidence = (index: number) => {
+    const url = evidencePreviews[index];
+    if (url?.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+      previewUrlsRef.current = previewUrlsRef.current.filter((u) => u !== url);
+    }
     setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
     setEvidencePreviews(prev => prev.filter((_, i) => i !== index));
   };
@@ -263,6 +285,8 @@ export const RegisterIncident = () => {
       setShowReincidenceAlert(false);
       setSearchInput('');
       setSearchResults([]);
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current = [];
       setEvidenceFiles([]);
       setEvidencePreviews([]);
       invalidateIncidents();
@@ -331,8 +355,20 @@ export const RegisterIncident = () => {
         />
         <StaffKpiStat
           label="Faltas en catálogo"
-          value={faults.length}
-          hint="Tipos disponibles"
+          value={
+            faultsLoadState === 'loading'
+              ? '…'
+              : faultsLoadState === 'error'
+                ? 'Error'
+                : faults.length
+          }
+          hint={
+            faultsLoadState === 'error'
+              ? 'No se pudo cargar'
+              : faultsLoadState === 'empty'
+                ? 'Catálogo vacío'
+                : 'Tipos disponibles'
+          }
           hintIcon={ListChecks}
           icon={ListChecks}
           tone="info"
@@ -496,7 +532,35 @@ export const RegisterIncident = () => {
             <div className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
               <div className="space-y-2">
                 <Label>Seleccionar falta</Label>
-                {faults.length > 0 ? (
+                {faultsLoadState === 'loading' && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Cargando faltas…
+                  </div>
+                )}
+                {faultsLoadState === 'error' && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>No se pudo cargar el catálogo</AlertTitle>
+                    <AlertDescription className="space-y-2">
+                      <p>{faultsError ?? 'Error de conexión con el servidor.'}</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void loadFaults()}>
+                        Reintentar
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {faultsLoadState === 'empty' && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Sin faltas activas</AlertTitle>
+                    <AlertDescription>
+                      No hay tipos de falta en el catálogo. Un administrador debe configurarlas en
+                      Catálogo de faltas.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {faultsLoadState === 'ready' && (
                   <select
                     className="w-full h-10 rounded-md border bg-background px-3 py-2 text-sm"
                     value={selectedFault}
@@ -504,7 +568,7 @@ export const RegisterIncident = () => {
                     disabled={loading}
                   >
                     <option value="" disabled>
-                      Seleccione el tipo de falta...
+                      Seleccione el tipo de falta…
                     </option>
                     {faults.map((fault) => (
                       <option key={fault.id} value={fault.id.toString()}>
@@ -512,8 +576,6 @@ export const RegisterIncident = () => {
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <div className="text-sm text-muted-foreground">Cargando faltas…</div>
                 )}
               </div>
 

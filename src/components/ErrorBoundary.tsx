@@ -25,19 +25,39 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const detail =
+        import.meta.env.DEV && this.state.error
+          ? this.state.error.message
+          : null;
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-4 max-w-md">
             <h1 className="text-2xl font-bold text-destructive">Algo salió mal</h1>
             <p className="text-muted-foreground">
-              Por favor, recarga la página o contacta al administrador.
+              No se pudo cargar esta sección. Recargue la página o vuelva al inicio.
             </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Recargar Página
-            </button>
+            {detail && (
+              <pre className="text-left text-xs bg-muted p-3 rounded-md overflow-auto text-destructive/90">
+                {detail}
+              </pre>
+            )}
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                Recargar página
+              </button>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/'; }}
+                className="px-4 py-2 border border-border rounded-md hover:bg-muted"
+              >
+                Ir al inicio
+              </button>
+            </div>
           </div>
         </div>
       );

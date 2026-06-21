@@ -1,6 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { FaultType, CatalogoFaltaDB, FaultCategory } from '@/types';
-import { getCached, setCached } from '@/lib/utils/memoryCache';
+import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
 
 const FAULTS_CACHE_KEY = 'faults:active';
 const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
@@ -35,6 +35,7 @@ export const faultsService = {
         .order('nombre_falta', { ascending: true });
 
       if (error) {
+        invalidateCache(FAULTS_CACHE_KEY);
         return { faults: [], error: error.message };
       }
 
@@ -49,14 +50,16 @@ export const faultsService = {
         ordenVisualizacion: falta.orden_visualizacion,
       }));
 
-      if (activeOnly) {
+      if (activeOnly && faults.length > 0) {
         setCached(FAULTS_CACHE_KEY, faults, FAULTS_CACHE_TTL);
       }
 
       return { faults, error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      invalidateCache(FAULTS_CACHE_KEY);
+      const message = error instanceof Error ? error.message : 'Error al obtener faltas';
       console.error('Error en getAll:', error);
-      return { faults: [], error: error.message || 'Error al obtener faltas' };
+      return { faults: [], error: message };
     }
   },
 

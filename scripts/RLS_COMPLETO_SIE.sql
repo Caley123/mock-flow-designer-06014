@@ -594,9 +594,11 @@ CREATE POLICY sie_reincidencia_select ON public.configuracion_reincidencia FOR S
 CREATE POLICY sie_reincidencia_staff_write ON public.configuracion_reincidencia FOR ALL TO anon, authenticated
   USING (public.sie_es_staff_sesion()) WITH CHECK (public.sie_es_staff_sesion());
 
--- auditoria_logs: solo staff lectura
+-- auditoria_logs: solo staff lectura (INSERT solo vía triggers SECURITY DEFINER)
 CREATE POLICY sie_auditoria_staff_select ON public.auditoria_logs FOR SELECT TO anon, authenticated
   USING (public.sie_es_staff_sesion());
+-- NO añadir política INSERT para anon/authenticated: evita logs falsos desde el cliente.
+-- Los triggers fn_sie_auditoria_* deben ser SECURITY DEFINER (ver scripts/PATCH_AUDITORIA_RLS.sql).
 
 -- comentarios_incidencias
 CREATE POLICY sie_comentarios_staff_all ON public.comentarios_incidencias FOR ALL TO anon, authenticated

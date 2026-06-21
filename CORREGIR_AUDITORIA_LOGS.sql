@@ -34,7 +34,11 @@ CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON public.auditoria_logs(fecha_op
 
 -- Asegurarse de que la función de auditoría existe
 CREATE OR REPLACE FUNCTION public.fn_auditoria_registros_llegada()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
     IF (TG_OP = 'INSERT') THEN
         INSERT INTO public.auditoria_logs(tabla_afectada, operacion, datos_anteriores, datos_nuevos)
@@ -51,7 +55,7 @@ BEGIN
     END IF;
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Recrear el trigger
 DROP TRIGGER IF EXISTS trg_auditoria_registros_llegada ON public.registros_llegada;

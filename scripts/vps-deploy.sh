@@ -49,4 +49,21 @@ if [[ -f "${APP_DIR}/scripts/vps-deploy.sh" ]]; then
   chmod +x /opt/sie/deploy.sh
 fi
 
+# CSP en producción la envía Caddy (no dist/_headers). Parche media-src si falta.
+CADDY_FILE="/etc/caddy/Caddyfile"
+CSP_MEDIA="media-src 'self' blob: data:"
+if [[ -f "$CADDY_FILE" ]] && grep -q "Content-Security-Policy" "$CADDY_FILE"; then
+  if grep -q "Content-Security-Policy" "$CADDY_FILE" && ! grep -qF "$CSP_MEDIA" "$CADDY_FILE"; then
+    sed -i "s/media-src 'none'/${CSP_MEDIA}/g" "$CADDY_FILE"
+    sed -i "s/media-src \"none\"/${CSP_MEDIA}/g" "$CADDY_FILE"
+    sed -i "s/\(img-src 'self' data: https: blob:;\)/\1 ${CSP_MEDIA};/g" "$CADDY_FILE"
+    if command -v caddy >/dev/null 2>&1; then
+      caddy validate --config "$CADDY_FILE" && systemctl reload caddy
+      log "Caddy recargado (media-src actualizado en CSP)"
+    else
+      log "WARN: caddy no encontrado; actualice CSP en $CADDY_FILE manualmente"
+    fi
+  fi
+fi
+
 log "Deploy OK -> $DIST_DIR ($(git rev-parse --short HEAD))"
