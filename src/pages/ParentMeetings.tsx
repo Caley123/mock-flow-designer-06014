@@ -54,6 +54,9 @@ import {
   FileSpreadsheet,
   ChevronDown,
   ChevronRight,
+  UserX,
+  RefreshCw,
+  PhoneCall,
 } from 'lucide-react';
 import { exportParentMeetingsExcel } from '@/lib/utils/excelListExports';
 import { ModernCalendar } from '@/components/calendar/ModernCalendar';
@@ -511,6 +514,54 @@ export const ParentMeetings = () => {
     });
   };
 
+  // Citas donde el padre no asistió, agrupadas por evento
+  type MissedGroup = {
+    key: string;
+    motivo: string;
+    fecha: string;
+    hora: string;
+    meetings: ParentMeeting[];
+  };
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [expandedMissed, setExpandedMissed] = useState<Set<string>>(new Set());
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const missedGroups = useMemo<MissedGroup[]>(() => {
+    const noShow = meetings.filter(m => m.estado === 'No asistió');
+    const map = new Map<string, ParentMeeting[]>();
+    for (const m of noShow) {
+      const k = `${m.motivo}||${m.fecha}||${m.hora}`;
+      const arr = map.get(k) ?? [];
+      arr.push(m);
+      map.set(k, arr);
+    }
+    return Array.from(map.entries())
+      .map(([key, arr]) => ({ key, motivo: arr[0].motivo, fecha: arr[0].fecha, hora: arr[0].hora, meetings: arr }))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetings]);
+
+  const toggleMissed = (key: string) =>
+    setExpandedMissed(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+
+  const handleReschedule = (meeting: ParentMeeting) => {
+    // Pre-rellenar formulario individual con el mismo motivo para el mismo estudiante
+    form.reset({
+      id_estudiante: meeting.studentId,
+      motivo: meeting.motivo,
+      fecha: '',
+      hora: '',
+      notas: `Reprogramado por inasistencia el ${format(new Date(meeting.fecha), 'dd/MM/yyyy', { locale: es })}`,
+      tipo: 'individual',
+    });
+    setDialogOpen(true);
+  };
+
   const getMeetingColor = (estado: ParentMeeting['estado']) => {
     switch (estado) {
       case 'Pendiente':
@@ -963,6 +1014,102 @@ export const ParentMeetings = () => {
           )}
         </StaffDataPanelBody>
       </StaffDataPanel>
+
+      {/* Panel: Padres que no asistieron */}
+      {missedGroups.length > 0 && (
+        <StaffDataPanel>
+          <StaffDataPanelHeader
+            title={`Padres que no asistieron (${missedGroups.reduce((s, g) => s + g.meetings.length, 0)})`}
+            description="Registro de inasistencias para seguimiento y reprogramación"
+            accent="warning"
+            action={
+              <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200">
+                <UserX className="mr-1 h-3 w-3" />
+                {missedGroups.reduce((s, g) => s + g.meetings.length, 0)} ausentes
+              </Badge>
+            }
+          />
+          <StaffDataPanelBody className="p-4 sm:p-5 space-y-3">
+            {missedGroups.map((group) => {
+              const isOpen = expandedMissed.has(group.key);
+              return (
+                <div key={group.key} className="rounded-lg border border-red-200 bg-red-50/60 overflow-hidden">
+                  {/* Cabecera del grupo */}
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-red-100/60 transition-colors"
+                    onClick={() => toggleMissed(group.key)}
+                  >
+                    {isOpen
+                      ? <ChevronDown className="h-4 w-4 text-red-500 shrink-0" />
+                      : <ChevronRight className="h-4 w-4 text-red-500 shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground truncate">{group.motivo}</span>
+                        <Badge variant="destructive" className="bg-red-100 text-red-700 text-xs">
+                          {group.meetings.length} no asistieron
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
+                        <span>{format(new Date(group.fecha), "EEEE dd 'de' MMMM yyyy", { locale: es })}</span>
+                        <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{group.hora}</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Lista de alumnos del grupo */}
+                  {isOpen && (
+                    <div className="border-t border-red-200 divide-y divide-red-100">
+                      {group.meetings.map((meeting) => (
+                        <div key={meeting.id} className="flex items-center gap-3 px-4 py-3 bg-white/70 hover:bg-red-50/40 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{meeting.student?.fullName ?? '—'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {meeting.student?.level} · {meeting.student?.grade} {meeting.student?.section}
+                            </p>
+                            {meeting.student?.contactPhone && (
+                              <a
+                                href={`tel:${meeting.student.contactPhone}`}
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
+                              >
+                                <PhoneCall className="h-3 w-3" />
+                                {meeting.student.contactPhone}
+                              </a>
+                            )}
+                          </div>
+                          {meeting.notas && (
+                            <p className="hidden sm:block text-xs text-muted-foreground max-w-[180px] truncate italic">
+                              {meeting.notas}
+                            </p>
+                          )}
+                          <div className="flex gap-2 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                              onClick={() => handleReschedule(meeting)}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Reprogramar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => { setSelectedMeeting(meeting); setViewDialogOpen(true); }}
+                            >
+                              Ver
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </StaffDataPanelBody>
+        </StaffDataPanel>
+      )}
 
       {/* Create Meeting Dialog */}
       <Dialog
