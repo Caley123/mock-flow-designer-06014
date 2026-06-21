@@ -15,7 +15,7 @@ import { LoginHeroPanel, LoginMobileIntro } from '@/components/login/LoginHeroPa
 import { LoginCinematicBackdrop } from '@/components/login/LoginCinematicBackdrop';
 import { useLoginEnterAnimation } from '@/hooks/useLoginEnterAnimation';
 import { useLoginAmbientAnimation } from '@/hooks/useLoginAmbientAnimation';
-import { BRAND_ICON_SM } from '@/config/brandAssets';
+import { BRAND_ICON_SVG } from '@/config/brandAssets';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -217,7 +217,7 @@ export const Login = () => {
                 I.E. San Ramón.
               </span>
               <img
-                src={BRAND_ICON_SM}
+                src={BRAND_ICON_SVG}
                 alt="Guardy — software educativo"
                 className="login-form-card__footer-logo mx-auto"
                 width={96}

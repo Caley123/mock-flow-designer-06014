@@ -1,6 +1,7 @@
 /**
- * Regenera favicons y assets de marca desde PNG (sin SVG).
- * Fuente: public/brand-icon-source.png (escudo SIE). Si no existe, usa favicon-512.png.
+ * Regenera favicons PNG, og-image (WhatsApp) y logos de reportes.
+ * No modifica favicon.svg — ese SVG es solo para la UI del sistema.
+ * Fuente: public/brand-icon-source.png
  *
  *   npm run generate:favicons
  */
@@ -69,10 +70,6 @@ async function renderOgImage(source) {
   console.log(`✓ og-image.png (${width}×${height})`);
 }
 
-async function renderLoginBrand(source) {
-  await renderPng(source, 512, 'login-brand.png', 0.12);
-}
-
 async function renderReportAssets(source) {
   await sharp(source)
     .resize(420, 420, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -119,11 +116,10 @@ async function main() {
   await renderPng(source, 180, 'favicon-180.png');
   await renderPng(source, 192, 'favicon-192.png');
   await renderPng(source, 512, 'favicon-512.png', 0.15);
-  await renderLoginBrand(source);
   await renderReportAssets(source);
   await renderOgImage(source);
   await renderIco(source);
-  console.log('\nListo. Solo PNG — sin SVG.');
+  console.log('\nListo. PNG para WhatsApp/reportes; favicon.svg se mantiene para la UI.');
 }
 
 main().catch((err) => {

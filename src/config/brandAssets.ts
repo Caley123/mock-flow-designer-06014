@@ -1,9 +1,21 @@
 /**
- * Rutas de marca SIE/Guardy — solo PNG.
- * No usar favicon.svg ni assets heredados de Lovable (guardy-mark, guardy-logo antiguos).
+ * Assets de marca SIE/Guardy.
+ *
+ * - UI del sistema: SVG (favicon.svg) — nítido en sidebar, login, etc.
+ * - WhatsApp / Open Graph: solo PNG (og-image.png) — el crawler no usa SVG.
+ *
+ * No usar assets Lovable heredados (guardy-mark, guardy-logo antiguos).
  */
+/** Escudo vectorial para componentes de la app */
+export const BRAND_ICON_SVG = '/favicon.svg';
+
+/** PNG para favicon del navegador y PWA */
 export const BRAND_ICON_SM = '/favicon-192.png';
 export const BRAND_ICON_MD = '/favicon-512.png';
-export const BRAND_LOGIN_MARK = '/login-brand.png';
+
+/** Vista previa al compartir enlaces (WhatsApp, redes) — obligatorio PNG */
+export const BRAND_OG_IMAGE = '/og-image.png';
+
+/** Reportes PDF/Excel */
 export const BRAND_WATERMARK = '/guardy-watermark.png';
 export const BRAND_REPORT_LOGO = '/guardy-report-logo.png';

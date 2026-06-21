@@ -1,5 +1,5 @@
 import { LoginCarnetBarcode } from '@/components/login/LoginCarnetBarcode';
-import { BRAND_ICON_SM } from '@/config/brandAssets';
+import { BRAND_ICON_SVG } from '@/config/brandAssets';
 
 const SPARKS = Array.from({ length: 10 }, (_, i) => i);
 const EMBERS = Array.from({ length: 18 }, (_, i) => i);
@@ -54,7 +54,7 @@ export function LoginHeroIllustration() {
                 <div className="login-carnet-replica__inner" data-login-visual-carnet>
                   <header className="login-carnet-replica__head" data-login-visual-carnet-part="header">
                     <span className="login-carnet-replica__chip" data-login-visual-carnet-part="chip" aria-hidden />
-                    <img src={BRAND_ICON_SM} alt="Escudo I.E. San Ramón" className="login-carnet-replica__crest" width={20} height={20} draggable={false} />
+                    <img src={BRAND_ICON_SVG} alt="Escudo I.E. San Ramón" className="login-carnet-replica__crest" width={20} height={20} draggable={false} />
                     <div className="login-carnet-replica__head-text">
                       <p className="login-carnet-replica__school">I.E. San Ramón</p>
                       <p className="login-carnet-replica__school-sub">Institución Educativa Pública Emblemática</p>
@@ -107,7 +107,7 @@ export function LoginHeroIllustration() {
               {/* Reverso */}
               <div className="login-carnet-replica__face login-carnet-replica__face--back" data-login-visual-carnet-back>
                 <div className="login-carnet-replica__back-stripe" aria-hidden />
-                <img src={BRAND_ICON_SM} alt="Escudo I.E. San Ramón" className="login-carnet-replica__back-crest" width={36} height={36} draggable={false} />
+                <img src={BRAND_ICON_SVG} alt="Escudo I.E. San Ramón" className="login-carnet-replica__back-crest" width={36} height={36} draggable={false} />
                 <p className="login-carnet-replica__back-school">I.E. San Ramón</p>
                 <p className="login-carnet-replica__back-note">Documento de identificación escolar</p>
                 <div className="login-carnet-replica__back-line" aria-hidden />
