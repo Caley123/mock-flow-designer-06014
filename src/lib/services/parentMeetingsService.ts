@@ -1,11 +1,42 @@
 import { supabase } from '../supabaseClient';
 import { ParentMeeting, CitaPadreDB } from '@/types';
-import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getLimaNow, getLimaTodayDate, normalizeTimeHHMM } from '@/lib/utils/limaDateTime';
 import { gradeFilterValues } from '@/lib/utils/gradeAliases';
 import { studentsService } from './studentsService';
 import { fetchAllPages } from '@/lib/utils/supabasePagination';
 
 const INSERT_BATCH_SIZE = 200;
+
+const PARENT_MEETING_LIST_SELECT = `
+  id_cita,
+  id_estudiante,
+  id_usuario_creador,
+  motivo,
+  fecha,
+  hora,
+  estado,
+  asistencia,
+  llegada_tarde,
+  hora_llegada_real,
+  notas,
+  tipo_cita,
+  cantidad_estudiantes,
+  grupo_id,
+  fecha_creacion,
+  fecha_actualizacion,
+  estudiante:estudiantes!citas_padres_id_estudiante_fkey (
+    id_estudiante,
+    nombre_completo,
+    grado,
+    seccion,
+    nivel_educativo,
+    codigo_barras
+  ),
+  usuario_creador:usuarios!citas_padres_id_usuario_creador_fkey (
+    id_usuario,
+    nombre_completo
+  )
+`;
 
 /**
  * Servicio para gestionar citas con padres
@@ -198,14 +229,10 @@ export const parentMeetingsService = {
         let query = supabase
           .from('citas_padres')
           .select(
-            `
-            *,
-            estudiante:estudiantes!citas_padres_id_estudiante_fkey(*),
-            usuario_creador:usuarios!citas_padres_id_usuario_creador_fkey(*)
-          `,
+            PARENT_MEETING_LIST_SELECT,
             filters?.limit !== undefined || filters?.offset !== undefined
               ? { count: 'exact' }
-              : undefined
+              : undefined,
           )
           .order('fecha', { ascending: false })
           .order('hora', { ascending: false });
@@ -291,36 +318,77 @@ export const parentMeetingsService = {
    */
   async markAttendanceByBarcode(
     barcode: string,
-    llegadaTarde: boolean = false
+    llegadaTarde: boolean = false,
+    fechaCita?: string,
   ): Promise<{ success: boolean; meetingId: number | null; error: string | null }> {
     try {
-      const { student, error: studentLookupError } = await studentsService.getByBarcode(barcode, {
-        skipReincidence: true,
-      });
+      const { student, error: studentLookupError } = await studentsService.lookupByBarcodeOrDni(
+        barcode,
+        { skipReincidence: true },
+      );
 
       if (studentLookupError || !student) {
-        return { success: false, meetingId: null, error: 'Estudiante no encontrado con ese código de barras' };
+        return {
+          success: false,
+          meetingId: null,
+          error: studentLookupError || 'Estudiante no encontrado con ese DNI o código',
+        };
       }
 
-      // Buscar citas pendientes o confirmadas para hoy
       const today = getLimaTodayDate();
-      const { data: meetings, error: meetingsError } = await supabase
-        .from('citas_padres')
-        .select('id_cita, hora')
-        .eq('id_estudiante', student.id)
-        .eq('fecha', today)
-        .in('estado', ['Pendiente', 'Confirmada'])
-        .is('asistencia', null)
-        .order('hora', { ascending: false })
-        .limit(1);
+      const targetDates = [...new Set([fechaCita?.trim().slice(0, 10), today].filter(Boolean))];
 
-      if (meetingsError || !meetings || meetings.length === 0) {
-        return { success: false, meetingId: null, error: 'No se encontró una cita pendiente para hoy con este estudiante' };
+      let meeting: { id_cita: number; hora: string; fecha: string } | null = null;
+
+      for (const fecha of targetDates) {
+        const { data: meetings, error: meetingsError } = await supabase
+          .from('citas_padres')
+          .select('id_cita, hora, fecha')
+          .eq('id_estudiante', student.id)
+          .eq('fecha', fecha)
+          .in('estado', ['Pendiente', 'Confirmada'])
+          .or('asistencia.is.null,asistencia.eq.false')
+          .order('hora', { ascending: true })
+          .limit(1);
+
+        if (meetingsError) {
+          return { success: false, meetingId: null, error: meetingsError.message };
+        }
+        if (meetings?.length) {
+          meeting = meetings[0];
+          break;
+        }
       }
 
-      const meeting = meetings[0];
-      const horaActual = new Date().toTimeString().slice(0, 5); // HH:MM
-      const horaCita = meeting.hora.slice(0, 5); // HH:MM
+      if (!meeting) {
+        const { data: proxima } = await supabase
+          .from('citas_padres')
+          .select('fecha, hora, estado')
+          .eq('id_estudiante', student.id)
+          .in('estado', ['Pendiente', 'Confirmada'])
+          .or('asistencia.is.null,asistencia.eq.false')
+          .order('fecha', { ascending: true })
+          .order('hora', { ascending: true })
+          .limit(1);
+
+        if (proxima?.length) {
+          const p = proxima[0];
+          return {
+            success: false,
+            meetingId: null,
+            error: `${student.fullName} tiene cita el ${p.fecha} a las ${normalizeTimeHHMM(p.hora)} (${p.estado}), no en la fecha seleccionada. Ajuste el calendario al día del evento.`,
+          };
+        }
+
+        return {
+          success: false,
+          meetingId: null,
+          error: `No hay cita pendiente para ${student.fullName} en la fecha seleccionada`,
+        };
+      }
+
+      const horaActual = getLimaNow().time;
+      const horaCita = normalizeTimeHHMM(meeting.hora);
       
       // Determinar si llegó tarde comparando horas
       const [horaActualH, horaActualM] = horaActual.split(':').map(Number);
@@ -371,10 +439,10 @@ export const parentMeetingsService = {
         fecha_actualizacion: new Date().toISOString(),
       };
 
-      if (asistio && llegadaTarde !== undefined) {
-        updateData.llegada_tarde = llegadaTarde;
-        if (llegadaTarde) {
-          updateData.hora_llegada_real = new Date().toTimeString().slice(0, 5);
+      if (asistio) {
+        updateData.hora_llegada_real = getLimaNow().time;
+        if (llegadaTarde !== undefined) {
+          updateData.llegada_tarde = llegadaTarde;
         }
       }
 

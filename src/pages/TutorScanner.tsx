@@ -665,7 +665,8 @@ export const TutorScanner = () => {
     toast.success('Incidencia registrada');
     invalidateIncidents();
     invalidateStudents();
-    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.recentIncidents() });
     setShowIncidentDialog(false);
     setSelectedFault('');
     setObservations('');
@@ -1019,6 +1020,7 @@ export const TutorScanner = () => {
                     <StudentPhoto
                       src={student.profilePhoto}
                       name={student.fullName}
+                      priority="auto"
                       className="tutor-identity__photo h-56 w-56 sm:h-64 sm:w-64 md:h-72 md:w-72"
                       imageClassName="object-cover object-center"
                     />

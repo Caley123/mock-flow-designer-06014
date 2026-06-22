@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
 import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -51,12 +52,24 @@ import { es } from 'date-fns/locale';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { PageLoader } from '@/components/ui/page-loader';
-import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+
+const JUSTIFY_PAGE_SIZE = 20;
 
 export const JustifyFaults = () => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm, 350);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [justificationReason, setJustificationReason] = useState('');
   const [justifying, setJustifying] = useState(false);
@@ -68,27 +81,31 @@ export const JustifyFaults = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'Activa' | 'Justificada'>('Activa');
   const [dateFilter, setDateFilter] = useState<string>('');
   const isMountedRef = useRef(true);
-  
-  // Métricas de rendimiento
-  usePerformanceMetrics('JustifyFaults');
 
   useEffect(() => {
     isMountedRef.current = true;
     loadIncidents();
-    
+
     return () => {
       isMountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelFilter, statusFilter, dateFilter]);
+  }, [levelFilter, statusFilter, dateFilter, debouncedSearch, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [levelFilter, statusFilter, dateFilter, debouncedSearch]);
 
   const loadIncidents = async () => {
     if (!isMountedRef.current) return;
-    
+
     setLoading(true);
     try {
-      const filters: any = {
+      const filters: Parameters<typeof incidentsService.getAll>[0] = {
         estado: statusFilter === 'all' ? undefined : statusFilter,
+        page: currentPage,
+        pageSize: JUSTIFY_PAGE_SIZE,
+        search: debouncedSearch.trim() || undefined,
       };
 
       if (levelFilter !== 'all') {
@@ -101,21 +118,24 @@ export const JustifyFaults = () => {
         filters.fechaHasta = hasta;
       }
 
-      const { incidents: incidentsList, error } = await incidentsService.getAll(filters);
+      const { incidents: incidentsList, total, error } = await incidentsService.getAll(filters);
 
       if (!isMountedRef.current) return;
 
       if (error) {
         toast.error('Error al cargar incidencias');
         setIncidents([]);
+        setTotalRecords(0);
       } else {
         setIncidents(incidentsList);
+        setTotalRecords(total);
       }
     } catch (error) {
       if (!isMountedRef.current) return;
       console.error('Error en loadIncidents:', error);
       toast.error('Error al procesar las incidencias');
       setIncidents([]);
+      setTotalRecords(0);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -162,7 +182,8 @@ export const JustifyFaults = () => {
         loadIncidents();
         invalidateIncidents();
         invalidateStudents();
-        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats() });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.recentIncidents() });
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
@@ -175,20 +196,13 @@ export const JustifyFaults = () => {
     }
   };
 
-  const filteredIncidents = incidents.filter((incident) => {
-    const matchesSearch =
-      incident.id.toString().includes(searchTerm) ||
-      incident.student?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      incident.faultType?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
+  const totalPages = Math.max(1, Math.ceil(totalRecords / JUSTIFY_PAGE_SIZE));
+  const activeOnPage = incidents.filter((i) => i.status === 'Activa').length;
+  const justifiedOnPage = incidents.filter((i) => i.status === 'Justificada').length;
 
-  if (loading) {
+  if (loading && incidents.length === 0) {
     return <PageLoader message="Cargando incidencias..." />;
   }
-
-  const activeCount = incidents.filter(i => i.status === 'Activa').length;
-  const justifiedCount = incidents.filter(i => i.status === 'Justificada').length;
 
   return (
     <div className="app-page app-page-shell">
@@ -201,19 +215,19 @@ export const JustifyFaults = () => {
       />
 
       <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
-        <StaffKpiStat label="Total" value={incidents.length} icon={FileText} tone="primary" />
+        <StaffKpiStat label="Total filtrado" value={totalRecords} icon={FileText} tone="primary" />
         <StaffKpiStat
-          label="Pendientes"
-          value={activeCount}
-          hint="Por justificar"
+          label="En esta página"
+          value={activeOnPage}
+          hint="Activas visibles"
           hintIcon={AlertCircle}
           icon={AlertCircle}
           tone="warning"
         />
         <StaffKpiStat
           label="Justificadas"
-          value={justifiedCount}
-          hint="Cerradas"
+          value={justifiedOnPage}
+          hint="En esta página"
           hintIcon={CheckCircle2}
           icon={CheckCircle2}
           tone="success"
@@ -267,7 +281,7 @@ export const JustifyFaults = () => {
 
       <StaffDataPanel>
         <StaffDataPanelHeader
-          title={`Incidencias (${filteredIncidents.length})`}
+          title={`Incidencias (${totalRecords})`}
           description={
             statusFilter === 'Activa'
               ? 'Seleccione una fila para justificar'
@@ -275,7 +289,7 @@ export const JustifyFaults = () => {
           }
         />
         <div className="p-4 pt-0 sm:p-5 sm:pt-0">
-          {filteredIncidents.length === 0 ? (
+          {incidents.length === 0 ? (
             <StaffEmptyState
               icon={FileText}
               title="Sin resultados"
@@ -296,7 +310,7 @@ export const JustifyFaults = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredIncidents.map((incident) => (
+                {incidents.map((incident) => (
                   <TableRow
                     key={incident.id}
                     role="row"
@@ -476,6 +490,37 @@ export const JustifyFaults = () => {
               </TableBody>
             </Table>
             </div>
+          )}
+          {totalRecords > JUSTIFY_PAGE_SIZE && (
+            <Pagination className="mt-4">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                    }}
+                    className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+                <PaginationItem>
+                  <span className="px-3 text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCurrentPage((p) => Math.min(totalPages, p + 1));
+                    }}
+                    className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           )}
         </div>
       </StaffDataPanel>

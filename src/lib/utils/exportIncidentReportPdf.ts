@@ -74,9 +74,13 @@ async function drawEvidenceSection(
   let col = 0;
   let rowBaseY = doc.y;
 
+  const loadedImages = await Promise.all(
+    evidences.map((ev) => loadImageForPdf(ev.url)),
+  );
+
   for (let i = 0; i < evidences.length; i++) {
     const ev = evidences[i];
-    const loaded = await loadImageForPdf(ev.url);
+    const loaded = loadedImages[i];
 
     doc.ensureSpace(maxCellH + 14);
     if (col === 0) {

@@ -58,7 +58,6 @@ import {
   RefreshCw,
   PhoneCall,
 } from 'lucide-react';
-import { exportParentMeetingsExcel } from '@/lib/utils/excelListExports';
 import { ModernCalendar } from '@/components/calendar/ModernCalendar';
 import { parentMeetingsService, studentsService } from '@/lib/services';
 import { ParentMeeting, Student, EducationalLevel } from '@/types';
@@ -75,7 +74,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { authService } from '@/lib/services';
-import { format } from 'date-fns';
+import { format, addMonths, subMonths } from 'date-fns';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { es } from 'date-fns/locale';
 import {
   formatDateKeyLima,
@@ -165,6 +165,9 @@ const bulkMeetingDefaults: MeetingFormValues = {
 export const ParentMeetings = () => {
   const [meetings, setMeetings] = useState<ParentMeeting[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentPickerSearch, setStudentPickerSearch] = useState('');
+  const debouncedStudentSearch = useDebouncedValue(studentPickerSearch, 350);
+  const [studentsLoading, setStudentsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -186,6 +189,19 @@ export const ParentMeetings = () => {
     tasaAsistencia: number;
   } | null>(null);
   const isMountedRef = useRef(true);
+
+  const scanTargetDate = useMemo(
+    () => formatDateKeyLima(selectedDate ?? new Date()),
+    [selectedDate],
+  );
+
+  const meetingsDateRange = useMemo(() => {
+    const anchor = selectedDate ?? new Date();
+    return {
+      fechaDesde: formatDateKeyLima(subMonths(anchor, 1)),
+      fechaHasta: formatDateKeyLima(addMonths(anchor, 2)),
+    };
+  }, [selectedDate]);
 
   const openIndividualDialog = () => {
     form.reset(individualMeetingDefaults);
@@ -229,21 +245,40 @@ export const ParentMeetings = () => {
   useEffect(() => {
     isMountedRef.current = true;
     loadMeetings();
-    loadStudents();
     loadStats();
-    
+
     return () => {
       isMountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [statusFilter, meetingsDateRange.fechaDesde, meetingsDateRange.fechaHasta]);
 
   useEffect(() => {
-    if (isMountedRef.current) {
-      loadMeetings();
+    if (!dialogOpen) {
+      setStudentPickerSearch('');
+      setStudents([]);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+
+    if (debouncedStudentSearch.trim().length < 2) {
+      setStudents([]);
+      return;
+    }
+
+    let cancelled = false;
+    setStudentsLoading(true);
+
+    void studentsService.searchByName(debouncedStudentSearch, 25).then(({ students: list, error }) => {
+      if (cancelled) return;
+      if (error) toast.error(error);
+      setStudents(list);
+      setStudentsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, debouncedStudentSearch]);
 
   const loadMeetings = async () => {
     if (!isMountedRef.current) return;
@@ -252,6 +287,8 @@ export const ParentMeetings = () => {
     try {
       const { meetings: meetingsList, error } = await parentMeetingsService.getAll({
         estado: statusFilter === 'all' ? undefined : statusFilter,
+        fechaDesde: meetingsDateRange.fechaDesde,
+        fechaHasta: meetingsDateRange.fechaHasta,
       });
 
       if (!isMountedRef.current) return;
@@ -270,21 +307,6 @@ export const ParentMeetings = () => {
       if (isMountedRef.current) {
         setLoading(false);
       }
-    }
-  };
-
-  const loadStudents = async () => {
-    if (!isMountedRef.current) return;
-    
-    try {
-      const { students: studentsList } = await studentsService.getAll({ active: true, fetchAll: true });
-      if (!isMountedRef.current) return;
-      if (studentsList) {
-        setStudents(studentsList);
-      }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error loading students:', error);
     }
   };
 
@@ -423,7 +445,8 @@ export const ParentMeetings = () => {
     try {
       const { success, meetingId, error } = await parentMeetingsService.markAttendanceByBarcode(
         barcodeInput.trim(),
-        false // Por defecto no es tarde, se calcula automáticamente
+        false,
+        scanTargetDate,
       );
 
       if (error) {
@@ -627,7 +650,12 @@ export const ParentMeetings = () => {
       >
         <Button
           variant="outline-primary"
-          onClick={() => void exportParentMeetingsExcel(filteredMeetings)}
+          onClick={() => {
+            void (async () => {
+              const { exportParentMeetingsExcel } = await import('@/lib/utils/excelListExports');
+              await exportParentMeetingsExcel(filteredMeetings);
+            })();
+          }}
           disabled={filteredMeetings.length === 0}
         >
           <FileSpreadsheet className="w-4 h-4 mr-2" />
@@ -655,7 +683,7 @@ export const ParentMeetings = () => {
       <StaffDataPanel>
         <StaffDataPanelHeader
           title="Registro rápido de asistencia"
-          description="Escanee el carnet del estudiante para marcar asistencia del apoderado"
+          description={`Escanee el DNI o carnet del estudiante. Citas del ${format(new Date(scanTargetDate + 'T12:00:00'), 'dd/MM/yyyy', { locale: es })}`}
           accent="primary"
           action={
             <Badge variant="outline" className="border-success/40 bg-success/10 text-success">
@@ -669,7 +697,7 @@ export const ParentMeetings = () => {
             <div className="relative">
               <Scan className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-primary" />
               <Input
-                placeholder="Escanee o ingrese el código de barras del estudiante"
+                placeholder="Escanee o ingrese el DNI / código de barras del estudiante"
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -1172,23 +1200,43 @@ export const ParentMeetings = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Estudiante</FormLabel>
-                    <Select
-                      value={field.value ? String(field.value) : ''}
-                      onValueChange={(value) => field.onChange(Number(value))}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar estudiante" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {students.map((student) => (
-                          <SelectItem key={student.id} value={String(student.id)}>
-                            {student.fullName} - {student.level} {student.grade} {student.section}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Buscar por nombre (mín. 2 letras)…"
+                        value={studentPickerSearch}
+                        onChange={(e) => setStudentPickerSearch(e.target.value)}
+                      />
+                      {studentsLoading ? (
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Buscando…
+                        </p>
+                      ) : students.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          {studentPickerSearch.trim().length < 2
+                            ? 'Escriba al menos 2 letras para buscar'
+                            : 'Sin coincidencias'}
+                        </p>
+                      ) : (
+                        <Select
+                          value={field.value ? String(field.value) : ''}
+                          onValueChange={(value) => field.onChange(Number(value))}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar estudiante" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {students.map((student) => (
+                              <SelectItem key={student.id} value={String(student.id)}>
+                                {student.fullName} - {student.level} {student.grade} {student.section}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

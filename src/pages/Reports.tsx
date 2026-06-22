@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useSpring, animated } from '@react-spring/web';
 import {
   Select,
   SelectContent,
@@ -13,8 +12,6 @@ import { Download, TrendingUp, Users, AlertTriangle, Calendar, Loader2, Filter, 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { StaffKpiStat, StaffToolbar } from '@/components/staff';
 import { Label } from '@/components/ui/label';
-import { exportIncidentsReportExcel } from '@/lib/utils/excelReportExports';
-import { PdfReportDocument, buildFilterSubtitle } from '@/lib/utils/pdfReportBuilder';
 
 import {
   BarChart,
@@ -69,14 +66,6 @@ export const Reports = () => {
     studentsWithIncidents: number;
     averageReincidence: number;
   }>>([]);
-
-  const headerAnimation = useSpring({
-    from: { opacity: 0, transform: 'translateY(-20px)' },
-    to: { opacity: 1, transform: 'translateY(0px)' },
-    config: { tension: 200, friction: 20 }
-  });
-
-  const AnimatedDiv = animated.div;
 
   useEffect(() => {
     loadStats();
@@ -164,12 +153,15 @@ export const Reports = () => {
         grado: selectedGrade === 'all' ? undefined : selectedGrade,
         bimestre: bimestre !== 'all' ? bimestre : undefined,
         añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
+        fetchAll: true,
       });
 
       if (error) {
         toast.error('Error al cargar incidencias para el PDF', { id: 'pdf-export' });
         return;
       }
+
+      const { PdfReportDocument, buildFilterSubtitle } = await import('@/lib/utils/pdfReportBuilder');
 
       const bimestreInfo =
         bimestre !== 'all'
@@ -275,6 +267,9 @@ export const Reports = () => {
       const { incidents: incidentsList, error } = await incidentsService.getAll({
         nivelEducativo: selectedLevel === 'all' ? undefined : selectedLevel,
         grado: selectedGrade === 'all' ? undefined : selectedGrade,
+        bimestre: bimestre !== 'all' ? bimestre : undefined,
+        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
+        fetchAll: true,
       });
 
       if (error) {
@@ -300,6 +295,7 @@ export const Reports = () => {
           ]
         : [];
 
+      const { exportIncidentsReportExcel } = await import('@/lib/utils/excelReportExports');
       await exportIncidentsReportExcel(stats, incidentsList, {
         filterText,
         levelItems: levelItemsForExport,
@@ -361,15 +357,13 @@ export const Reports = () => {
 
   return (
     <div className="app-page app-page-shell w-full">
-      <AnimatedDiv style={headerAnimation}>
-        <PageHeader
-          icon={BarChart3}
-          eyebrow="Reportes"
-          title="Reportes de Incidencias"
-          description="Analice tendencias, distribución por nivel y faltas más frecuentes del período"
-          accent="primary"
-        />
-      </AnimatedDiv>
+      <PageHeader
+        icon={BarChart3}
+        eyebrow="Reportes"
+        title="Reportes de Incidencias"
+        description="Analice tendencias, distribución por nivel y faltas más frecuentes del período"
+        accent="primary"
+      />
       <StaffToolbar
         title="Período y filtros"
         description="Ajuste el alcance del análisis y exporte"

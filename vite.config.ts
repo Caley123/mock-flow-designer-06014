@@ -33,7 +33,8 @@ export default defineConfig(({ mode }) => ({
         return deps.filter(
           (dep) =>
             !dep.includes('report-excel') &&
-            !dep.includes('report-pdf')
+            !dep.includes('report-pdf') &&
+            !dep.includes('spring-vendor')
         );
       },
     },
@@ -46,10 +47,12 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/exceljs/')) return 'report-excel';
           if (id.includes('/jspdf')) return 'report-pdf';
 
+          if (id.includes('/recharts/')) return 'charts-vendor';
+          if (id.includes('/@supabase/')) return 'supabase-vendor';
+
           // GSAP: animaciones del portal de padres/login
           if (id.includes('/gsap/') || id.includes('/@gsap/')) return 'gsap-vendor';
 
-          // React-spring: LoadingScreen (necesario en el arranque, no se difiere)
           if (id.includes('/@react-spring/')) return 'spring-vendor';
 
           // React core
@@ -84,7 +87,6 @@ export default defineConfig(({ mode }) => ({
       '@supabase/supabase-js',
       'gsap',
       '@gsap/react',
-      '@react-spring/web',
       '@tanstack/react-query',
     ],
   },

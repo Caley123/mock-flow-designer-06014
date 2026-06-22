@@ -14,7 +14,6 @@ import {
   StaffDataPanelHeader,
   StaffEmptyState,
 } from '@/components/staff';
-import { exportAuditLogsExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { auditService } from '@/lib/services';
 import type { AuditLog } from '@/types';
@@ -225,7 +224,12 @@ export const AuditLogs = () => {
       >
         <Button
           variant="outline-primary"
-          onClick={() => void exportAuditLogsExcel(logs)}
+          onClick={() => {
+            void (async () => {
+              const { exportAuditLogsExcel } = await import('@/lib/utils/excelListExports');
+              await exportAuditLogsExcel(logs);
+            })();
+          }}
           disabled={logs.length === 0 || loading}
         >
           <FileSpreadsheet className="w-4 h-4 mr-2" />

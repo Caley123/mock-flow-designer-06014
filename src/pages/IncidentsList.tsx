@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSpring, useTrail, animated, config } from '@react-spring/web';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { 
   Table, 
   TableBody, 
@@ -28,7 +26,6 @@ import {
   StaffEmptyState,
 } from '@/components/staff';
 import { Label } from '@/components/ui/label';
-import { exportIncidentsListExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
@@ -36,12 +33,17 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { PageLoader } from '@/components/ui/page-loader';
-import { exportIncidentReportPdf } from '@/lib/utils/exportIncidentReportPdf';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Incident, EducationalLevel, IncidentEvidence } from '@/types';
 import { toast } from 'sonner';
-import { useIncidentsQuery, useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import {
+  useIncidentsQuery,
+  useIncidentsSummaryQuery,
+  useInvalidateIncidents,
+  INCIDENTS_PAGE_SIZE,
+} from '@/hooks/queries/useIncidentsQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { incidentsService, evidenceService, authService } from '@/lib/services';
 import {
   Pagination,
@@ -52,24 +54,14 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 
-const PAGE_SIZE = 10;
-
-function matchesIncidentSearch(incident: Incident, term: string): boolean {
-  const q = term.trim().toLowerCase();
-  if (!q) return true;
-  const name = incident.student?.fullName?.toLowerCase() ?? '';
-  const fault = incident.faultType?.name?.toLowerCase() ?? '';
-  return (
-    incident.id.toString().includes(q) ||
-    name.includes(q) ||
-    fault.includes(q)
-  );
-}
+const PAGE_SIZE = INCIDENTS_PAGE_SIZE;
 
 export const IncidentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm, 350);
   const [currentPage, setCurrentPage] = useState(1);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const [exporting, setExporting] = useState(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
@@ -84,38 +76,35 @@ export const IncidentsList = () => {
 
   const invalidateIncidents = useInvalidateIncidents();
 
-  const headerSpring = useSpring({
-    from: { opacity: 0, transform: 'translateY(-16px)' },
-    to: { opacity: 1, transform: 'translateY(0px)' },
-    config: config.gentle,
-  });
-  const kpiTrail = useTrail(3, {
-    from: { opacity: 0, transform: 'translateY(20px) scale(0.96)' },
-    to: { opacity: 1, transform: 'translateY(0px) scale(1)' },
-    config: config.gentle,
-    delay: 120,
-  });
-  const panelSpring = useSpring({
-    from: { opacity: 0, transform: 'translateY(24px)' },
-    to: { opacity: 1, transform: 'translateY(0px)' },
-    delay: 260,
-    config: config.gentle,
-  });
-
-  usePerformanceMetrics('IncidentsList');
-
   const incidentFilters = useMemo(
     () => ({
       nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+      search: debouncedSearch.trim() || undefined,
+      page: currentPage,
     }),
-    [levelFilter]
+    [levelFilter, debouncedSearch, currentPage],
+  );
+
+  const summaryFilters = useMemo(
+    () => ({
+      nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+      search: debouncedSearch.trim() || undefined,
+    }),
+    [levelFilter, debouncedSearch],
   );
 
   const {
-    data: incidents = [],
+    data: pageData,
     isLoading,
+    isFetching,
     isError,
   } = useIncidentsQuery(incidentFilters);
+
+  const { data: summary } = useIncidentsSummaryQuery(summaryFilters);
+
+  const incidents = pageData?.incidents ?? [];
+  const totalRecords = pageData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / PAGE_SIZE));
 
   useEffect(() => {
     if (isError) {
@@ -173,6 +162,7 @@ export const IncidentsList = () => {
         evidences = result.evidences;
       }
 
+      const { exportIncidentReportPdf } = await import('@/lib/utils/exportIncidentReportPdf');
       await exportIncidentReportPdf(incident, evidences);
       await incidentsService.registerPrint(incident.id);
       toast.success('PDF descargado correctamente', { id: 'incident-pdf' });
@@ -207,16 +197,9 @@ export const IncidentsList = () => {
     invalidateIncidents();
   };
 
-  const filteredIncidents = useMemo(
-    () => incidents.filter((incident) => matchesIncidentSearch(incident, searchTerm)),
-    [incidents, searchTerm]
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE));
-
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, levelFilter]);
+  }, [debouncedSearch, levelFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -224,26 +207,39 @@ export const IncidentsList = () => {
     }
   }, [currentPage, totalPages]);
 
-  const paginatedIncidents = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredIncidents.slice(start, start + PAGE_SIZE);
-  }, [filteredIncidents, currentPage]);
-
-  const handleExportExcel = () => {
-    const parts: string[] = [];
-    if (levelFilter !== 'all') parts.push(`Nivel: ${levelFilter}`);
-    if (searchTerm.trim()) parts.push(`Búsqueda: "${searchTerm.trim()}"`);
-    void exportIncidentsListExcel(filteredIncidents, parts.length ? parts.join(' · ') : undefined);
+  const handleExportExcel = async () => {
+    setExporting(true);
+    toast.loading('Preparando exportación…', { id: 'incidents-export' });
+    try {
+      const { incidents: allRows, error } = await incidentsService.getAll({
+        nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
+        search: debouncedSearch.trim() || undefined,
+        fetchAll: true,
+      });
+      if (error) {
+        toast.error('No se pudo exportar', { id: 'incidents-export' });
+        return;
+      }
+      const parts: string[] = [];
+      if (levelFilter !== 'all') parts.push(`Nivel: ${levelFilter}`);
+      if (debouncedSearch.trim()) parts.push(`Búsqueda: "${debouncedSearch.trim()}"`);
+      const { exportIncidentsListExcel } = await import('@/lib/utils/excelListExports');
+      await exportIncidentsListExcel(allRows, parts.length ? parts.join(' · ') : undefined);
+      toast.success('Excel descargado', { id: 'incidents-export' });
+    } catch {
+      toast.error('No se pudo exportar', { id: 'incidents-export' });
+    } finally {
+      setExporting(false);
+    }
   };
 
-  if (isLoading) {
+  if (isLoading && !pageData) {
     return <PageLoader message="Cargando incidencias..." />;
   }
 
-  const activeCount = filteredIncidents.filter((i) => i.status === 'Activa').length;
-  const withEvidence = filteredIncidents.filter((i) => i.hasEvidence).length;
-
-  const AnimatedDiv = animated('div');
+  const activeCount = summary?.activas ?? 0;
+  const withEvidence = summary?.conEvidencia ?? 0;
+  const listTotal = summary?.total ?? totalRecords;
 
   return (
     <div className="app-page app-page-shell relative overflow-hidden">
@@ -254,7 +250,7 @@ export const IncidentsList = () => {
         <div className="absolute bottom-0 right-1/3 h-64 w-64 rounded-full bg-secondary/10 blur-3xl" />
       </div>
 
-      <AnimatedDiv style={headerSpring}>
+      <div>
         <PageHeader
           icon={FileText}
           eyebrow="Incidencias"
@@ -268,49 +264,47 @@ export const IncidentsList = () => {
           </Badge>
           <Button
             variant="outline-primary"
-            onClick={handleExportExcel}
-            disabled={filteredIncidents.length === 0}
+            onClick={() => void handleExportExcel()}
+            disabled={exporting || listTotal === 0}
             className="transition-transform hover:scale-[1.03]"
           >
-            <FileSpreadsheet className="w-4 h-4 mr-2" />
+            {exporting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+            )}
             Exportar Excel
           </Button>
         </PageHeader>
-      </AnimatedDiv>
-
-      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
-        <AnimatedDiv style={kpiTrail[0]}>
-          <StaffKpiStat
-            label="En listado"
-            value={filteredIncidents.length}
-            hint={`${incidents.length} cargadas`}
-            icon={FileText}
-            tone="primary"
-          />
-        </AnimatedDiv>
-        <AnimatedDiv style={kpiTrail[1]}>
-          <StaffKpiStat
-            label="Activas"
-            value={activeCount}
-            hint="Pendientes de gestión"
-            hintIcon={AlertCircle}
-            icon={AlertCircle}
-            tone="warning"
-          />
-        </AnimatedDiv>
-        <AnimatedDiv style={kpiTrail[2]}>
-          <StaffKpiStat
-            label="Con evidencia"
-            value={withEvidence}
-            hint="Registros documentados"
-            hintIcon={CheckCircle2}
-            icon={Camera}
-            tone="success"
-          />
-        </AnimatedDiv>
       </div>
 
-      <AnimatedDiv style={panelSpring} className="space-y-6">
+      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+        <StaffKpiStat
+          label="En listado"
+          value={listTotal}
+          hint={isFetching ? 'Actualizando…' : `${PAGE_SIZE} por página`}
+          icon={FileText}
+          tone="primary"
+        />
+        <StaffKpiStat
+          label="Activas"
+          value={activeCount}
+          hint="Pendientes de gestión"
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Con evidencia"
+          value={withEvidence}
+          hint="Registros documentados"
+          hintIcon={CheckCircle2}
+          icon={Camera}
+          tone="success"
+        />
+      </div>
+
+      <div className="space-y-6">
         <StaffToolbar title="Buscar y filtrar" description="Refine por texto o nivel educativo">
           <div className="space-y-2 sm:col-span-2 lg:col-span-3">
             <Label htmlFor="incidents-search">Buscar</Label>
@@ -345,15 +339,15 @@ export const IncidentsList = () => {
 
         <StaffDataPanel className="overflow-hidden border-l-[3px] border-l-primary/40">
           <StaffDataPanelHeader
-            title={`Registros (${filteredIncidents.length})`}
+            title={`Registros (${listTotal})`}
             description={
-              filteredIncidents.length > PAGE_SIZE
+              listTotal > PAGE_SIZE
                 ? `Página ${currentPage} de ${totalPages} · ${PAGE_SIZE} por página`
                 : 'Detalle, evidencia y estado de cada incidencia'
             }
           />
           <div className="p-4 pt-0 sm:p-5 sm:pt-0">
-            {filteredIncidents.length === 0 ? (
+            {incidents.length === 0 ? (
               <StaffEmptyState
                 icon={FileText}
                 title="No hay incidencias"
@@ -375,7 +369,7 @@ export const IncidentsList = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedIncidents.map((incident, idx) => (
+                    {incidents.map((incident, idx) => (
                       <TableRow 
                         key={incident.id}
                         role="row"
@@ -476,7 +470,7 @@ export const IncidentsList = () => {
                 </Table>
               </div>
             )}
-            {filteredIncidents.length > PAGE_SIZE && (
+            {listTotal > PAGE_SIZE && (
               <Pagination className="mt-4">
                 <PaginationContent>
                   <PaginationItem>
@@ -536,7 +530,7 @@ export const IncidentsList = () => {
             )}
           </div>
         </StaffDataPanel>
-      </AnimatedDiv>
+      </div>
 
       {/* Detalle + evidencias fotográficas */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>

@@ -29,9 +29,9 @@ import {
   parentMeetingsService,
 } from '@/lib/services';
 import type { ArrivalRecord, Incident, ParentMeeting, Student } from '@/types';
-import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getLimaTodayDate, formatDateKeyLima } from '@/lib/utils/limaDateTime';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { ParentBottomNav, type ParentTab } from '@/components/parent/ParentBottomNav';
 import { ParentChildrenSwitcher } from '@/components/parent/ParentChildrenSwitcher';
@@ -85,10 +85,16 @@ export const ParentPortal = () => {
     async function load() {
       setLoadingTab(true);
       try {
+        const meetingsFrom = formatDateKeyLima(subMonths(new Date(), 12));
         const [a, i, m] = await Promise.all([
           arrivalService.getArrivals({ studentId, limit: 120 }),
           incidentsService.getAll({ estudianteId: studentId, limit: 40 }),
-          parentMeetingsService.getAll({ estudianteId: studentId }),
+          parentMeetingsService.getAll({
+            estudianteId: studentId,
+            fechaDesde: meetingsFrom,
+            limit: 50,
+            offset: 0,
+          }),
         ]);
         if (cancelled) return;
         if (!a.error) setArrivalRecords(a.records);
@@ -197,6 +203,7 @@ export const ParentPortal = () => {
               <StudentPhoto
                 src={student.profilePhoto}
                 name={student.fullName}
+                priority="auto"
                 className="h-[4.25rem] w-[4.25rem] shrink-0 rounded-2xl border-2 border-primary/15 shadow-sm sm:h-20 sm:w-20"
               />
               <div className="min-w-0 flex-1">

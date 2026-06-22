@@ -37,6 +37,27 @@ function mapRpcStudents(rows: unknown): Student[] {
   return rows.map((row) => mapRpcStudent(row as Record<string, unknown>));
 }
 
+/** Variantes de DNI/código para tolerar ceros a la izquierda y espacios. */
+export function buildStudentLookupVariants(code: string): string[] {
+  const trimmed = code.trim();
+  if (!trimmed) return [];
+
+  const variants = new Set<string>([trimmed, trimmed.replace(/\s+/g, '')]);
+  const digits = trimmed.replace(/\D/g, '');
+
+  if (digits) {
+    variants.add(digits);
+    const withoutLeadingZeros = digits.replace(/^0+/, '') || digits;
+    variants.add(withoutLeadingZeros);
+    if (digits.length <= 8) variants.add(digits.padStart(8, '0'));
+    if (withoutLeadingZeros.length <= 8) {
+      variants.add(withoutLeadingZeros.padStart(8, '0'));
+    }
+  }
+
+  return [...variants];
+}
+
 export interface StudentsListStats {
   sinIncidencias: number;
   nivelModerado: number;
@@ -67,6 +88,28 @@ export const studentsService = {
 
   invalidateScannerBarcodeIndex(): void {
     /* sin índice global */
+  },
+
+  /**
+   * Busca estudiante por carnet/DNI probando variantes (espacios, ceros a la izquierda).
+   */
+  async lookupByBarcodeOrDni(
+    code: string,
+    options?: { skipReincidence?: boolean },
+  ): Promise<{ student: Student | null; error: string | null }> {
+    const variants = buildStudentLookupVariants(code);
+    if (variants.length === 0) {
+      return { student: null, error: 'Ingrese un DNI o código de barras' };
+    }
+
+    let lastError = 'Estudiante no encontrado con ese DNI o código';
+    for (const variant of variants) {
+      const { student, error } = await this.getByBarcode(variant, options);
+      if (student) return { student, error: null };
+      if (error) lastError = error;
+    }
+
+    return { student: null, error: lastError };
   },
 
   async getByBarcode(

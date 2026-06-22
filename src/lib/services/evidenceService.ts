@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 import { IncidentEvidence, EvidenciaFotograficaDB } from '@/types';
+import {
+  prefetchEvidencePhotoUrls,
+  resolveEvidencePhotoUrl,
+} from '@/lib/utils/evidencePhoto';
 import { compressImageForUpload } from '@/lib/utils/compressImage';
 
 /**
@@ -110,22 +114,18 @@ export const evidenceService = {
         return { evidences: [], error: error.message };
       }
 
-      // Obtener URLs públicas
-      const evidences: IncidentEvidence[] = await Promise.all(
-        (data || []).map(async (ev: EvidenciaFotograficaDB) => {
-          const { data: urlData } = supabase.storage
-            .from('evidencias')
-            .getPublicUrl(ev.ruta_archivo);
+      const rows = data ?? [];
+      await prefetchEvidencePhotoUrls(rows.map((ev) => ev.ruta_archivo));
 
-          return {
-            id: ev.id_evidencia,
-            incidentId: ev.id_incidencia,
-            filename: ev.nombre_original,
-            url: urlData.publicUrl,
-            uploadedBy: ev.id_usuario_subida,
-            uploadedAt: ev.fecha_subida,
-          };
-        })
+      const evidences: IncidentEvidence[] = await Promise.all(
+        rows.map(async (ev: EvidenciaFotograficaDB) => ({
+          id: ev.id_evidencia,
+          incidentId: ev.id_incidencia,
+          filename: ev.nombre_original,
+          url: await resolveEvidencePhotoUrl(ev.ruta_archivo),
+          uploadedBy: ev.id_usuario_subida,
+          uploadedAt: ev.fecha_subida,
+        })),
       );
 
       return { evidences, error: null };

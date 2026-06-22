@@ -304,7 +304,8 @@ export const RegisterIncident = () => {
       setEvidencePreviews([]);
       invalidateIncidents();
       invalidateStudents();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.recentIncidents() });
     } catch (error: any) {
       if (!isMountedRef.current) return;
       showError('Error al registrar incidencia. Por favor, intente nuevamente.', 'Error al Registrar');

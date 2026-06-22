@@ -1,5 +1,170 @@
 import { supabase } from '../supabaseClient';
 import { Incident, EducationalLevel, EstadoIncidencia } from '@/types';
+import { fetchAllPages } from '@/lib/utils/supabasePagination';
+
+const INCIDENT_LIST_SELECT = `
+  id_incidencia,
+  id_estudiante,
+  id_falta,
+  id_usuario_registro,
+  fecha_hora_registro,
+  observaciones,
+  nivel_reincidencia,
+  estado_evidencia,
+  cantidad_fotos,
+  estado,
+  estudiantes:id_estudiante (
+    id_estudiante,
+    codigo_barras,
+    nombre_completo,
+    grado,
+    seccion,
+    nivel_educativo,
+    activo
+  ),
+  catalogos_faltas:id_falta (
+    id_falta,
+    nombre_falta,
+    categoria,
+    es_grave,
+    puntos_reincidencia,
+    descripcion,
+    activo
+  ),
+  usuarios_registro:id_usuario_registro (
+    id_usuario,
+    nombre_completo
+  )
+`;
+
+const INCIDENT_FULL_SELECT = `
+  *,
+  estudiantes:id_estudiante (
+    id_estudiante,
+    codigo_barras,
+    nombre_completo,
+    grado,
+    seccion,
+    nivel_educativo,
+    foto_perfil,
+    activo
+  ),
+  catalogos_faltas:id_falta (
+    id_falta,
+    nombre_falta,
+    categoria,
+    es_grave,
+    puntos_reincidencia,
+    descripcion,
+    activo
+  ),
+  usuarios_registro:id_usuario_registro (
+    id_usuario,
+    nombre_completo
+  )
+`;
+
+export interface IncidentsListFilters {
+  estudianteId?: number;
+  estado?: EstadoIncidencia;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  grado?: string;
+  seccion?: string;
+  nivelEducativo?: EducationalLevel;
+  nivelReincidencia?: number;
+  bimestre?: number;
+  añoEscolar?: number;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  page?: number;
+  pageSize?: number;
+  fetchAll?: boolean;
+}
+
+export interface IncidentsListSummary {
+  total: number;
+  activas: number;
+  conEvidencia: number;
+}
+
+function escapeIlike(term: string): string {
+  return term.replace(/[%_\\]/g, '\\$&');
+}
+
+async function resolveDateRange(filters?: IncidentsListFilters): Promise<{
+  fechaDesde?: string;
+  fechaHasta?: string;
+}> {
+  let fechaDesde = filters?.fechaDesde;
+  let fechaHasta = filters?.fechaHasta;
+
+  if (filters?.bimestre && filters?.añoEscolar) {
+    const { getBimestreDates } = await import('@/lib/utils/bimestreUtils');
+    const { inicio, fin } = getBimestreDates(filters.bimestre as 1 | 2 | 3 | 4, filters.añoEscolar);
+    fechaDesde = inicio.toISOString();
+    fechaHasta = fin.toISOString();
+  }
+
+  return { fechaDesde, fechaHasta };
+}
+
+function applyIncidentFilters(
+  query: any,
+  filters: IncidentsListFilters | undefined,
+  dateRange: { fechaDesde?: string; fechaHasta?: string },
+) {
+
+  if (filters?.estudianteId) {
+    query = query.eq('id_estudiante', filters.estudianteId);
+  }
+
+  if (filters?.estado) {
+    query = query.eq('estado', filters.estado);
+  }
+
+  if (dateRange.fechaDesde) {
+    query = query.gte('fecha_hora_registro', dateRange.fechaDesde);
+  }
+
+  if (dateRange.fechaHasta) {
+    query = query.lte('fecha_hora_registro', dateRange.fechaHasta);
+  }
+
+  if (filters?.grado) {
+    query = query.eq('estudiantes.grado', filters.grado);
+  }
+
+  if (filters?.seccion) {
+    query = query.eq('estudiantes.seccion', filters.seccion);
+  }
+
+  if (filters?.nivelEducativo) {
+    query = query.eq('estudiantes.nivel_educativo', filters.nivelEducativo);
+  }
+
+  if (filters?.nivelReincidencia !== undefined) {
+    query = query.eq('nivel_reincidencia', filters.nivelReincidencia);
+  }
+
+  const search = filters?.search?.trim();
+  if (search) {
+    const escaped = escapeIlike(search);
+    const idNum = Number.parseInt(search, 10);
+    if (!Number.isNaN(idNum) && String(idNum) === search.replace(/\s/g, '')) {
+      query = query.or(
+        `id_incidencia.eq.${idNum},estudiantes.nombre_completo.ilike.%${escaped}%,catalogos_faltas.nombre_falta.ilike.%${escaped}%`,
+      );
+    } else {
+      query = query.or(
+        `estudiantes.nombre_completo.ilike.%${escaped}%,catalogos_faltas.nombre_falta.ilike.%${escaped}%`,
+      );
+    }
+  }
+
+  return query;
+}
 
 /**
  * Servicio de incidencias
@@ -80,117 +245,132 @@ export const incidentsService = {
   },
 
   /**
-   * Obtener todas las incidencias con filtros
+   * Obtener incidencias con filtros (paginado por defecto; fetchAll solo para exportación).
    */
-  async getAll(filters?: {
-    estudianteId?: number;
-    estado?: EstadoIncidencia;
-    fechaDesde?: string;
-    fechaHasta?: string;
-    grado?: string;
-    seccion?: string;
-    nivelEducativo?: EducationalLevel;
-    nivelReincidencia?: number;
-    bimestre?: number; // 1-4
-    añoEscolar?: number;
-    limit?: number;
-    offset?: number;
-  }): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
+  async getAll(
+    filters?: IncidentsListFilters,
+  ): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
     try {
-      // Si se especifica bimestre, calcular fechas automáticamente
-      let fechaDesde = filters?.fechaDesde;
-      let fechaHasta = filters?.fechaHasta;
-      
-      if (filters?.bimestre && filters?.añoEscolar) {
-        const { getBimestreDates } = await import('@/lib/utils/bimestreUtils');
-        const { inicio, fin } = getBimestreDates(filters.bimestre as 1 | 2 | 3 | 4, filters.añoEscolar);
-        fechaDesde = inicio.toISOString();
-        fechaHasta = fin.toISOString();
+      const dateRange = await resolveDateRange(filters);
+      const useFullSelect = Boolean(filters?.fetchAll && filters?.estudianteId);
+
+      if (filters?.fetchAll) {
+        const { data, error } = await fetchAllPages<Incident>(async (from, to) => {
+          const pageSize = to - from + 1;
+          const pageResult = await this.fetchIncidentPage(
+            filters,
+            dateRange,
+            from,
+            pageSize,
+            useFullSelect,
+          );
+          return {
+            data: pageResult.incidents,
+            error: pageResult.error
+              ? { message: pageResult.error, details: '', hint: '', code: '' }
+              : null,
+          };
+        });
+
+        if (error) {
+          return { incidents: [], total: 0, error };
+        }
+
+        return { incidents: data, total: data.length, error: null };
       }
 
-      let query = supabase
-        .from('incidencias')
-        .select(`
-          *,
-          estudiantes:id_estudiante (
-            id_estudiante,
-            codigo_barras,
-            nombre_completo,
-            grado,
-            seccion,
-            nivel_educativo,
-            foto_perfil,
-            activo
-          ),
-          catalogos_faltas:id_falta (
-            id_falta,
-            nombre_falta,
-            categoria,
-            es_grave,
-            puntos_reincidencia,
-            descripcion,
-            activo
-          ),
-          usuarios_registro:id_usuario_registro (
-            id_usuario,
-            nombre_completo
-          )
-        `, { count: 'exact' });
+      const pageSize = filters?.pageSize ?? 10;
+      const page = Math.max(1, filters?.page ?? 1);
+      const offset =
+        filters?.offset != null ? filters.offset : (page - 1) * pageSize;
 
-      if (filters?.estudianteId) {
-        query = query.eq('id_estudiante', filters.estudianteId);
-      }
+      const usesPagePagination = filters?.page != null || filters?.pageSize != null;
 
-      if (filters?.estado) {
-        query = query.eq('estado', filters.estado);
-      }
-
-      if (fechaDesde) {
-        query = query.gte('fecha_hora_registro', fechaDesde);
-      }
-
-      if (fechaHasta) {
-        query = query.lte('fecha_hora_registro', fechaHasta);
-      }
-
-      if (filters?.grado) {
-        query = query.eq('estudiantes.grado', filters.grado);
-      }
-
-      if (filters?.seccion) {
-        query = query.eq('estudiantes.seccion', filters.seccion);
-      }
-
-      if (filters?.nivelEducativo) {
-        query = query.eq('estudiantes.nivel_educativo', filters.nivelEducativo);
-      }
-
-      if (filters?.nivelReincidencia !== undefined) {
-        query = query.eq('nivel_reincidencia', filters.nivelReincidencia);
-      }
-
-      // Ordenar por fecha más reciente primero
-      query = query.order('fecha_hora_registro', { ascending: false });
-
-      if (filters?.limit != null && filters?.offset != null) {
-        query = query.range(filters.offset, filters.offset + filters.limit - 1);
-      } else if (filters?.limit != null) {
-        query = query.limit(filters.limit);
-      }
-
-      const { data, error, count } = await query;
-
-      if (error) {
-        console.error('Error al obtener incidencias:', error);
-        return { incidents: [], total: 0, error: error.message };
-      }
-
-      const incidents: Incident[] = (data || []).map((inc: any) => this.mapDBToIncident(inc));
-
-      return { incidents, total: count || 0, error: null };
+      return this.fetchIncidentPage(
+        filters,
+        dateRange,
+        usesPagePagination ? offset : undefined,
+        usesPagePagination ? pageSize : filters?.limit,
+        useFullSelect,
+      );
     } catch (error: any) {
       console.error('Error en getAll:', error);
       return { incidents: [], total: 0, error: error.message || 'Error al obtener incidencias' };
+    }
+  },
+
+  async fetchIncidentPage(
+    filters: IncidentsListFilters | undefined,
+    dateRange: { fechaDesde?: string; fechaHasta?: string },
+    offset: number | undefined,
+    limit: number | undefined,
+    fullSelect = false,
+  ): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
+    const selectClause = fullSelect ? INCIDENT_FULL_SELECT : INCIDENT_LIST_SELECT;
+
+    let query = supabase
+      .from('incidencias')
+      .select(selectClause, { count: 'exact' });
+
+    query = applyIncidentFilters(query, filters, dateRange);
+    query = query.order('fecha_hora_registro', { ascending: false });
+
+    if (offset != null && limit != null) {
+      query = query.range(offset, offset + limit - 1);
+    } else if (limit != null) {
+      query = query.limit(limit);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error al obtener incidencias:', error);
+      return { incidents: [], total: 0, error: error.message };
+    }
+
+    const incidents: Incident[] = (data || []).map((inc: any) => this.mapDBToIncident(inc));
+    return { incidents, total: count || 0, error: null };
+  },
+
+  /** Totales para KPIs del listado (consultas ligeras en paralelo). */
+  async getListSummary(
+    filters?: Pick<IncidentsListFilters, 'nivelEducativo' | 'search' | 'fechaDesde' | 'fechaHasta'>,
+  ): Promise<{ summary: IncidentsListSummary; error: string | null }> {
+    try {
+      const dateRange = await resolveDateRange(filters);
+
+      const countFiltered = async (extra?: Record<string, string>) => {
+        let query = supabase
+          .from('incidencias')
+          .select('id_incidencia', { count: 'exact', head: true });
+        query = applyIncidentFilters(query, filters, dateRange) as typeof query;
+        if (extra?.estado) {
+          query = query.eq('estado', extra.estado);
+        }
+        if (extra?.estado_evidencia) {
+          query = query.eq('estado_evidencia', extra.estado_evidencia);
+        }
+        const { count, error } = await query;
+        if (error) throw new Error(error.message);
+        return count ?? 0;
+      };
+
+      const [total, activas, conEvidencia] = await Promise.all([
+        countFiltered(),
+        countFiltered({ estado: 'Activa' }),
+        countFiltered({ estado_evidencia: 'Con evidencia' }),
+      ]);
+
+      return {
+        summary: { total, activas, conEvidencia },
+        error: null,
+      };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al obtener resumen';
+      return {
+        summary: { total: 0, activas: 0, conEvidencia: 0 },
+        error: message,
+      };
     }
   },
 

@@ -37,12 +37,12 @@ export function parseStudentIdsFromGrados(gradosAsignados: unknown): number[] {
 
 async function fetchByStudentIds(ids: number[]): Promise<Student[]> {
   const unique = [...new Set(ids)];
-  const students: Student[] = [];
-  for (const id of unique) {
-    const { student } = await studentsService.getById(id);
-    if (student?.active) students.push(student);
-  }
-  return students;
+  if (unique.length === 0) return [];
+
+  const results = await Promise.all(unique.map((id) => studentsService.getById(id)));
+  return results
+    .map(({ student }) => student)
+    .filter((student): student is Student => Boolean(student?.active));
 }
 
 /**
@@ -79,7 +79,7 @@ export const parentPortalService = {
 
       const staffRoles: UserRole[] = ['Admin', 'Director', 'Supervisor'];
       if (staffRoles.includes(user.role)) {
-        return studentsService.getAll({ active: true, fetchAll: true });
+        return studentsService.getAll({ active: true, page: 1, pageSize: 80 });
       }
 
       return { students: [], error: 'No tiene acceso al portal de padres.' };

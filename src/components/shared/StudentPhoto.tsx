@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  getSignedProfilePhotoUrl,
-  resolveStudentProfilePhotoUrl,
-} from '@/lib/utils/profilePhoto';
+import { resolveStudentProfilePhotoUrlAsync } from '@/lib/utils/profilePhoto';
 import { cn } from '@/lib/utils';
 
 interface StudentPhotoProps {
@@ -12,6 +9,8 @@ interface StudentPhotoProps {
   name?: string;
   className?: string;
   imageClassName?: string;
+  /** Prioridad de carga: baja en listados largos */
+  priority?: 'low' | 'auto';
 }
 
 export const StudentPhoto = ({
@@ -19,26 +18,31 @@ export const StudentPhoto = ({
   name = '',
   className,
   imageClassName,
+  priority = 'low',
 }: StudentPhotoProps) => {
-  const [photoSrc, setPhotoSrc] = useState<string | null>(() =>
-    resolveStudentProfilePhotoUrl(src)
-  );
-  const [triedSigned, setTriedSigned] = useState(false);
+  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(src?.trim()));
 
   useEffect(() => {
-    setPhotoSrc(resolveStudentProfilePhotoUrl(src));
-    setTriedSigned(false);
-  }, [src]);
-
-  const handleError = async () => {
-    if (triedSigned || !src?.trim()) {
+    if (!src?.trim()) {
       setPhotoSrc(null);
+      setLoading(false);
       return;
     }
-    setTriedSigned(true);
-    const signed = await getSignedProfilePhotoUrl(src);
-    setPhotoSrc(signed);
-  };
+
+    let cancelled = false;
+    setLoading(true);
+
+    void resolveStudentProfilePhotoUrlAsync(src).then((url) => {
+      if (cancelled) return;
+      setPhotoSrc(url);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
 
   const initials = name
     .split(/\s+/)
@@ -49,16 +53,15 @@ export const StudentPhoto = ({
 
   return (
     <Avatar className={cn('rounded-2xl', className)}>
-      {photoSrc ? (
+      {photoSrc && !loading ? (
         <AvatarImage
           src={photoSrc}
           alt={name}
-          loading="lazy"
+          loading={priority === 'low' ? 'lazy' : 'eager'}
           decoding="async"
+          fetchPriority={priority === 'low' ? 'low' : 'auto'}
           className={cn('object-cover', imageClassName)}
-          onError={() => {
-            void handleError();
-          }}
+          onError={() => setPhotoSrc(null)}
         />
       ) : null}
       <AvatarFallback className="rounded-2xl bg-muted/60 text-muted-foreground">

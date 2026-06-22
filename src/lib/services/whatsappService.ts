@@ -16,6 +16,19 @@ const OPENWA_API_URL = (
 const OPENWA_SESSION_ID = import.meta.env.VITE_OPENWA_SESSION_ID || '';
 const OPENWA_API_KEY = import.meta.env.VITE_OPENWA_API_KEY || '';
 
+/** Evita reenvíos duplicados del mismo aviso en escaneos repetidos. */
+const recentNotifyKeys = new Map<string, number>();
+const NOTIFY_DEDUP_MS = 2 * 60 * 1000;
+
+function shouldSkipDuplicateNotify(studentId: number, date: string): boolean {
+  const key = `${studentId}:${date.slice(0, 10)}`;
+  const last = recentNotifyKeys.get(key);
+  const now = Date.now();
+  if (last != null && now - last < NOTIFY_DEDUP_MS) return true;
+  recentNotifyKeys.set(key, now);
+  return false;
+}
+
 const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, '') || '';
 
 function getAppBaseUrl(): string {
@@ -180,6 +193,10 @@ export async function notifyParentArrival(
   const phone = student.contactPhone?.trim() || student.emergencyPhone?.trim() || '';
   if (!phone) {
     return { ok: false, error: 'El estudiante no tiene teléfono de contacto' };
+  }
+
+  if (shouldSkipDuplicateNotify(student.id, record.date || '')) {
+    return { ok: true, error: null, chatId: toWhatsAppChatId(phone) || undefined };
   }
 
   const chatId = toWhatsAppChatId(phone);

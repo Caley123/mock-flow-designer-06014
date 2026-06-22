@@ -1,32 +1,49 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { incidentsService } from '@/lib/services';
 import { queryKeys } from '@/lib/query/queryKeys';
-import { fetchAllPages } from '@/lib/utils/supabasePagination';
-import type { EducationalLevel, Incident } from '@/types';
+import type { EducationalLevel } from '@/types';
+
+export const INCIDENTS_PAGE_SIZE = 10;
 
 export interface IncidentsListFilters {
   nivelEducativo?: EducationalLevel;
+  search?: string;
+  page?: number;
 }
 
 export function useIncidentsQuery(filters: IncidentsListFilters = {}) {
+  const page = filters.page ?? 1;
+
   return useQuery({
-    queryKey: queryKeys.incidents.list(filters),
+    queryKey: queryKeys.incidents.list({ ...filters, page }),
     queryFn: async () => {
-      const { data, error } = await fetchAllPages<Incident>(async (from, to) => {
-        const pageSize = to - from + 1;
-        const result = await incidentsService.getAll({
-          nivelEducativo: filters.nivelEducativo,
-          offset: from,
-          limit: pageSize,
-        });
-        return {
-          data: result.incidents,
-          error: result.error ? { message: result.error, details: '', hint: '', code: '' } : null,
-        };
+      const { incidents, total, error } = await incidentsService.getAll({
+        nivelEducativo: filters.nivelEducativo,
+        search: filters.search,
+        page,
+        pageSize: INCIDENTS_PAGE_SIZE,
       });
       if (error) throw new Error(error);
-      return data;
+      return { incidents, total };
     },
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useIncidentsSummaryQuery(
+  filters: Pick<IncidentsListFilters, 'nivelEducativo' | 'search'> = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.incidents.summary(filters),
+    queryFn: async () => {
+      const { summary, error } = await incidentsService.getListSummary({
+        nivelEducativo: filters.nivelEducativo,
+        search: filters.search,
+      });
+      if (error) throw new Error(error);
+      return summary;
+    },
+    staleTime: 60 * 1000,
   });
 }
 

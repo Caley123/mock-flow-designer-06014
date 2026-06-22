@@ -1,6 +1,39 @@
 import { supabase } from '../supabaseClient';
 import { DashboardStats, EducationalLevel } from '@/types';
 
+type IncidentCountFilters = {
+  estado?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  nivelReincidencia?: number;
+  nivelEducativo?: EducationalLevel;
+  grado?: string;
+};
+
+async function countIncidents(filters: IncidentCountFilters = {}): Promise<number> {
+  let query = supabase.from('incidencias').select('id_incidencia', { count: 'exact', head: true });
+
+  if (filters.estado) query = query.eq('estado', filters.estado);
+  if (filters.fechaDesde) query = query.gte('fecha_hora_registro', filters.fechaDesde);
+  if (filters.fechaHasta) query = query.lte('fecha_hora_registro', filters.fechaHasta);
+  if (filters.nivelReincidencia !== undefined) {
+    query = query.eq('nivel_reincidencia', filters.nivelReincidencia);
+  }
+  if (filters.nivelEducativo) {
+    query = query.eq('estudiantes.nivel_educativo', filters.nivelEducativo);
+  }
+  if (filters.grado) {
+    query = query.eq('estudiantes.grado', filters.grado);
+  }
+
+  const { count, error } = await query;
+  if (error) {
+    console.error('Error al contar incidencias:', error);
+    return 0;
+  }
+  return count ?? 0;
+}
+
 /**
  * Servicio de dashboard y reportes
  */
@@ -74,29 +107,32 @@ export const dashboardService = {
       
       const { count: totalCount } = await totalQuery;
 
-      // Obtener distribución por nivel de reincidencia (con filtros de fecha si aplican)
-      let nivelQuery = supabase
-        .from('incidencias')
-        .select('nivel_reincidencia')
-        .eq('estado', 'Activa');
-      
-      if (fechaDesde) {
-        nivelQuery = nivelQuery.gte('fecha_hora_registro', fechaDesde);
-      }
-      if (fechaHasta) {
-        nivelQuery = nivelQuery.lte('fecha_hora_registro', fechaHasta);
-      }
-      
-      const { data: nivelData } = await nivelQuery;
+      const baseCountFilters: IncidentCountFilters = {
+        estado: 'Activa',
+        fechaDesde,
+        fechaHasta,
+      };
+
+      const levelCounts = await Promise.all(
+        [0, 1, 2, 3, 4, 5].map((level) =>
+          countIncidents({ ...baseCountFilters, nivelReincidencia: level }),
+        ),
+      );
 
       const levelDistribution = {
-        level0: nivelData?.filter(i => i.nivel_reincidencia === 0).length || 0,
-        level1: nivelData?.filter(i => i.nivel_reincidencia === 1).length || 0,
-        level2: nivelData?.filter(i => i.nivel_reincidencia === 2).length || 0,
-        level3: nivelData?.filter(i => i.nivel_reincidencia === 3).length || 0,
-        level4: nivelData?.filter(i => i.nivel_reincidencia === 4).length || 0,
-        level5: nivelData?.filter(i => i.nivel_reincidencia === 5).length || 0,
+        level0: levelCounts[0],
+        level1: levelCounts[1],
+        level2: levelCounts[2],
+        level3: levelCounts[3],
+        level4: levelCounts[4],
+        level5: levelCounts[5],
       };
+
+      const totalForAvg = levelCounts.reduce((sum, n) => sum + n, 0);
+      const avgLevel =
+        totalForAvg > 0
+          ? levelCounts.reduce((sum, n, idx) => sum + idx * n, 0) / totalForAvg
+          : 0;
 
       // Obtener incidencias por grado (con filtros de fecha si aplican)
       let gradoQuery = supabase
@@ -166,11 +202,6 @@ export const dashboardService = {
         .map(([faultType, count]) => ({ faultType, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
-
-      // Calcular promedio de nivel de reincidencia
-      const avgLevel = nivelData && nivelData.length > 0
-        ? nivelData.reduce((sum, inc) => sum + inc.nivel_reincidencia, 0) / nivelData.length
-        : 0;
 
       const stats: DashboardStats = {
         totalIncidents: totalCount || 0,
@@ -243,59 +274,23 @@ export const dashboardService = {
         });
       }
 
-      // Obtener incidencias agrupadas por mes
-      const monthlyTrend: { month: string; incidents: number }[] = [];
-      
-      for (const { month, year: monthYear, label } of months) {
-        const startDate = new Date(monthYear, month, 1);
-        const endDate = new Date(monthYear, month + 1, 0, 23, 59, 59, 999);
-        
-        // Si hay filtros de nivel o grado, necesitamos hacer join con estudiantes
-        if (level || grade) {
-          const { data, error } = await supabase
-            .from('incidencias')
-            .select(`
-              id_incidencia,
-              estudiantes:id_estudiante (nivel_educativo, grado)
-            `)
-            .eq('estado', 'Activa')
-            .gte('fecha_hora_registro', startDate.toISOString())
-            .lte('fecha_hora_registro', endDate.toISOString());
+      // Obtener incidencias agrupadas por mes (en paralelo)
+      const monthlyTrend = await Promise.all(
+        months.map(async ({ month, year: monthYear, label }) => {
+          const startDate = new Date(monthYear, month, 1);
+          const endDate = new Date(monthYear, month + 1, 0, 23, 59, 59, 999);
 
-          if (error) {
-            console.error(`Error al obtener incidencias de ${label}:`, error);
-            monthlyTrend.push({ month: label, incidents: 0 });
-            continue;
-          }
-
-          // Filtrar por nivel y grado si se especificaron
-          const filteredData = (data || []).filter((inc: any) => {
-            const estudiante = inc.estudiantes;
-            if (!estudiante) return false;
-            const matchesLevel = !level || estudiante.nivel_educativo === level;
-            const matchesGrade = !grade || estudiante.grado === grade;
-            return matchesLevel && matchesGrade;
+          const incidents = await countIncidents({
+            estado: 'Activa',
+            fechaDesde: startDate.toISOString(),
+            fechaHasta: endDate.toISOString(),
+            nivelEducativo: level,
+            grado: grade,
           });
 
-          monthlyTrend.push({ month: label, incidents: filteredData.length });
-        } else {
-          // Sin filtros, podemos usar count directamente
-          const { count, error } = await supabase
-            .from('incidencias')
-            .select('*', { count: 'exact', head: true })
-            .eq('estado', 'Activa')
-            .gte('fecha_hora_registro', startDate.toISOString())
-            .lte('fecha_hora_registro', endDate.toISOString());
-
-          if (error) {
-            console.error(`Error al obtener incidencias de ${label}:`, error);
-            monthlyTrend.push({ month: label, incidents: 0 });
-            continue;
-          }
-
-          monthlyTrend.push({ month: label, incidents: count || 0 });
-        }
-      }
+          return { month: label, incidents };
+        }),
+      );
 
       return { monthlyTrend, error: null };
     } catch (error: any) {
@@ -324,7 +319,6 @@ export const dashboardService = {
         date.setDate(now.getDate() - daysBack);
         const dayOfWeek = date.getDay();
         
-        // Solo incluir días hábiles (lunes=1 a viernes=5)
         if (dayOfWeek >= 1 && dayOfWeek <= 5) {
           weekDays.push({
             date,
@@ -333,68 +327,29 @@ export const dashboardService = {
         }
         daysBack++;
         
-        // Prevenir bucle infinito
         if (daysBack > 14) break;
       }
       
-      // Ordenar por fecha (más antiguo primero)
       weekDays.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-      // Obtener incidencias por día
-      const weeklyData: { day: string; count: number }[] = [];
-      
-      for (const { date, label } of weekDays) {
-        const startDate = new Date(date);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(date);
-        endDate.setHours(23, 59, 59, 999);
-        
-        // Si hay filtros de nivel o grado, necesitamos hacer join con estudiantes
-        if (level || grade) {
-          const { data, error } = await supabase
-            .from('incidencias')
-            .select(`
-              id_incidencia,
-              estudiantes:id_estudiante (nivel_educativo, grado)
-            `)
-            .eq('estado', 'Activa')
-            .gte('fecha_hora_registro', startDate.toISOString())
-            .lte('fecha_hora_registro', endDate.toISOString());
+      const weeklyData = await Promise.all(
+        weekDays.map(async ({ date, label }) => {
+          const startDate = new Date(date);
+          startDate.setHours(0, 0, 0, 0);
+          const endDate = new Date(date);
+          endDate.setHours(23, 59, 59, 999);
 
-          if (error) {
-            console.error(`Error al obtener incidencias de ${label}:`, error);
-            weeklyData.push({ day: label, count: 0 });
-            continue;
-          }
-
-          // Filtrar por nivel y grado si se especificaron
-          const filteredData = (data || []).filter((inc: any) => {
-            const estudiante = inc.estudiantes;
-            if (!estudiante) return false;
-            const matchesLevel = !level || estudiante.nivel_educativo === level;
-            const matchesGrade = !grade || estudiante.grado === grade;
-            return matchesLevel && matchesGrade;
+          const count = await countIncidents({
+            estado: 'Activa',
+            fechaDesde: startDate.toISOString(),
+            fechaHasta: endDate.toISOString(),
+            nivelEducativo: level,
+            grado: grade,
           });
 
-          weeklyData.push({ day: label, count: filteredData.length });
-        } else {
-          // Sin filtros, podemos usar count directamente
-          const { count, error } = await supabase
-            .from('incidencias')
-            .select('*', { count: 'exact', head: true })
-            .eq('estado', 'Activa')
-            .gte('fecha_hora_registro', startDate.toISOString())
-            .lte('fecha_hora_registro', endDate.toISOString());
-
-          if (error) {
-            console.error(`Error al obtener incidencias de ${label}:`, error);
-            weeklyData.push({ day: label, count: 0 });
-            continue;
-          }
-
-          weeklyData.push({ day: label, count: count || 0 });
-        }
-      }
+          return { day: label, count };
+        }),
+      );
 
       return { weeklyData, error: null };
     } catch (error: any) {

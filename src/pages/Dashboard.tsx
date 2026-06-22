@@ -29,13 +29,12 @@ import {
 } from 'recharts';
 import { useEffect } from 'react';
 import { PageLoader } from '@/components/ui/page-loader';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { DashboardStats, Incident } from '@/types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
-import { PageHeader } from '@/components/layout/PageHeader';
 import {
   StaffKpiStat,
   StaffQuickActions,
@@ -76,8 +75,6 @@ export const Dashboard = () => {
   const monthlyTrendQuery = useMonthlyTrendQuery();
   const navigate = useNavigate();
 
-  usePerformanceMetrics('Dashboard');
-
   useEffect(() => {
     if (statsQuery.isError) {
       toast.error('Error al cargar estadísticas del dashboard');
@@ -90,18 +87,14 @@ export const Dashboard = () => {
     }
   }, [recentIncidentsQuery.isError]);
 
-  const loading =
-    statsQuery.isLoading ||
-    alertsQuery.isLoading ||
-    recentIncidentsQuery.isLoading ||
-    monthlyTrendQuery.isLoading;
-
   const stats: DashboardStats | null = statsQuery.data ?? null;
   const departureAlerts = alertsQuery.data ?? [];
   const recentIncidents: Incident[] = recentIncidentsQuery.data ?? [];
   const monthlyTrend = monthlyTrendQuery.data ?? [];
 
-  if (loading) {
+  const initialLoading = statsQuery.isLoading && !stats;
+
+  if (initialLoading) {
     return <PageLoader message="Cargando estadísticas del dashboard..." />;
   }
 

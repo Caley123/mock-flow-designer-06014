@@ -11,7 +11,6 @@ import { useEffect, useState } from 'react';
 import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useSpring, animated } from '@react-spring/web';
 import { ParentSidebarNav } from '@/components/parent/ParentSidebarNav';
 import { GuardyMark } from '@/components/brand/GuardyMark';
 import {
@@ -64,12 +63,6 @@ export const Sidebar = () => {
     }
   }, [location.pathname, navItems]);
 
-  const sidebarAnimation = useSpring({
-    from: { opacity: 0, transform: 'translateX(-20px)' },
-    to: { opacity: 1, transform: 'translateX(0)' },
-    config: { tension: 300, friction: 30 },
-  });
-
   return (
     <>
       {!isParentRole && (
@@ -91,10 +84,9 @@ export const Sidebar = () => {
         </>
       )}
 
-      <animated.aside
-        style={sidebarAnimation}
+      <aside
         className={cn(
-          'staff-sidebar fixed left-0 top-0 z-40 flex h-full w-64 flex-col transition-transform duration-300',
+          'staff-sidebar fixed left-0 top-0 z-40 flex h-full w-64 flex-col animate-in fade-in slide-in-from-left-2 duration-300',
           'border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl',
           isParentRole
             ? 'hidden md:flex -translate-x-0'
@@ -245,7 +237,7 @@ export const Sidebar = () => {
             Cerrar Sesión
           </Button>
         </div>
-      </animated.aside>
+      </aside>
     </>
   );
 };

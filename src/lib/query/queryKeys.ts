@@ -10,8 +10,10 @@ export const queryKeys = {
   },
   incidents: {
     all: ['incidents'] as const,
-    list: (filters: { nivelEducativo?: EducationalLevel }) =>
+    list: (filters: { nivelEducativo?: EducationalLevel; search?: string; page?: number }) =>
       [...queryKeys.incidents.all, 'list', filters] as const,
+    summary: (filters: { nivelEducativo?: EducationalLevel; search?: string }) =>
+      [...queryKeys.incidents.all, 'summary', filters] as const,
   },
   students: {
     all: ['students'] as const,

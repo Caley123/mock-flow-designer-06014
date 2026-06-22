@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { dashboardService, arrivalService, incidentsService } from '@/lib/services';
 import { queryKeys } from '@/lib/query/queryKeys';
 
 const DEPARTURE_ALERTS_INTERVAL_MS = 5 * 60 * 1000;
+const DASHBOARD_STALE_MS = 2 * 60 * 1000;
 
 export function useDashboardStatsQuery() {
   return useQuery({
@@ -13,6 +14,8 @@ export function useDashboardStatsQuery() {
       if (!stats) throw new Error('No se recibieron estadísticas del dashboard');
       return stats;
     },
+    staleTime: DASHBOARD_STALE_MS,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -25,6 +28,7 @@ export function useDepartureAlertsQuery() {
       return alerts ?? [];
     },
     refetchInterval: DEPARTURE_ALERTS_INTERVAL_MS,
+    staleTime: 60 * 1000,
   });
 }
 
@@ -36,6 +40,7 @@ export function useRecentIncidentsQuery() {
       if (error) throw new Error(error);
       return incidents;
     },
+    staleTime: 60 * 1000,
   });
 }
 
@@ -47,5 +52,7 @@ export function useMonthlyTrendQuery() {
       if (error) throw new Error(error);
       return monthlyTrend ?? [];
     },
+    staleTime: DASHBOARD_STALE_MS,
+    placeholderData: keepPreviousData,
   });
 }

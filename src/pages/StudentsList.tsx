@@ -3,7 +3,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
-import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { 
   Table, 
   TableBody, 
@@ -60,7 +59,6 @@ import {
   StaffDataPanelHeader,
   StaffEmptyState,
 } from '@/components/staff';
-import { exportStudentsListExcel } from '@/lib/utils/excelListExports';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PageLoader } from '@/components/ui/page-loader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
@@ -70,6 +68,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { studentsService } from '@/lib/services';
+import { prefetchSignedProfilePhotos } from '@/lib/utils/profilePhoto';
 import { Student, EducationalLevel } from '@/types';
 import { useStudentsQuery, useInvalidateStudents, STUDENTS_PAGE_SIZE } from '@/hooks/queries/useStudentsQuery';
 import {
@@ -122,7 +121,6 @@ export const StudentsList = () => {
   const isMountedRef = useRef(true);
   const invalidateStudents = useInvalidateStudents();
 
-  usePerformanceMetrics('StudentsList');
   // Estados temporales para Select dentro del Dialog
   const [tempGrado, setTempGrado] = useState<string>('');
   const [tempSeccion, setTempSeccion] = useState<string>('');
@@ -189,6 +187,12 @@ export const StudentsList = () => {
   const totalStudents = data?.total ?? 0;
   const serverStats = data?.stats;
   const totalPages = Math.max(1, Math.ceil(totalStudents / STUDENTS_PAGE_SIZE));
+
+  useEffect(() => {
+    if (students.length > 0) {
+      void prefetchSignedProfilePhotos(students.map((s) => s.profilePhoto));
+    }
+  }, [students]);
 
   useEffect(() => {
     if (isError) {
@@ -388,6 +392,7 @@ export const StudentsList = () => {
       toast.error(error);
       return;
     }
+    const { exportStudentsListExcel } = await import('@/lib/utils/excelListExports');
     void exportStudentsListExcel(allRows, filters);
   };
 
