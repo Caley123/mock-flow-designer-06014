@@ -47,8 +47,7 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/exceljs/')) return 'report-excel';
           if (id.includes('/jspdf')) return 'report-pdf';
 
-          if (id.includes('/recharts/')) return 'charts-vendor';
-          if (id.includes('/@supabase/')) return 'supabase-vendor';
+          // No aislar recharts en chunk propio: rompe el orden de init (TDZ en producción).
 
           // GSAP: animaciones del portal de padres/login
           if (id.includes('/gsap/') || id.includes('/@gsap/')) return 'gsap-vendor';
