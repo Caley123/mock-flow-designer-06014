@@ -9,21 +9,36 @@ export const incidentsService = {
    * Crear nueva incidencia
    * El nivel de reincidencia se calcula automáticamente por el trigger de la base de datos
    */
-  async create(incident: {
-    studentId: number;
-    faultTypeId: number;
-    registeredBy: number;
-    observations?: string;
-  }): Promise<{ incident: Incident | null; error: string | null }> {
+  async create(
+    incident: {
+      studentId: number;
+      faultTypeId: number;
+      registeredBy: number;
+      observations?: string;
+    },
+    options?: { minimal?: boolean },
+  ): Promise<{ incident: Incident | null; error: string | null }> {
     try {
-      const { data, error } = await supabase
-        .from('incidencias')
-        .insert({
-          id_estudiante: incident.studentId,
-          id_falta: incident.faultTypeId,
-          id_usuario_registro: incident.registeredBy,
-          observaciones: incident.observations || null,
-        })
+      const insertQuery = supabase.from('incidencias').insert({
+        id_estudiante: incident.studentId,
+        id_falta: incident.faultTypeId,
+        id_usuario_registro: incident.registeredBy,
+        observaciones: incident.observations || null,
+      });
+
+      if (options?.minimal) {
+        const { data, error } = await insertQuery.select('id_incidencia').single();
+        if (error) {
+          console.error('Error al crear incidencia:', error);
+          return { incident: null, error: error.message };
+        }
+        return {
+          incident: { id: data.id_incidencia } as Incident,
+          error: null,
+        };
+      }
+
+      const { data, error } = await insertQuery
         .select(`
           *,
           estudiantes:id_estudiante (

@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { IncidentEvidence, EvidenciaFotograficaDB } from '@/types';
+import { compressImageForUpload } from '@/lib/utils/compressImage';
 
 /**
  * Servicio de evidencias fotográficas
@@ -14,32 +15,32 @@ export const evidenceService = {
     userId: number
   ): Promise<{ evidence: IncidentEvidence | null; error: string | null }> {
     try {
-      // Validar tipo de archivo
+      const uploadFile = await compressImageForUpload(file);
+
       // Normalizar MIME: algunos navegadores pueden reportar 'image/jpg'
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      const normalizedMime = file.type === 'image/jpg' || (ext === 'jpg' && file.type === '')
-        ? 'image/jpeg'
-        : file.type;
+      const ext = (uploadFile.name.split('.').pop() || '').toLowerCase();
+      const normalizedMime =
+        uploadFile.type === 'image/jpg' || (ext === 'jpg' && uploadFile.type === '')
+          ? 'image/jpeg'
+          : uploadFile.type;
 
       if (!normalizedMime.match(/^image\/(jpeg|png)$/)) {
         return { evidence: null, error: 'Solo se permiten archivos JPG o PNG' };
       }
 
-      // Validar tamaño (máx 5MB)
-      if (file.size > 5242880) {
+      if (uploadFile.size > 5242880) {
         return { evidence: null, error: 'El archivo no puede superar los 5MB' };
       }
 
-      // Generar nombre único
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${incidentId}_${Date.now()}.${fileExt}`;
+      const fileExt = ext || 'jpg';
+      const fileName = `${incidentId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
       const filePath = `${incidentId}/${fileName}`;
 
       // Subir archivo a Supabase Storage
       // Nota: Necesitas crear un bucket llamado 'evidencias' en Supabase
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('evidencias')
-        .upload(filePath, file, {
+        .upload(filePath, uploadFile, {
           cacheControl: '3600',
           upsert: false,
           contentType: normalizedMime,
@@ -61,7 +62,7 @@ export const evidenceService = {
         p_ruta_archivo: filePath,
         p_nombre_original: file.name,
         p_nombre_archivo: fileName,
-        p_tamano_bytes: file.size,
+        p_tamano_bytes: uploadFile.size,
         p_tipo_mime: normalizedMime,
         p_id_usuario_subida: userId
       });

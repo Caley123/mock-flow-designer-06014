@@ -55,6 +55,9 @@ export const RegisterIncident = () => {
   >('loading');
   const [faultsError, setFaultsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
   const [searching, setSearching] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
@@ -233,15 +236,18 @@ export const RegisterIncident = () => {
     }
 
     setLoading(true);
+    setUploadProgress(null);
 
     try {
-      // 1. Crear la incidencia
-      const { incident, error } = await incidentsService.create({
-        studentId: selectedStudent.id,
-        faultTypeId: parseInt(selectedFault, 10),
-        registeredBy: currentUser.id,
-        observations: observations.trim() || undefined,
-      });
+      const { incident, error } = await incidentsService.create(
+        {
+          studentId: selectedStudent.id,
+          faultTypeId: parseInt(selectedFault, 10),
+          registeredBy: currentUser.id,
+          observations: observations.trim() || undefined,
+        },
+        { minimal: true },
+      );
 
       if (!isMountedRef.current) return;
 
@@ -251,17 +257,24 @@ export const RegisterIncident = () => {
         return;
       }
 
-      // 2. Subir evidencias fotográficas si existen
       if (evidenceFiles.length > 0) {
-        const uploadPromises = evidenceFiles.map(file =>
-          evidenceService.upload(incident.id, file, currentUser.id)
+        setUploadProgress({ current: 0, total: evidenceFiles.length });
+        let uploaded = 0;
+
+        const results = await Promise.all(
+          evidenceFiles.map(async (file) => {
+            const result = await evidenceService.upload(incident.id, file, currentUser.id);
+            uploaded += 1;
+            if (isMountedRef.current) {
+              setUploadProgress({ current: uploaded, total: evidenceFiles.length });
+            }
+            return result;
+          }),
         );
-        
-        const results = await Promise.all(uploadPromises);
-        
+
         if (!isMountedRef.current) return;
-        
-        const errors = results.filter(r => r.error);
+
+        const errors = results.filter((r) => r.error);
         
         if (errors.length > 0) {
           staffNotify.warning('Guardado con advertencia', `${errors.length} de ${evidenceFiles.length} fotos no se subieron`);
@@ -299,6 +312,7 @@ export const RegisterIncident = () => {
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
+        setUploadProgress(null);
       }
     }
   };
@@ -659,7 +673,9 @@ export const RegisterIncident = () => {
                   {loading ? (
                     <span className="flex items-center">
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Guardando...
+                      {uploadProgress
+                        ? `Subiendo fotos (${uploadProgress.current}/${uploadProgress.total})…`
+                        : 'Guardando incidencia…'}
                     </span>
                   ) : (
                     <span className="flex items-center">

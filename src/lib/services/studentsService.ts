@@ -106,7 +106,7 @@ export const studentsService = {
   },
 
   async searchByName(query: string, limit: number = 10): Promise<{ students: Student[]; error: string | null }> {
-    const trimmed = query.trim();
+    const trimmed = query.trim().replace(/\s+/g, ' ');
     if (trimmed.length < 2) {
       return { students: [], error: null };
     }

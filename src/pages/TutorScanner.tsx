@@ -66,6 +66,8 @@ export const TutorScanner = () => {
   const [nameSearch, setNameSearch] = useState('');
   const [nameSearchResults, setNameSearchResults] = useState<Student[]>([]);
   const [nameSearching, setNameSearching] = useState(false);
+  const [nameSearchError, setNameSearchError] = useState<string | null>(null);
+  const [nameSearchEmpty, setNameSearchEmpty] = useState(false);
   const [lookupPending, setLookupPending] = useState(false);
   const [scanAnnouncement, setScanAnnouncement] = useState('');
   const [student, setStudent] = useState<Student | null>(null);
@@ -156,18 +158,29 @@ export const TutorScanner = () => {
     if (nameSearch.trim().length < 2) {
       setNameSearchResults([]);
       setNameSearching(false);
+      setNameSearchError(null);
+      setNameSearchEmpty(false);
       return;
     }
 
     let cancelled = false;
     setNameSearching(true);
+    setNameSearchError(null);
+    setNameSearchEmpty(false);
 
     const timeoutId = window.setTimeout(async () => {
-      const { students, error } = await studentsService.searchByName(nameSearch.trim(), 8);
+      const { students, error } = await studentsService.searchByName(nameSearch.trim(), 12);
       if (cancelled || !isMountedRef.current) return;
-      if (!error) setNameSearchResults(students);
+      if (error) {
+        setNameSearchResults([]);
+        setNameSearchError(error);
+        setNameSearchEmpty(false);
+      } else {
+        setNameSearchResults(students);
+        setNameSearchEmpty(students.length === 0);
+      }
       setNameSearching(false);
-    }, 300);
+    }, 280);
 
     return () => {
       cancelled = true;
@@ -575,17 +588,26 @@ export const TutorScanner = () => {
   const handleNameSearchSelect = async (selected: Student) => {
     setNameSearch('');
     setNameSearchResults([]);
+    setNameSearchError(null);
+    setNameSearchEmpty(false);
     const scanSeq = ++latestProfileScanRef.current;
 
     let studentToRegister = selected;
-    if (selected.barcode?.trim()) {
-      setLookupBusy(true);
-      try {
+    setLookupBusy(true);
+    try {
+      if (selected.barcode?.trim()) {
         const full = await resolveStudentByBarcode(selected.barcode.trim());
         if (full) studentToRegister = full;
-      } finally {
-        setLookupBusy(false);
+      } else {
+        const { student, error } = await studentsService.getById(selected.id);
+        if (student) {
+          studentToRegister = student;
+        } else if (error) {
+          toast.error(error);
+        }
       }
+    } finally {
+      setLookupBusy(false);
     }
 
     processStudent(studentToRegister, scanSeq);
@@ -900,8 +922,16 @@ export const TutorScanner = () => {
                       )}
                     </div>
                     <p id="name-search-hint" className="text-xs text-muted-foreground">
-                      Seleccione un resultado para registrar la llegada sin escanear.
+                      Escriba nombre, apellido o DNI. Puede usar varias palabras en cualquier orden.
                     </p>
+                    {nameSearchError && (
+                      <p className="text-xs text-destructive" role="alert">
+                        {nameSearchError}
+                      </p>
+                    )}
+                    {nameSearchEmpty && !nameSearching && (
+                      <p className="text-xs text-muted-foreground">No se encontraron estudiantes activos.</p>
+                    )}
                     {nameSearchResults.length > 0 && (
                       <div
                         id="name-search-results"
@@ -1018,7 +1048,6 @@ export const TutorScanner = () => {
                           {studentSchedule.phaseLabel}
                         </Badge>
                       </div>
-                      <p className="tutor-schedule__summary">{studentSchedule.summary}</p>
                       {!studentSchedule.shouldBeAtSchool &&
                         studentSchedule.phase === 'after_school' &&
                         nowHHMM >= schoolCloseTime && (

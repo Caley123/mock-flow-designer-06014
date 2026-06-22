@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Eye, Edit, FileX, Camera, FileSpreadsheet, FileText, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
+import { Search, Eye, Edit, Printer, Camera, FileSpreadsheet, FileText, AlertCircle, CheckCircle2, Sparkles, Loader2 } from 'lucide-react';
 import {
   StaffKpiStat,
   StaffToolbar,
@@ -33,13 +33,16 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
 import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { PageLoader } from '@/components/ui/page-loader';
+import { exportIncidentReportPdf } from '@/lib/utils/exportIncidentReportPdf';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Incident, EducationalLevel } from '@/types';
+import { Incident, EducationalLevel, IncidentEvidence } from '@/types';
 import { toast } from 'sonner';
-import { useIncidentsQuery } from '@/hooks/queries/useIncidentsQuery';
+import { useIncidentsQuery, useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import { incidentsService, evidenceService, authService } from '@/lib/services';
 import {
   Pagination,
   PaginationContent,
@@ -66,8 +69,20 @@ function matchesIncidentSearch(incident: Incident, term: string): boolean {
 export const IncidentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
+  const [detailEvidences, setDetailEvidences] = useState<IncidentEvidence[]>([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+
+  const [justifyOpen, setJustifyOpen] = useState(false);
+  const [justifyIncident, setJustifyIncident] = useState<Incident | null>(null);
+  const [justificationReason, setJustificationReason] = useState('');
+  const [justifying, setJustifying] = useState(false);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+
+  const invalidateIncidents = useInvalidateIncidents();
 
   const headerSpring = useSpring({
     from: { opacity: 0, transform: 'translateY(-16px)' },
@@ -107,6 +122,90 @@ export const IncidentsList = () => {
       toast.error('Error al cargar incidencias');
     }
   }, [isError]);
+
+  useEffect(() => {
+    if (!detailOpen || !detailIncident) {
+      setDetailEvidences([]);
+      return;
+    }
+
+    let cancelled = false;
+    setEvidenceLoading(true);
+
+    void evidenceService.getByIncident(detailIncident.id).then(({ evidences, error }) => {
+      if (cancelled) return;
+      if (error) {
+        toast.error('No se pudieron cargar las fotos de evidencia');
+      }
+      setDetailEvidences(evidences);
+      setEvidenceLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailOpen, detailIncident]);
+
+  const openDetail = (incident: Incident) => {
+    setDetailIncident(incident);
+    setDetailOpen(true);
+  };
+
+  const openJustify = (incident: Incident) => {
+    setJustifyIncident(incident);
+    setJustificationReason('');
+    setJustifyOpen(true);
+  };
+
+  const handlePrintPdf = async (incident: Incident) => {
+    setPrintingId(incident.id);
+    try {
+      toast.loading('Generando PDF con evidencias…', { id: 'incident-pdf' });
+
+      let evidences: IncidentEvidence[] =
+        detailIncident?.id === incident.id && !evidenceLoading ? detailEvidences : [];
+
+      if (detailIncident?.id !== incident.id || evidenceLoading) {
+        const result = await evidenceService.getByIncident(incident.id);
+        if (result.error) {
+          toast.warning('Algunas fotos podrían no incluirse en el PDF', { id: 'incident-pdf' });
+        }
+        evidences = result.evidences;
+      }
+
+      await exportIncidentReportPdf(incident, evidences);
+      await incidentsService.registerPrint(incident.id);
+      toast.success('PDF descargado correctamente', { id: 'incident-pdf' });
+    } catch (err) {
+      console.error(err);
+      toast.error('No se pudo generar el PDF', { id: 'incident-pdf' });
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
+  const handleJustify = async () => {
+    const user = authService.getCurrentUser();
+    if (!user || !justifyIncident) return;
+
+    setJustifying(true);
+    const { success, error } = await incidentsService.justify(
+      justifyIncident.id,
+      user.id,
+      justificationReason.trim(),
+    );
+    setJustifying(false);
+
+    if (!success) {
+      toast.error(error || 'No se pudo justificar la incidencia');
+      return;
+    }
+
+    toast.success('Incidencia justificada');
+    setJustifyOpen(false);
+    setJustifyIncident(null);
+    invalidateIncidents();
+  };
 
   const filteredIncidents = useMemo(
     () => incidents.filter((incident) => matchesIncidentSearch(incident, searchTerm)),
@@ -328,105 +427,46 @@ export const IncidentsList = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className="hover:bg-primary/10 hover:text-primary"
-                                onClick={() => setSelectedIncident(incident)}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                              <DialogHeader>
-                                <DialogTitle>Detalle de Incidencia</DialogTitle>
-                              </DialogHeader>
-                              {selectedIncident && (
-                                <div className="space-y-6 animate-fade-in">
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">ID Incidencia</p>
-                                      <p className="font-mono font-semibold">{selectedIncident.id}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">Estado</p>
-                                      <Badge variant={selectedIncident.status === 'Activa' ? 'default' : 'secondary'}>
-                                        {selectedIncident.status}
-                                      </Badge>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">Estudiante</p>
-                                    <Card className="border-l-[3px] border-l-primary/50">
-                                      <CardContent className="pt-4">
-                                        <p className="font-semibold text-lg">{selectedIncident.student?.fullName || 'N/A'}</p>
-                                        <p className="text-muted-foreground">
-                                          {selectedIncident.student?.level} • {selectedIncident.student?.grade} {selectedIncident.student?.section} • 
-                                          Código: {selectedIncident.student?.barcode}
-                                        </p>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">Tipo de Falta</p>
-                                    <Card className="border-l-[3px] border-l-warning/50">
-                                      <CardContent className="pt-4 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                          <p className="font-semibold">{selectedIncident.faultType?.name || 'N/A'}</p>
-                                          {selectedIncident.faultType && (
-                                            <SeverityBadge severity={selectedIncident.faultType.severity} />
-                                          )}
-                                        </div>
-                                        <p className="text-sm text-muted-foreground">
-                                          {selectedIncident.faultType?.description || 'Sin descripción'}
-                                        </p>
-                                        <div className="flex gap-4 text-sm">
-                                          <span>Categoría: {selectedIncident.faultType?.category}</span>
-                                          <span>Puntos: {selectedIncident.faultType?.points}</span>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">Nivel de Reincidencia</p>
-                                    <ReincidenceBadge level={selectedIncident.reincidenceLevel} className="px-4 py-2" />
-                                  </div>
-
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">Observaciones</p>
-                                    <Card className="border-l-[3px] border-l-accent/50">
-                                      <CardContent className="pt-4">
-                                        <p>{selectedIncident.observations || 'Sin observaciones'}</p>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">Información de Registro</p>
-                                    <div className="text-sm space-y-1">
-                                      <p>Registrado por: <span className="font-semibold">
-                                        {selectedIncident.registeredByUser?.fullName || 'N/A'}
-                                      </span></p>
-                                      <p>Fecha: <span className="font-semibold">
-                                        {format(new Date(selectedIncident.registeredAt), "dd 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
-                                      </span></p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                          <Button variant="ghost" size="sm" className="hover:bg-info/10 hover:text-info">
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="hover:bg-primary/10 hover:text-primary"
+                            onClick={() => openDetail(incident)}
+                            aria-label={`Ver incidencia ${incident.id}`}
+                            title="Ver detalle y fotos"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="hover:bg-info/10 hover:text-info disabled:opacity-40"
+                            onClick={() => openJustify(incident)}
+                            disabled={incident.status !== 'Activa'}
+                            aria-label={`Justificar incidencia ${incident.id}`}
+                            title={
+                              incident.status === 'Activa'
+                                ? 'Justificar incidencia'
+                                : 'Solo incidencias activas'
+                            }
+                          >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="hover:bg-destructive/10 hover:text-destructive">
-                            <FileX className="w-4 h-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="hover:bg-primary/10 hover:text-primary"
+                            onClick={() => void handlePrintPdf(incident)}
+                            disabled={printingId === incident.id}
+                            aria-label={`Imprimir PDF incidencia ${incident.id}`}
+                            title="Descargar PDF con evidencias"
+                          >
+                            {printingId === incident.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Printer className="w-4 h-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>
@@ -497,6 +537,206 @@ export const IncidentsList = () => {
           </div>
         </StaffDataPanel>
       </AnimatedDiv>
+
+      {/* Detalle + evidencias fotográficas */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalle de incidencia</DialogTitle>
+            <DialogDescription>
+              Información completa y fotos de evidencia adjuntas
+            </DialogDescription>
+          </DialogHeader>
+          {detailIncident && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">ID</p>
+                  <p className="font-mono font-semibold">{detailIncident.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Estado</p>
+                  <Badge variant={detailIncident.status === 'Activa' ? 'default' : 'secondary'}>
+                    {detailIncident.status}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Estudiante</p>
+                <Card className="border-l-[3px] border-l-primary/50">
+                  <CardContent className="pt-4">
+                    <p className="font-semibold text-lg">{detailIncident.student?.fullName || 'N/A'}</p>
+                    <p className="text-muted-foreground text-sm">
+                      {detailIncident.student?.level} • {detailIncident.student?.grade}{' '}
+                      {detailIncident.student?.section} • Código: {detailIncident.student?.barcode}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Tipo de falta</p>
+                <Card className="border-l-[3px] border-l-warning/50">
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold">{detailIncident.faultType?.name || 'N/A'}</p>
+                      {detailIncident.faultType && (
+                        <SeverityBadge severity={detailIncident.faultType.severity} />
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {detailIncident.faultType?.description || 'Sin descripción'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Nivel de reincidencia</p>
+                <ReincidenceBadge level={detailIncident.reincidenceLevel} className="px-4 py-2" />
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Observaciones</p>
+                <Card className="border-l-[3px] border-l-accent/50">
+                  <CardContent className="pt-4">
+                    <p>{detailIncident.observations || 'Sin observaciones'}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                  <Camera className="w-4 h-4" />
+                  Evidencia fotográfica
+                  {detailIncident.hasEvidence && (
+                    <Badge variant="secondary">{detailIncident.evidenceCount} foto(s)</Badge>
+                  )}
+                </p>
+                {evidenceLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Cargando fotos…
+                  </div>
+                ) : detailEvidences.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">Sin fotos adjuntas</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {detailEvidences.map((ev) => (
+                      <a
+                        key={ev.id}
+                        href={ev.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary/40 transition-shadow"
+                      >
+                        <img
+                          src={ev.url}
+                          alt={ev.filename}
+                          className="w-full h-32 object-cover bg-muted"
+                          loading="lazy"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="text-sm space-y-1">
+                <p>
+                  Registrado por:{' '}
+                  <span className="font-semibold">
+                    {detailIncident.registeredByUser?.fullName || 'N/A'}
+                  </span>
+                </p>
+                <p>
+                  Fecha:{' '}
+                  <span className="font-semibold">
+                    {format(
+                      new Date(detailIncident.registeredAt),
+                      "dd 'de' MMMM 'de' yyyy 'a las' HH:mm",
+                      { locale: es },
+                    )}
+                  </span>
+                </p>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  onClick={() => void handlePrintPdf(detailIncident)}
+                  disabled={printingId === detailIncident.id}
+                >
+                  {printingId === detailIncident.id ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generando PDF…
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="w-4 h-4 mr-2" />
+                      Imprimir PDF
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Justificar */}
+      <Dialog open={justifyOpen} onOpenChange={setJustifyOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Justificar incidencia</DialogTitle>
+            <DialogDescription>
+              La incidencia pasará a estado Justificada. Mínimo 10 caracteres.
+            </DialogDescription>
+          </DialogHeader>
+          {justifyIncident && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted p-3 text-sm space-y-1">
+                <p className="font-semibold">{justifyIncident.student?.fullName}</p>
+                <p className="text-muted-foreground">{justifyIncident.faultType?.name}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="justify-reason-list">Motivo de justificación</Label>
+                <Textarea
+                  id="justify-reason-list"
+                  value={justificationReason}
+                  onChange={(e) => setJustificationReason(e.target.value)}
+                  rows={4}
+                  placeholder="Ej.: certificado médico presentado por el apoderado…"
+                  className="resize-none"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJustifyOpen(false)} disabled={justifying}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void handleJustify()}
+              disabled={justifying || justificationReason.trim().length < 10}
+            >
+              {justifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Guardando…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Justificar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
