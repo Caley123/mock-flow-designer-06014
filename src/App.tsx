@@ -43,8 +43,8 @@ const queryClient = new QueryClient({
       retry: 1,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      staleTime: 3 * 60 * 1000,
-      gcTime: 15 * 60 * 1000,
+      staleTime: 5 * 60 * 1000,   // 5 min: datos frescos mientras navegas
+      gcTime: 20 * 60 * 1000,     // 20 min en caché sin usar
     },
   },
 });

@@ -20,4 +20,12 @@ export const queryKeys = {
     list: (filters: { search?: string; level?: EducationalLevel }) =>
       [...queryKeys.students.all, 'list', filters] as const,
   },
+  reports: {
+    all: (filters: {
+      bimestre?: number;
+      añoEscolar: number;
+      level?: EducationalLevel;
+      grade?: string;
+    }) => ['reports', filters] as const,
+  },
 } as const;

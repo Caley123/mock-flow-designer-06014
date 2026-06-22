@@ -47,7 +47,8 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/exceljs/')) return 'report-excel';
           if (id.includes('/jspdf')) return 'report-pdf';
 
-          // No aislar recharts en chunk propio: rompe el orden de init (TDZ en producción).
+          // No aislar recharts: rompe init order (TDZ). Supabase SÍ es seguro separar.
+          if (id.includes('/@supabase/')) return 'supabase-vendor';
 
           // GSAP: animaciones del portal de padres/login
           if (id.includes('/gsap/') || id.includes('/@gsap/')) return 'gsap-vendor';

@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,106 +40,61 @@ export const Reports = () => {
   const [severityFilter, setSeverityFilter] = useState<'all' | 'moderate' | 'critical'>('all');
   const [bimestre, setBimestre] = useState<Bimestre | 'all'>('all');
   const [añoEscolar, setAñoEscolar] = useState<number>(getCurrentSchoolYear());
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [monthlyTrend, setMonthlyTrend] = useState<{ month: string; incidents: number }[]>([]);
-  const [weeklyData, setWeeklyData] = useState<{ day: string; count: number }[]>([]);
-  const [comparisonByGrade, setComparisonByGrade] = useState<Array<{
-    grade: string;
-    level: EducationalLevel;
-    label: string;
-    totalIncidents: number;
-    studentsWithIncidents: number;
-    averageReincidence: number;
-    levelDistribution: {
-      level0: number;
-      level1: number;
-      level2: number;
-      level3: number;
-      level4: number;
-    };
-  }>>([]);
-  const [comparisonBySection, setComparisonBySection] = useState<Array<{
-    section: string;
-    grade: string;
-    level: EducationalLevel;
-    label: string;
-    totalIncidents: number;
-    studentsWithIncidents: number;
-    averageReincidence: number;
-  }>>([]);
 
-  useEffect(() => {
-    loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bimestre, añoEscolar, selectedLevel, selectedGrade]);
+  // Filtros derivados memoizados — la clave de caché cambia solo cuando cambian los filtros
+  const reportFilters = useMemo(() => ({
+    bimestre: bimestre !== 'all' ? (bimestre as number) : undefined,
+    añoEscolar,
+    level: selectedLevel === 'all' ? undefined : (selectedLevel as EducationalLevel),
+    grade: selectedGrade === 'all' ? undefined : selectedGrade,
+  }), [bimestre, añoEscolar, selectedLevel, selectedGrade]);
 
-  const loadStats = async () => {
-    setLoading(true);
-    const filters: any = {};
-    
-    if (bimestre !== 'all') {
-      filters.bimestre = bimestre;
-      filters.añoEscolar = añoEscolar;
-    }
-    
-    // Cargar estadísticas, tendencia mensual, datos semanales y comparativos en paralelo
-    const [statsResult, trendResult, weeklyResult, gradeComparisonResult, sectionComparisonResult] = await Promise.all([
-      dashboardService.getDashboardStats(filters),
-      dashboardService.getMonthlyTrend(
-        añoEscolar,
-        selectedLevel === 'all' ? undefined : selectedLevel,
-        selectedGrade === 'all' ? undefined : selectedGrade
-      ),
-      dashboardService.getWeeklyData(
-        selectedLevel === 'all' ? undefined : selectedLevel,
-        selectedGrade === 'all' ? undefined : selectedGrade
-      ),
-      dashboardService.getComparisonByGrade({
-        level: selectedLevel === 'all' ? undefined : selectedLevel,
-        bimestre: bimestre !== 'all' ? bimestre : undefined,
-        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
-      }),
-      dashboardService.getComparisonBySection({
-        level: selectedLevel === 'all' ? undefined : selectedLevel,
-        grade: selectedGrade === 'all' ? undefined : selectedGrade,
-        bimestre: bimestre !== 'all' ? bimestre : undefined,
-        añoEscolar: bimestre !== 'all' ? añoEscolar : undefined,
-      })
-    ]);
-    
-    if (statsResult.error) {
-      toast.error('Error al cargar estadísticas');
-    } else if (statsResult.stats) {
-      setStats(statsResult.stats);
-    }
-    
-    if (trendResult.error) {
-      console.error('Error al cargar tendencia mensual:', trendResult.error);
-    } else {
-      setMonthlyTrend(trendResult.monthlyTrend);
-    }
-    
-    if (weeklyResult.error) {
-      console.error('Error al cargar datos semanales:', weeklyResult.error);
-    } else {
-      setWeeklyData(weeklyResult.weeklyData);
-    }
-    
-    if (gradeComparisonResult.error) {
-      console.error('Error al cargar comparación por grado:', gradeComparisonResult.error);
-    } else {
-      setComparisonByGrade(gradeComparisonResult.comparison);
-    }
-    
-    if (sectionComparisonResult.error) {
-      console.error('Error al cargar comparación por sección:', sectionComparisonResult.error);
-    } else {
-      setComparisonBySection(sectionComparisonResult.comparison);
-    }
-    
-    setLoading(false);
-  };
+  const { data: reportsData, isLoading, isFetching, refetch } = useQuery({
+    queryKey: queryKeys.reports.all(reportFilters),
+    queryFn: async () => {
+      const statsFilters: { bimestre?: number; añoEscolar?: number } = {};
+      if (reportFilters.bimestre) {
+        statsFilters.bimestre = reportFilters.bimestre;
+        statsFilters.añoEscolar = reportFilters.añoEscolar;
+      }
+
+      const [statsResult, trendResult, weeklyResult, gradeResult, sectionResult] = await Promise.all([
+        dashboardService.getDashboardStats(statsFilters),
+        dashboardService.getMonthlyTrend(reportFilters.añoEscolar, reportFilters.level, reportFilters.grade),
+        dashboardService.getWeeklyData(reportFilters.level, reportFilters.grade),
+        dashboardService.getComparisonByGrade({
+          level: reportFilters.level,
+          bimestre: reportFilters.bimestre,
+          añoEscolar: reportFilters.bimestre ? reportFilters.añoEscolar : undefined,
+        }),
+        dashboardService.getComparisonBySection({
+          level: reportFilters.level,
+          grade: reportFilters.grade,
+          bimestre: reportFilters.bimestre,
+          añoEscolar: reportFilters.bimestre ? reportFilters.añoEscolar : undefined,
+        }),
+      ]);
+
+      if (statsResult.error) toast.error('Error al cargar estadísticas');
+
+      return {
+        stats: statsResult.stats,
+        monthlyTrend: trendResult.monthlyTrend ?? [],
+        weeklyData: weeklyResult.weeklyData ?? [],
+        comparisonByGrade: gradeResult.comparison ?? [],
+        comparisonBySection: sectionResult.comparison ?? [],
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+
+  const stats: DashboardStats | null = reportsData?.stats ?? null;
+  const monthlyTrend = reportsData?.monthlyTrend ?? [];
+  const weeklyData = reportsData?.weeklyData ?? [];
+  const comparisonByGrade = reportsData?.comparisonByGrade ?? [];
+  const comparisonBySection = reportsData?.comparisonBySection ?? [];
+  const loading = isLoading && !reportsData;
 
   const exportToPDF = async () => {
     if (!stats) {
@@ -369,9 +326,9 @@ export const Reports = () => {
         description="Ajuste el alcance del análisis y exporte"
         footer={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={loadStats} variant="outline" size="sm">
+            <Button onClick={() => refetch()} variant="outline" size="sm" disabled={isFetching}>
               <Calendar className="mr-2 h-4 w-4" />
-              Actualizar
+              {isFetching ? 'Cargando…' : 'Actualizar'}
             </Button>
             <Button onClick={exportToPDF} disabled={!stats} variant="outline" size="sm">
               <FileDown className="mr-2 h-4 w-4" />
