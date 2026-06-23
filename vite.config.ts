@@ -35,7 +35,8 @@ export default defineConfig(({ mode }) => ({
           (dep) =>
             !dep.includes('report-excel') &&
             !dep.includes('report-pdf') &&
-            !dep.includes('spring-vendor')
+            !dep.includes('spring-vendor') &&
+            !dep.includes('gsap-vendor')
         );
       },
     },

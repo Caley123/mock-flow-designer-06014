@@ -1,7 +1,7 @@
 import { type RefObject } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { motionDuration } from '@/lib/gsap/setup';
+import { motionDuration } from '@/lib/utils/motionPrefs';
 import { shouldSkipHeavyAnimations } from '@/lib/utils/deviceCompat';
 
 const VISIBLE_SEL =

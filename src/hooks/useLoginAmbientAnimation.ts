@@ -1,7 +1,7 @@
 import { type RefObject } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { prefersReducedMotion } from '@/lib/gsap/setup';
+import { prefersReducedMotion } from '@/lib/utils/motionPrefs';
 import { shouldSkipHeavyAnimations } from '@/lib/utils/deviceCompat';
 
 const BEAM_SEL = '[data-login-visual-beam], [data-login-visual-beam-core], [data-login-visual-beam-glow]';

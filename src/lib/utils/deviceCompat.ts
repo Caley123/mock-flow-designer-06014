@@ -1,4 +1,4 @@
-import { prefersReducedMotion } from '@/lib/gsap/setup';
+import { prefersReducedMotion } from '@/lib/utils/motionPrefs';
 
 /** WebView / navegador sin sintaxis moderna que Vite podría emitir. */
 export function isLegacyWebView(): boolean {
@@ -18,7 +18,14 @@ export function isLegacyWebView(): boolean {
   return false;
 }
 
-/** Tablet o móvil táctil (colegio): priorizar estabilidad sobre animaciones. */
+/** Tablet Android (UA sin "Mobile"). */
+export function isAndroidTablet(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /Android/i.test(ua) && !/Mobile/i.test(ua);
+}
+
+/** Tablet o móvil táctil. */
 export function isCoarseTouchDevice(): boolean {
   if (typeof window === 'undefined') return false;
   return (
@@ -27,9 +34,24 @@ export function isCoarseTouchDevice(): boolean {
   );
 }
 
+/** Tablets del colegio (incluye Android sin "Mobile" en el UA). */
+export function isLikelySchoolTablet(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPad/i.test(ua)) return true;
+  if (isAndroidTablet()) return true;
+  if ('ontouchstart' in window && window.matchMedia('(max-width: 1366px)').matches) return true;
+  return isCoarseTouchDevice();
+}
+
+/** Login sin GSAP — evita pantalla blanca si falla gsap-vendor. */
+export function shouldUseLiteLogin(): boolean {
+  return prefersReducedMotion() || isLegacyWebView() || isLikelySchoolTablet();
+}
+
 /** Omitir GSAP / efectos pesados en login y pantallas críticas. */
 export function shouldSkipHeavyAnimations(): boolean {
-  return prefersReducedMotion() || isLegacyWebView() || isCoarseTouchDevice();
+  return shouldUseLiteLogin();
 }
 
 /** Precarga chunks de rutas críticas (escáner tutor). */

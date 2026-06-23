@@ -465,6 +465,34 @@
     pointer-events: none;
   }
 
+  /* Login lite — tablets: formulario visible, fondo oscuro, sin GSAP */
+  .login-page--lite {
+    @apply grid-cols-1;
+  }
+
+  .login-panel--lite {
+    @apply min-h-screen min-h-[100dvh] items-stretch p-4 sm:p-6;
+  }
+
+  .login-panel__inner--lite {
+    @apply mx-auto flex w-full max-w-md flex-col justify-center gap-6 py-6;
+  }
+
+  .login-lite-brand {
+    @apply flex flex-col items-center gap-2 text-center;
+  }
+
+  .login-lite-brand__tag {
+    @apply text-xs text-muted-foreground;
+    color: hsl(var(--login-muted));
+  }
+
+  .login-page--lite .login-form-card {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
   .login-iris-reveal {
     position: fixed;
     inset: 0;
