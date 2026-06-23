@@ -42,99 +42,126 @@ function lastNDaysLima(n: number): string[] {
   return Array.from({ length: n }, (_, i) => formatDateKeyLima(subDays(anchor, i)));
 }
 
-function formatShortDay(iso: string): string {
+function formatWeekdayShort(iso: string): string {
   try {
-    return format(parseISO(iso), "EEE d MMM", { locale: es });
+    return format(parseISO(iso), 'EEE', { locale: es }).replace('.', '');
   } catch {
-    return iso;
+    return '';
   }
 }
 
-/* ── Historial legible: día, estado y hora ─────────────────── */
-function AttendanceHistory({ arrivals }: { arrivals: ArrivalRecord[] }) {
-  const days = lastNDaysLima(14);
+function formatDayNumber(iso: string): string {
+  try {
+    return format(parseISO(iso), 'd', { locale: es });
+  } catch {
+    return iso.slice(-2);
+  }
+}
+
+/** 14 días del más antiguo al más reciente (izq → der, fila por semana). */
+function last14DaysOldestFirst(): string[] {
+  return [...lastNDaysLima(14)].reverse();
+}
+
+/* ── Calendario tipo agenda: día, asistió sí/no, hora ───────── */
+function AttendanceAgendaCalendar({ arrivals }: { arrivals: ArrivalRecord[] }) {
+  const days = last14DaysOldestFirst();
+  const weeks = [days.slice(0, 7), days.slice(7, 14)];
   const byDate = new Map(arrivals.map((a) => [a.date, a]));
   const today = getLimaTodayDate();
+  const rangeLabel = days.length
+    ? `${format(parseISO(days[0]), 'd MMM', { locale: es })} – ${format(parseISO(days[days.length - 1]), "d MMM yyyy", { locale: es })}`
+    : '';
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">
-        Historial de llegadas
-      </p>
-      <p className="text-[11px] text-slate-500 mb-4">Últimos 14 días — fecha, estado y hora</p>
+      <div className="mb-4 flex items-end justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Agenda de asistencia
+          </p>
+          <p className="mt-0.5 text-sm font-medium capitalize text-slate-300">{rangeLabel}</p>
+        </div>
+        <Calendar className="h-5 w-5 shrink-0 text-slate-500" aria-hidden />
+      </div>
 
-      <ul className="space-y-2" aria-label="Asistencia de los últimos 14 días">
-        {days.map((day) => {
-          const rec = byDate.get(day);
-          const isToday = day === today;
-          const onTime = rec?.status === 'A tiempo';
-          const late = rec?.status === 'Tarde';
+      <div className="space-y-3" role="grid" aria-label="Calendario de asistencia últimas dos semanas">
+        {weeks.map((week, wi) => (
+          <div key={wi} role="row" className="grid grid-cols-7 gap-1.5 sm:gap-2">
+            {week.map((day) => {
+              const rec = byDate.get(day);
+              const isToday = day === today;
+              const onTime = rec?.status === 'A tiempo';
+              const late = rec?.status === 'Tarde';
+              const aria = rec
+                ? `${formatDate(day)}: asistió, ${rec.status}, llegada ${parseTime(rec.arrivalTime)}`
+                : `${formatDate(day)}: sin registro de asistencia`;
 
-          return (
-            <li
-              key={day}
-              className={cn(
-                'flex items-center gap-3 rounded-xl border px-3 py-2.5',
-                isToday ? 'border-white/20 bg-slate-800/80' : 'border-slate-800 bg-slate-900/50',
-                rec && onTime && 'border-emerald-500/25 bg-emerald-500/5',
-                rec && late && 'border-amber-500/25 bg-amber-500/5'
-              )}
-            >
-              <div className="min-w-[5.5rem] shrink-0">
-                <p className={cn('text-sm font-semibold capitalize leading-tight', isToday ? 'text-white' : 'text-slate-200')}>
-                  {formatShortDay(day)}
-                </p>
-                {isToday && (
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-primary/90">Hoy</span>
-                )}
-              </div>
-
-              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:justify-between">
-                {rec ? (
-                  <>
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                        onTime
-                          ? 'bg-emerald-500/15 text-emerald-400'
-                          : 'bg-amber-500/15 text-amber-400'
-                      )}
-                    >
-                      {onTime ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      ) : (
-                        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      )}
-                      {rec.status}
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-white">
-                      {parseTime(rec.arrivalTime)}
-                    </span>
-                  </>
-                ) : (
-                  <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500">
-                    <MinusCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    Sin registro
+              return (
+                <div
+                  key={day}
+                  role="gridcell"
+                  aria-label={aria}
+                  className={cn(
+                    'flex min-h-[5.25rem] flex-col items-center justify-center rounded-xl border px-1 py-2 text-center',
+                    isToday && 'ring-2 ring-primary/60 ring-offset-1 ring-offset-slate-900',
+                    !rec && 'border-slate-800 bg-slate-900/40',
+                    rec && onTime && 'border-emerald-500/35 bg-emerald-500/10',
+                    rec && late && 'border-amber-500/35 bg-amber-500/10'
+                  )}
+                >
+                  <span className="text-[9px] font-medium uppercase leading-none text-slate-500">
+                    {formatWeekdayShort(day)}
                   </span>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                  <span
+                    className={cn(
+                      'mt-0.5 text-base font-bold leading-none',
+                      isToday ? 'text-primary' : 'text-slate-200'
+                    )}
+                  >
+                    {formatDayNumber(day)}
+                  </span>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                  {rec ? (
+                    <>
+                      <span className="mt-1.5 text-[11px] font-bold leading-tight tabular-nums text-white">
+                        {parseTime(rec.arrivalTime)}
+                      </span>
+                      <span
+                        className={cn(
+                          'mt-0.5 text-[8px] font-semibold uppercase leading-tight',
+                          onTime ? 'text-emerald-400' : 'text-amber-400'
+                        )}
+                      >
+                        {onTime ? 'A tiempo' : 'Tarde'}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="mt-2 text-[9px] leading-tight text-slate-600">Sin registro</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-center text-[10px] text-slate-500">
+        Cada casilla muestra el día, la hora de llegada y si fue a tiempo o tarde.
+      </p>
+
+      <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[10px] text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-          A tiempo — llegó dentro del horario
+          <span className="inline-block h-2.5 w-2.5 rounded border border-emerald-500/40 bg-emerald-500/15" />
+          Asistió a tiempo
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
-          Tarde — después del horario
+          <span className="inline-block h-2.5 w-2.5 rounded border border-amber-500/40 bg-amber-500/15" />
+          Llegó tarde
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-slate-600" />
-          Sin registro ese día
+          <span className="inline-block h-2.5 w-2.5 rounded border border-slate-700 bg-slate-900/40" />
+          No hay registro
         </span>
       </div>
     </div>
@@ -364,7 +391,7 @@ export function ArrivalView() {
 
         {/* ── Historial de asistencia ── */}
         <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-          <AttendanceHistory arrivals={recentArrivals} />
+          <AttendanceAgendaCalendar arrivals={recentArrivals} />
         </section>
 
         {/* ── Acceso al portal completo ── */}
