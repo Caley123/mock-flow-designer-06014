@@ -439,7 +439,9 @@ export const TutorScanner = () => {
             void whatsappService.notifyParentArrival(studentToShow, record).then((wa) => {
               if (!isMountedRef.current) return;
               if (!wa.ok && wa.error) {
-                toast.warning(`WhatsApp: ${wa.error}`, { duration: 2800 });
+                toast.warning(`WhatsApp: ${wa.error}`, { duration: 4500 });
+              } else if (wa.skipped) {
+                toast.info('WhatsApp: aviso ya enviado hace poco (sin reenvío)', { duration: 2200 });
               }
             });
           }

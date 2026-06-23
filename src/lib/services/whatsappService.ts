@@ -105,18 +105,40 @@ function openwaHeaders(): Record<string, string> {
   return headers;
 }
 
+function looksLikeHtmlResponse(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html') || t.includes('<title>sie asiscole');
+}
+
 function friendlyOpenwaError(detail: string, status?: number): string {
   const lower = detail.toLowerCase();
+  if (looksLikeHtmlResponse(detail)) {
+    return 'OpenWA no responde en la ruta configurada. En asiscole.com use VITE_OPENWA_API_URL=/api (no /sc-proxy).';
+  }
   if (
     status === 401 ||
     status === 403 ||
     lower.includes('unauthorized') ||
     lower.includes('api key')
   ) {
-    return 'API Key de OpenWA inválida. Configúrela en el dashboard (http://localhost:2886) y en VITE_OPENWA_API_KEY.';
+    return 'API Key de OpenWA inválida. Revísela en el dashboard OpenWA y en la configuración del servidor.';
   }
-  if (status === 404 || lower.includes('session')) {
-    return 'Sesión de OpenWA no encontrada. Revise VITE_OPENWA_SESSION_ID en .env.local.';
+  if (
+    status === 404 ||
+    lower.includes('session not found') ||
+    lower.includes('invalid session') ||
+    (lower.includes('session') && lower.includes('not found'))
+  ) {
+    return 'Sesión de WhatsApp no encontrada o desconectada. Mantenga el celular vinculado encendido y con internet; si hace falta, escanee el QR de nuevo en /openwa-dashboard.';
+  }
+  if (
+    lower.includes('not logged in') ||
+    lower.includes('disconnected') ||
+    lower.includes('not connected') ||
+    lower.includes('session closed') ||
+    lower.includes('phone not connected')
+  ) {
+    return 'WhatsApp desconectado: el celular vinculado debe estar encendido y con internet. Reinicie la sesión en el dashboard OpenWA si persiste.';
   }
   if (
     lower.includes('cert') ||
@@ -170,8 +192,11 @@ async function sendText(chatId: string, text: string): Promise<{ ok: boolean; er
       body: JSON.stringify({ chatId, text }),
     });
 
+    const raw = await response.text().catch(() => response.statusText);
     if (!response.ok) {
-      const raw = await response.text().catch(() => response.statusText);
+      return { ok: false, error: friendlyOpenwaError(raw, response.status) };
+    }
+    if (looksLikeHtmlResponse(raw)) {
       return { ok: false, error: friendlyOpenwaError(raw, response.status) };
     }
 
@@ -189,14 +214,19 @@ async function sendText(chatId: string, text: string): Promise<{ ok: boolean; er
 export async function notifyParentArrival(
   student: Student,
   record: ArrivalRecord
-): Promise<{ ok: boolean; error: string | null; chatId?: string }> {
+): Promise<{ ok: boolean; error: string | null; chatId?: string; skipped?: boolean }> {
   const phone = student.contactPhone?.trim() || student.emergencyPhone?.trim() || '';
   if (!phone) {
     return { ok: false, error: 'El estudiante no tiene teléfono de contacto' };
   }
 
   if (shouldSkipDuplicateNotify(student.id, record.date || '')) {
-    return { ok: true, error: null, chatId: toWhatsAppChatId(phone) || undefined };
+    return {
+      ok: true,
+      error: null,
+      skipped: true,
+      chatId: toWhatsAppChatId(phone) || undefined,
+    };
   }
 
   const chatId = toWhatsAppChatId(phone);

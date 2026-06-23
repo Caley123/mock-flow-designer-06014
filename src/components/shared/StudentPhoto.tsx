@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { User } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { resolveStudentProfilePhotoUrlAsync } from '@/lib/utils/profilePhoto';
+import {
+  isProfileStoragePath,
+  resolveStudentProfilePhotoUrl,
+  resolveStudentProfilePhotoUrlAsync,
+} from '@/lib/utils/profilePhoto';
 import { cn } from '@/lib/utils';
 
 interface StudentPhotoProps {
@@ -20,19 +24,32 @@ export const StudentPhoto = ({
   imageClassName,
   priority = 'low',
 }: StudentPhotoProps) => {
-  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
-  const [loading, setLoading] = useState(Boolean(src?.trim()));
+  /** URL pública resuelta al instante (sin round-trip a Storage). */
+  const syncUrl = useMemo(
+    () => (src?.trim() ? resolveStudentProfilePhotoUrl(src) : null),
+    [src],
+  );
+  const needsAsync = Boolean(src?.trim() && !syncUrl && isProfileStoragePath(src));
+  const [photoSrc, setPhotoSrc] = useState<string | null>(syncUrl);
+  const [loading, setLoading] = useState(needsAsync);
 
   useEffect(() => {
+    setPhotoSrc(syncUrl);
     if (!src?.trim()) {
-      setPhotoSrc(null);
+      setLoading(false);
+      return;
+    }
+    if (syncUrl) {
+      setLoading(false);
+      return;
+    }
+    if (!needsAsync) {
       setLoading(false);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-
     void resolveStudentProfilePhotoUrlAsync(src).then((url) => {
       if (cancelled) return;
       setPhotoSrc(url);
@@ -42,7 +59,7 @@ export const StudentPhoto = ({
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [src, syncUrl, needsAsync]);
 
   const initials = name
     .split(/\s+/)

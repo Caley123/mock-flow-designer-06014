@@ -427,7 +427,7 @@
     --color-login-placeholder: hsl(var(--login-placeholder));
     --color-pure-white: hsl(var(--primary-foreground));
 
-    @apply min-h-[100dvh] min-h-[100svh] grid lg:grid-cols-[1.05fr_0.95fr];
+    @apply min-h-screen min-h-[100dvh] min-h-[100svh] grid lg:grid-cols-[1.05fr_0.95fr];
     position: relative;
     isolation: isolate;
     overflow: hidden;
@@ -438,6 +438,31 @@
 
   .login-page--minimal {
     letter-spacing: -0.02em;
+  }
+
+  /* Tabletas: formulario visible aunque GSAP falle o tarde */
+  .login-page--no-motion [data-login-anim],
+  .login-page--no-motion [data-login-panel-split],
+  .login-page--no-motion [data-login-mobile-intro],
+  .login-page--no-motion [data-login-card],
+  .login-page--no-motion [data-login-field],
+  .login-page--no-motion [data-login-title],
+  .login-page--gsap-fallback [data-login-anim],
+  .login-page--gsap-fallback [data-login-panel-split],
+  .login-page--gsap-fallback [data-login-mobile-intro],
+  .login-page--gsap-fallback [data-login-card],
+  .login-page--gsap-fallback [data-login-field],
+  .login-page--gsap-fallback [data-login-title] {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+
+  .login-page--no-motion .login-iris-reveal,
+  .login-page--gsap-fallback .login-iris-reveal {
+    opacity: 0 !important;
+    pointer-events: none;
   }
 
   .login-iris-reveal {
@@ -2941,7 +2966,7 @@
     --tutor-silver: hsl(var(--login-muted));
     --tutor-accent: hsl(var(--primary));
 
-    @apply min-h-[100dvh] min-h-[100svh] flex flex-col;
+    @apply min-h-screen min-h-[100dvh] min-h-[100svh] flex flex-col;
     background-color: hsl(var(--background));
     font-family: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
     -webkit-overflow-scrolling: touch;

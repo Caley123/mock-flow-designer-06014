@@ -49,17 +49,26 @@ if [[ -f "${APP_DIR}/scripts/vps-deploy.sh" ]]; then
   chmod +x /opt/sie/deploy.sh
 fi
 
-# CSP en producción la envía Caddy (no dist/_headers). Parche media-src si falta.
+# CSP en producción la envía Caddy (no dist/_headers). Parches de compatibilidad.
 CADDY_FILE="/etc/caddy/Caddyfile"
 CSP_MEDIA="media-src 'self' blob: data:"
+CADDY_RELOAD=0
 if [[ -f "$CADDY_FILE" ]] && grep -q "Content-Security-Policy" "$CADDY_FILE"; then
-  if grep -q "Content-Security-Policy" "$CADDY_FILE" && ! grep -qF "$CSP_MEDIA" "$CADDY_FILE"; then
+  if ! grep -qF "$CSP_MEDIA" "$CADDY_FILE"; then
     sed -i "s/media-src 'none'/${CSP_MEDIA}/g" "$CADDY_FILE"
     sed -i "s/media-src \"none\"/${CSP_MEDIA}/g" "$CADDY_FILE"
     sed -i "s/\(img-src 'self' data: https: blob:;\)/\1 ${CSP_MEDIA};/g" "$CADDY_FILE"
+    CADDY_RELOAD=1
+  fi
+  if grep -q "require-trusted-types-for" "$CADDY_FILE"; then
+    sed -i "s/; require-trusted-types-for 'script'; trusted-types default goog#html//g" "$CADDY_FILE"
+    sed -i "s/require-trusted-types-for 'script'; trusted-types default goog#html; //g" "$CADDY_FILE"
+    CADDY_RELOAD=1
+  fi
+  if [[ "$CADDY_RELOAD" -eq 1 ]]; then
     if command -v caddy >/dev/null 2>&1; then
       caddy validate --config "$CADDY_FILE" && systemctl reload caddy
-      log "Caddy recargado (media-src actualizado en CSP)"
+      log "Caddy recargado (CSP actualizado para tablets)"
     else
       log "WARN: caddy no encontrado; actualice CSP en $CADDY_FILE manualmente"
     fi

@@ -2,6 +2,7 @@ import { type RefObject } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { prefersReducedMotion } from '@/lib/gsap/setup';
+import { shouldSkipHeavyAnimations } from '@/lib/utils/deviceCompat';
 
 const BEAM_SEL = '[data-login-visual-beam], [data-login-visual-beam-core], [data-login-visual-beam-glow]';
 const SWEEP = 1.15;
@@ -14,7 +15,7 @@ const SCAN_DELAY = 3.4;
 export function useLoginAmbientAnimation(scopeRef: RefObject<HTMLElement | null>) {
   useGSAP(
     (_, contextSafe) => {
-      if (prefersReducedMotion()) return;
+      if (prefersReducedMotion() || shouldSkipHeavyAnimations()) return;
 
       /* ── Loop de escaneo periódico (sin sacudidas) ──────────── */
       const sweepEnd = 0.35 + SWEEP;

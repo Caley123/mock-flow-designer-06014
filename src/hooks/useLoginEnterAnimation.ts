@@ -2,6 +2,16 @@ import { type RefObject } from 'react';
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { motionDuration } from '@/lib/gsap/setup';
+import { shouldSkipHeavyAnimations } from '@/lib/utils/deviceCompat';
+
+const VISIBLE_SEL =
+  '[data-login-anim], [data-login-panel-split], [data-login-mobile-intro], [data-login-card], [data-login-field], [data-login-title]';
+
+function revealLoginWithoutMotion(scope: HTMLElement | null): void {
+  scope?.classList.add('login-page--no-motion');
+  gsap.set(VISIBLE_SEL, { autoAlpha: 1, clearProps: 'transform,clipPath,filter' });
+  gsap.set('[data-login-iris]', { autoAlpha: 0, clearProps: 'clipPath' });
+}
 
 const BEAM_SEL = '[data-login-visual-beam], [data-login-visual-beam-core], [data-login-visual-beam-glow]';
 const SWEEP = 1.05;
@@ -10,10 +20,14 @@ const SWEEP = 1.05;
 export function useLoginEnterAnimation(scopeRef: RefObject<HTMLElement | null>) {
   useGSAP(
     () => {
+      if (shouldSkipHeavyAnimations()) {
+        revealLoginWithoutMotion(scopeRef.current);
+        return;
+      }
+
       const dur = motionDuration(0.5);
       if (dur === 0) {
-        gsap.set('[data-login-anim]', { autoAlpha: 1, clearProps: 'all' });
-        gsap.set('[data-login-iris]', { clipPath: 'circle(150% at 50% 50%)', autoAlpha: 0 });
+        revealLoginWithoutMotion(scopeRef.current);
         return;
       }
 
@@ -155,6 +169,8 @@ export function useLoginEnterAnimation(scopeRef: RefObject<HTMLElement | null>) 
         .to('[data-login-card-line]', { scaleX: 1, duration: 0.6, ease: 'power2.inOut' }, 0.52)
         .to('[data-login-title]', { y: 0, autoAlpha: 1, duration: 0.5, ease: 'power3.out' }, 0.56)
         .to('[data-login-field]', { y: 0, scale: 1, autoAlpha: 1, duration: 0.44, stagger: 0.07, ease: 'power3.out' }, 0.62);
+
+      scopeRef.current?.classList.add('login-page--gsap-ready');
     },
     { scope: scopeRef }
   );

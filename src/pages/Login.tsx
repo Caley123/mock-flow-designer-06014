@@ -16,6 +16,7 @@ import { LoginCinematicBackdrop } from '@/components/login/LoginCinematicBackdro
 import { useLoginEnterAnimation } from '@/hooks/useLoginEnterAnimation';
 import { useLoginAmbientAnimation } from '@/hooks/useLoginAmbientAnimation';
 import { BRAND_LOGIN_LOGO } from '@/config/brandAssets';
+import { shouldSkipHeavyAnimations } from '@/lib/utils/deviceCompat';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export const Login = () => {
   const { errorDialog, showAuthError, closeError } = useErrorDialog();
   const isMountedRef = useRef(true);
   const pageRef = useRef<HTMLDivElement>(null);
+  const skipMotion = shouldSkipHeavyAnimations();
   useLoginEnterAnimation(pageRef);
   useLoginAmbientAnimation(pageRef);
 
@@ -37,6 +39,18 @@ export const Login = () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  /* Si GSAP no termina (tablet lenta), forzar formulario visible tras 2.5 s */
+  useEffect(() => {
+    if (skipMotion) {
+      pageRef.current?.classList.add('login-page--no-motion');
+      return;
+    }
+    const fallback = window.setTimeout(() => {
+      pageRef.current?.classList.add('login-page--gsap-fallback');
+    }, 2500);
+    return () => window.clearTimeout(fallback);
+  }, [skipMotion]);
 
   useEffect(() => {
     if (searchParams.get('expired') !== 'true') return;
@@ -95,11 +109,14 @@ export const Login = () => {
   };
 
   return (
-    <div className="login-page login-page--minimal" ref={pageRef}>
+    <div
+      className={`login-page login-page--minimal${skipMotion ? ' login-page--no-motion' : ''}`}
+      ref={pageRef}
+    >
       <div className="login-iris-reveal" data-login-iris aria-hidden />
-      <LoginCinematicBackdrop />
+      {!skipMotion && <LoginCinematicBackdrop />}
 
-      <LoginHeroPanel />
+      {!skipMotion && <LoginHeroPanel />}
 
       <main id="main-content" className="login-panel" data-login-panel-split>
         <div className="login-panel__inner">

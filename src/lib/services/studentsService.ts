@@ -375,8 +375,8 @@ export const studentsService = {
       const normalizedMime =
         file.type === 'image/jpg' || (ext === 'jpg' && !file.type) ? 'image/jpeg' : file.type;
 
-      if (!normalizedMime.match(/^image\/(jpeg|png)$/)) {
-        return { url: null, error: 'Solo se permiten archivos JPG o PNG' };
+      if (!normalizedMime.match(/^image\/(jpeg|png|webp)$/)) {
+        return { url: null, error: 'Solo se permiten archivos JPG, PNG o WebP' };
       }
 
       if (file.size > 5242880) {
@@ -387,7 +387,7 @@ export const studentsService = {
       const filePath = `profile/${fileName}`;
 
       const { error: uploadError } = await supabase.storage.from('fotos-perfil').upload(filePath, file, {
-        cacheControl: '3600',
+        cacheControl: '31536000',
         upsert: false,
         contentType: normalizedMime,
       });

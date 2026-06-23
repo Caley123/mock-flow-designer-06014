@@ -12,29 +12,67 @@ import { join, resolve, extname, basename } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png']);
+const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const BUCKET = 'fotos-perfil';
 const MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_SIZE = 400;
 
 function loadEnvLocal() {
-  const path = resolve(process.cwd(), '.env.local');
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const i = t.indexOf('=');
-    if (i === -1) continue;
-    const key = t.slice(0, i).trim();
-    const val = t.slice(i + 1).trim();
-    if (!process.env[key]) process.env[key] = val;
+  for (const name of ['.env.local', '.env.production', '.env']) {
+    const path = resolve(process.cwd(), name);
+    if (!existsSync(path)) continue;
+    for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const i = t.indexOf('=');
+      if (i === -1) continue;
+      const key = t.slice(0, i).trim();
+      const val = t.slice(i + 1).trim();
+      if (!process.env[key]) process.env[key] = val;
+    }
   }
 }
 
-function getSupabase() {
-  const url =
-    process.env.VITE_SUPABASE_URL || 'https://spdugaykkcgpcfslcpac.supabase.co';
+async function staffLogin(username, password) {
+  const url = process.env.VITE_SUPABASE_URL || 'https://spdugaykkcgpcfslcpac.supabase.co';
   const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwZHVnYXlra2NncGNmc2xjcGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5NDE5MzAsImV4cCI6MjA3NzUxNzkzMH0.zLC3qHpIeVSA0jsLcA_md87_0SV4-stpDjHF7IvBr28';
+  const anon = createClient(url, key);
+  const { data, error } = await anon.rpc('sie_iniciar_sesion', {
+    p_username: username,
+    p_password: password,
+  });
+  if (error) throw new Error(`Login: ${error.message}`);
+  if (!data?.ok || !data.token) throw new Error(data?.error || 'Login fallido');
+  return createClient(url, key, {
+    global: {
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set('x-sie-token', data.token);
+        return fetch(input, { ...init, headers });
+      },
+    },
+  });
+}
+
+async function getSupabaseClient() {
+  const url = process.env.VITE_SUPABASE_URL || 'https://spdugaykkcgpcfslcpac.supabase.co';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) {
+    console.log('🔑 Usando SUPABASE_SERVICE_ROLE_KEY');
+    return createClient(url, serviceKey);
+  }
+
+  const user = process.env.SIE_ADMIN_USER || process.env.SIE_UPLOAD_USER;
+  const pass = process.env.SIE_ADMIN_PASSWORD || process.env.SIE_UPLOAD_PASSWORD;
+  if (user && pass) {
+    console.log(`🔑 Sesión staff: ${user}`);
+    return staffLogin(user, pass);
+  }
+
+  console.warn('⚠️  Sin service role ni SIE_ADMIN_USER — la lectura de estudiantes puede devolver 0 filas (RLS).');
+  const key =
     process.env.VITE_SUPABASE_ANON_KEY ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwZHVnYXlra2NncGNmc2xjcGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5NDE5MzAsImV4cCI6MjA3NzUxNzkzMH0.zLC3qHpIeVSA0jsLcA_md87_0SV4-stpDjHF7IvBr28';
   return createClient(url, key);
@@ -113,27 +151,13 @@ function buildNameIndex(students) {
   return index;
 }
 
-function mimeForExt(ext) {
-  if (ext === '.png') return 'image/png';
-  return 'image/jpeg';
-}
-
-async function prepareImageBuffer(filePath, ext) {
-  let buffer = readFileSync(filePath);
-  if (buffer.length <= MAX_BYTES && ext !== '.png') return { buffer, ext, mime: mimeForExt(ext) };
-
-  let pipeline = sharp(buffer).rotate().resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true });
-
-  if (ext === '.png') {
-    buffer = await pipeline.png({ compressionLevel: 9 }).toBuffer();
-    if (buffer.length <= MAX_BYTES) return { buffer, ext: '.png', mime: 'image/png' };
-  }
-
-  buffer = await pipeline.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
-  if (buffer.length > MAX_BYTES) {
-    buffer = await sharp(buffer).jpeg({ quality: 65, mozjpeg: true }).toBuffer();
-  }
-  return { buffer, ext: '.jpg', mime: 'image/jpeg' };
+async function prepareAvatarWebp(filePath) {
+  const buffer = await sharp(readFileSync(filePath))
+    .rotate()
+    .resize({ width: AVATAR_SIZE, height: AVATAR_SIZE, fit: 'cover', position: 'centre' })
+    .webp({ quality: 82, effort: 4 })
+    .toBuffer();
+  return { buffer, ext: '.webp', mime: 'image/webp' };
 }
 
 async function main() {
@@ -146,7 +170,7 @@ async function main() {
   const files = roots.flatMap((r) => collectImageFiles(r));
   console.log(`Archivos de imagen encontrados: ${files.length}`);
 
-  const supabase = getSupabase();
+  const supabase = await getSupabaseClient();
   const students = await fetchAllStudents(supabase);
   console.log(`Estudiantes en BD: ${students.length}`);
 
@@ -182,9 +206,8 @@ async function main() {
       continue;
     }
 
-    const ext = extname(filePath).toLowerCase() || '.jpg';
-    const { buffer, ext: outExt, mime } = await prepareImageBuffer(filePath, ext);
-    const storagePath = `profile/${student.codigo_barras}${outExt}`;
+    const { buffer, ext: outExt, mime } = await prepareAvatarWebp(filePath);
+    const storagePath = `profile/${student.codigo_barras}_${Date.now()}${outExt}`;
 
     if (dryRun) {
       uploaded++;
@@ -197,12 +220,12 @@ async function main() {
       continue;
     }
 
-    const { error: uploadError } = await supabase.storage
+    let { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(storagePath, buffer, {
         contentType: mime,
-        upsert: true,
-        cacheControl: '3600',
+        upsert: false,
+        cacheControl: '31536000',
       });
 
     if (uploadError) {

@@ -25,7 +25,8 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    target: 'esnext',
+    // Tablets Android antiguas del colegio (WebView ~Chrome 63+)
+    target: ['es2018', 'chrome63', 'safari12', 'ios12'],
     modulePreload: {
       resolveDependencies(_filename, deps) {
         // No precargar librerías de reportes en la primera pantalla.

@@ -2,6 +2,9 @@ import { supabase } from '@/lib/supabaseClient';
 
 const PROFILE_BUCKET = 'fotos-perfil';
 
+/** Tamaño objetivo para avatares en listados (WebP). */
+export const PROFILE_AVATAR_SIZE = 400;
+
 /** Caché en memoria de URLs firmadas (evita peticiones repetidas por foto). */
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const SIGNED_URL_TTL_MS = 50 * 60 * 1000;
