@@ -26,6 +26,22 @@ export function getLimaTodayDate(): string {
   return getLimaNow().date;
 }
 
+/** Primer y último día del mes calendario en Lima (mes actual u opcional YYYY-MM-DD). */
+export function getLimaMonthBounds(dateKey?: string): {
+  start: string;
+  end: string;
+  year: number;
+  month: number;
+} {
+  const key = dateKey?.slice(0, 10) ?? getLimaTodayDate();
+  const [y, m] = key.split('-').map(Number);
+  const month = m;
+  const start = `${y}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(y, month, 0).getDate();
+  const end = `${y}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end, year: y, month };
+}
+
 /** Clave YYYY-MM-DD de un Date en zona Lima */
 export function formatDateKeyLima(date: Date): string {
   const parts = limaPartsFormatter.formatToParts(date);

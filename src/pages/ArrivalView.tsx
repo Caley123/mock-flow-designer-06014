@@ -5,9 +5,9 @@ import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord, Student } from '@/types';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { cn } from '@/lib/utils';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { formatDateKeyLima, getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getLimaMonthBounds, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 
 /* ── Tipos locales ───────────────────────────────────────────── */
 interface PublicInfo {
@@ -34,135 +34,162 @@ function formatDate(iso: string): string {
   }
 }
 
-/** Últimos N días calendario (Lima), del más reciente al más antiguo. */
-function lastNDaysLima(n: number): string[] {
+const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const;
+
+/** Cuadrícula del mes (Lun→Dom) con celdas null al inicio/fin. */
+function buildMonthGrid(year: number, month: number): (string | null)[] {
+  const padStart = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+  const lastDay = new Date(year, month, 0).getDate();
+  const cells: (string | null)[] = Array.from({ length: padStart }, () => null);
+  for (let d = 1; d <= lastDay; d++) {
+    cells.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+function chunkWeeks(cells: (string | null)[]): (string | null)[][] {
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7));
+  }
+  return weeks;
+}
+
+/* ── Calendario mensual tipo agenda ─────────────────────────── */
+function AttendanceMonthCalendar({
+  arrivals,
+  todayArrival,
+}: {
+  arrivals: ArrivalRecord[];
+  todayArrival: ArrivalRecord | null;
+}) {
+  const { year, month } = getLimaMonthBounds();
   const today = getLimaTodayDate();
-  const [y, m, d] = today.split('-').map(Number);
-  const anchor = new Date(y, m - 1, d);
-  return Array.from({ length: n }, (_, i) => formatDateKeyLima(subDays(anchor, i)));
-}
+  const monthTitle = format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: es });
+  const cells = buildMonthGrid(year, month);
+  const weeks = chunkWeeks(cells);
 
-function formatWeekdayShort(iso: string): string {
-  try {
-    return format(parseISO(iso), 'EEE', { locale: es }).replace('.', '');
-  } catch {
-    return '';
-  }
-}
-
-function formatDayNumber(iso: string): string {
-  try {
-    return format(parseISO(iso), 'd', { locale: es });
-  } catch {
-    return iso.slice(-2);
-  }
-}
-
-/** 14 días del más antiguo al más reciente (izq → der, fila por semana). */
-function last14DaysOldestFirst(): string[] {
-  return [...lastNDaysLima(14)].reverse();
-}
-
-/* ── Calendario tipo agenda: día, asistió sí/no, hora ───────── */
-function AttendanceAgendaCalendar({ arrivals }: { arrivals: ArrivalRecord[] }) {
-  const days = last14DaysOldestFirst();
-  const weeks = [days.slice(0, 7), days.slice(7, 14)];
   const byDate = new Map(arrivals.map((a) => [a.date, a]));
-  const today = getLimaTodayDate();
-  const rangeLabel = days.length
-    ? `${format(parseISO(days[0]), 'd MMM', { locale: es })} – ${format(parseISO(days[days.length - 1]), "d MMM yyyy", { locale: es })}`
-    : '';
+  if (todayArrival) byDate.set(todayArrival.date, todayArrival);
+
+  const monthOnTime = arrivals.filter((r) => r.status === 'A tiempo').length;
+  const monthLate = arrivals.filter((r) => r.status === 'Tarde').length;
 
   return (
-    <div>
-      <div className="mb-4 flex items-end justify-between gap-2">
+    <div className="overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-b from-slate-800/40 to-slate-900/60">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-700/50 px-4 py-3.5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Agenda de asistencia
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Agenda del mes
           </p>
-          <p className="mt-0.5 text-sm font-medium capitalize text-slate-300">{rangeLabel}</p>
+          <p className="mt-0.5 text-lg font-bold capitalize text-white">{monthTitle}</p>
         </div>
-        <Calendar className="h-5 w-5 shrink-0 text-slate-500" aria-hidden />
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/25">
+          <Calendar className="h-5 w-5 text-primary" aria-hidden />
+        </div>
       </div>
 
-      <div className="space-y-3" role="grid" aria-label="Calendario de asistencia últimas dos semanas">
-        {weeks.map((week, wi) => (
-          <div key={wi} role="row" className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {week.map((day) => {
-              const rec = byDate.get(day);
-              const isToday = day === today;
-              const onTime = rec?.status === 'A tiempo';
-              const late = rec?.status === 'Tarde';
-              const aria = rec
-                ? `${formatDate(day)}: asistió, ${rec.status}, llegada ${parseTime(rec.arrivalTime)}`
-                : `${formatDate(day)}: sin registro de asistencia`;
+      <div className="px-3 pb-4 pt-3 sm:px-4">
+        <div className="mb-2 grid grid-cols-7 gap-1" role="row">
+          {WEEKDAY_LABELS.map((label) => (
+            <div
+              key={label}
+              role="columnheader"
+              className="py-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
 
-              return (
-                <div
-                  key={day}
-                  role="gridcell"
-                  aria-label={aria}
-                  className={cn(
-                    'flex min-h-[5.25rem] flex-col items-center justify-center rounded-xl border px-1 py-2 text-center',
-                    isToday && 'ring-2 ring-primary/60 ring-offset-1 ring-offset-slate-900',
-                    !rec && 'border-slate-800 bg-slate-900/40',
-                    rec && onTime && 'border-emerald-500/35 bg-emerald-500/10',
-                    rec && late && 'border-amber-500/35 bg-amber-500/10'
-                  )}
-                >
-                  <span className="text-[9px] font-medium uppercase leading-none text-slate-500">
-                    {formatWeekdayShort(day)}
-                  </span>
-                  <span
+        <div className="space-y-1.5" role="grid" aria-label={`Asistencia ${monthTitle}`}>
+          {weeks.map((week, wi) => (
+            <div key={wi} role="row" className="grid grid-cols-7 gap-1 sm:gap-1.5">
+              {week.map((day, di) => {
+                if (!day) {
+                  return <div key={`empty-${wi}-${di}`} className="min-h-[4.75rem] sm:min-h-[5.25rem]" aria-hidden />;
+                }
+
+                const rec = byDate.get(day);
+                const isToday = day === today;
+                const isFuture = day > today;
+                const onTime = rec?.status === 'A tiempo';
+                const late = rec?.status === 'Tarde';
+                const aria = rec
+                  ? `${formatDate(day)}: asistió, ${rec.status}, ${parseTime(rec.arrivalTime)}`
+                  : isFuture
+                    ? `${formatDate(day)}: día futuro`
+                    : `${formatDate(day)}: sin registro`;
+
+                return (
+                  <div
+                    key={day}
+                    role="gridcell"
+                    aria-label={aria}
                     className={cn(
-                      'mt-0.5 text-base font-bold leading-none',
-                      isToday ? 'text-primary' : 'text-slate-200'
+                      'flex min-h-[4.75rem] flex-col rounded-xl border px-0.5 py-1.5 text-center transition-colors sm:min-h-[5.25rem] sm:py-2',
+                      isFuture && 'border-transparent bg-slate-900/20 opacity-45',
+                      !isFuture && !rec && 'border-slate-800/80 bg-slate-900/30',
+                      rec && onTime && 'border-emerald-500/40 bg-emerald-500/12 shadow-sm shadow-emerald-950/20',
+                      rec && late && 'border-amber-500/40 bg-amber-500/12 shadow-sm shadow-amber-950/20',
+                      isToday && 'ring-2 ring-primary/70 ring-offset-1 ring-offset-slate-900'
                     )}
                   >
-                    {formatDayNumber(day)}
-                  </span>
+                    <span
+                      className={cn(
+                        'text-sm font-bold leading-none sm:text-base',
+                        isToday ? 'text-primary' : isFuture ? 'text-slate-600' : 'text-slate-200'
+                      )}
+                    >
+                      {format(parseISO(day), 'd', { locale: es })}
+                    </span>
 
-                  {rec ? (
-                    <>
-                      <span className="mt-1.5 text-[11px] font-bold leading-tight tabular-nums text-white">
-                        {parseTime(rec.arrivalTime)}
+                    {rec ? (
+                      <>
+                        <span className="mt-1.5 text-[10px] font-bold leading-tight tabular-nums text-white sm:text-[11px]">
+                          {parseTime(rec.arrivalTime)}
+                        </span>
+                        <span
+                          className={cn(
+                            'mt-0.5 text-[7px] font-bold uppercase leading-tight sm:text-[8px]',
+                            onTime ? 'text-emerald-400' : 'text-amber-400'
+                          )}
+                        >
+                          {onTime ? 'A tiempo' : 'Tarde'}
+                        </span>
+                      </>
+                    ) : !isFuture ? (
+                      <span className="mt-2 text-[8px] leading-tight text-slate-600 sm:text-[9px]">
+                        Sin registro
                       </span>
-                      <span
-                        className={cn(
-                          'mt-0.5 text-[8px] font-semibold uppercase leading-tight',
-                          onTime ? 'text-emerald-400' : 'text-amber-400'
-                        )}
-                      >
-                        {onTime ? 'A tiempo' : 'Tarde'}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="mt-2 text-[9px] leading-tight text-slate-600">Sin registro</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
-      <p className="mt-3 text-center text-[10px] text-slate-500">
-        Cada casilla muestra el día, la hora de llegada y si fue a tiempo o tarde.
-      </p>
-
-      <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded border border-emerald-500/40 bg-emerald-500/15" />
-          Asistió a tiempo
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded border border-amber-500/40 bg-amber-500/15" />
-          Llegó tarde
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded border border-slate-700 bg-slate-900/40" />
-          No hay registro
-        </span>
+      <div className="border-t border-slate-700/50 bg-slate-950/30 px-4 py-3">
+        <div className="mb-2 flex justify-center gap-6 text-center text-xs">
+          <div>
+            <p className="font-bold text-emerald-400">{monthOnTime}</p>
+            <p className="text-slate-500">A tiempo</p>
+          </div>
+          <div>
+            <p className="font-bold text-amber-400">{monthLate}</p>
+            <p className="text-slate-500">Tardanzas</p>
+          </div>
+          <div>
+            <p className="font-bold text-white">{monthOnTime + monthLate}</p>
+            <p className="text-slate-500">Asistió</p>
+          </div>
+        </div>
+        <p className="text-center text-[10px] text-slate-500">
+          Verde = a tiempo · Ámbar = tarde · Hora dentro de cada día
+        </p>
       </div>
     </div>
   );
@@ -281,7 +308,7 @@ export function ArrivalView() {
         aria-hidden
       />
 
-      <div className="relative mx-auto max-w-lg px-4 pt-8 pb-16">
+      <div className="relative mx-auto max-w-xl px-4 pt-8 pb-16">
 
         {/* ── Header institución ── */}
         <header className="flex items-center gap-3 mb-8">
@@ -297,7 +324,7 @@ export function ArrivalView() {
         </header>
 
         {/* ── Tarjeta principal ── */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 backdrop-blur-sm overflow-hidden">
+        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 shadow-xl shadow-black/20 backdrop-blur-sm overflow-hidden">
 
           {/* Franja de color top */}
           <div
@@ -374,10 +401,10 @@ export function ArrivalView() {
           {/* Divider */}
           <div className="border-t border-slate-800 mx-5" />
 
-          {/* Stats resumen */}
-          <div className="p-5 grid grid-cols-3 gap-3">
+          {/* Stats resumen del mes */}
+          <div className="p-5 grid grid-cols-3 gap-3 bg-slate-950/20">
             {[
-              { label: 'Registros', value: totalDays, color: 'text-white' },
+              { label: 'Días con registro', value: totalDays, color: 'text-white' },
               { label: 'A tiempo', value: onTimeCount, color: 'text-emerald-400' },
               { label: 'Tardanzas', value: lateCount, color: lateCount > 0 ? 'text-amber-400' : 'text-slate-500' },
             ].map(({ label, value, color }) => (
@@ -390,8 +417,8 @@ export function ArrivalView() {
         </div>
 
         {/* ── Historial de asistencia ── */}
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-          <AttendanceAgendaCalendar arrivals={recentArrivals} />
+        <section className="mt-6">
+          <AttendanceMonthCalendar arrivals={recentArrivals} todayArrival={arrival} />
         </section>
 
         {/* ── Acceso al portal completo ── */}

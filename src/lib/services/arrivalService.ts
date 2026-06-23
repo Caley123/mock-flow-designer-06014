@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
 import { studentsService } from './studentsService';
-import { getLimaNow, getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getLimaNow, getLimaTodayDate, getLimaMonthBounds } from '@/lib/utils/limaDateTime';
 import { getCached, setCached } from '@/lib/utils/memoryCache';
 
 const ARRIVAL_LIMIT_CACHE_KEY = 'config:hora_limite_llegada';
@@ -818,6 +818,24 @@ function getTodayDate(): string {
   return getLimaTodayDate();
 }
 
+/** Asistencia del mes en curso (Lima) para portal público. */
+async function fetchMonthArrivalsForStudent(studentId: number): Promise<ArrivalRecord[]> {
+  const { start, end } = getLimaMonthBounds();
+  const { data, error } = await supabase
+    .from('registros_llegada')
+    .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
+    .eq('id_estudiante', studentId)
+    .gte('fecha', start)
+    .lte('fecha', end)
+    .order('fecha', { ascending: false });
+
+  if (error) {
+    console.warn('fetchMonthArrivalsForStudent:', error.message);
+    return [];
+  }
+  return (data || []).map(mapArrivalRow);
+}
+
 /**
  * Busca un estudiante por DNI/código de barras y devuelve su llegada de hoy
  * (si existe) junto con los últimos 14 días. Uso público — sin autenticación.
@@ -898,7 +916,7 @@ async function getPublicInfoByDniRpc(dni: string): Promise<{
 
   return {
     arrival: payload.arrivalToday ? mapRpcArrival(payload.arrivalToday) : null,
-    recentArrivals: (payload.recentArrivals || []).map(mapRpcArrival),
+    recentArrivals: await fetchMonthArrivalsForStudent(student.id),
     student,
     error: null,
   };
@@ -920,24 +938,15 @@ export async function getPublicInfoByDNI(dni: string): Promise<{
     }
 
     const today = getLimaTodayDate();
-    const since = new Date();
-    since.setDate(since.getDate() - 13);
-    const sinceStr = since.toISOString().split('T')[0];
 
-    const [todayRes, recentRes] = await Promise.all([
+    const [todayRes, recentArrivals] = await Promise.all([
       getTodayArrivalForStudent(student.id, today),
-      supabase
-        .from('registros_llegada')
-        .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
-        .eq('id_estudiante', student.id)
-        .gte('fecha', sinceStr)
-        .order('fecha', { ascending: false })
-        .limit(14),
+      fetchMonthArrivalsForStudent(student.id),
     ]);
 
     return {
       arrival: todayRes.record,
-      recentArrivals: (recentRes.data || []).map(mapArrivalRow),
+      recentArrivals,
       student,
       error: null,
     };
@@ -948,7 +957,7 @@ export async function getPublicInfoByDNI(dni: string): Promise<{
 
 /**
  * Carga pública (sin auth) de un registro de llegada con datos del estudiante
- * y los últimos 14 días de asistencia. Se usa en /llegada/:id para padres.
+ * y la asistencia del mes en curso. Se usa en /llegada/:id para padres.
  */
 export async function getPublicArrivalInfo(recordId: number): Promise<{
   arrival: ArrivalRecord | null;
@@ -973,25 +982,7 @@ export async function getPublicArrivalInfo(recordId: number): Promise<{
 
     const arrival = mapArrivalRecord(data as any);
     const studentId = arrival.studentId;
-
-    // Últimos 14 días para el estudiante
-    const since = new Date();
-    since.setDate(since.getDate() - 13);
-    const sinceStr = since.toISOString().split('T')[0];
-
-    const { data: recent, error: recentErr } = await supabase
-      .from('registros_llegada')
-      .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
-      .eq('id_estudiante', studentId)
-      .gte('fecha', sinceStr)
-      .order('fecha', { ascending: false })
-      .limit(14);
-
-    if (recentErr) {
-      return { arrival, recentArrivals: [], error: null };
-    }
-
-    const recentArrivals = (recent || []).map(mapArrivalRow);
+    const recentArrivals = await fetchMonthArrivalsForStudent(studentId);
     return { arrival, recentArrivals, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error al cargar el registro';
