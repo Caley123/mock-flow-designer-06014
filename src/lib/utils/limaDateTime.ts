@@ -42,6 +42,19 @@ export function getLimaMonthBounds(dateKey?: string): {
   return { start, end, year: y, month };
 }
 
+/** Límites de un mes por año y mes (1–12). */
+export function getMonthBounds(year: number, month: number): {
+  start: string;
+  end: string;
+  year: number;
+  month: number;
+} {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end, year, month };
+}
+
 /** Clave YYYY-MM-DD de un Date en zona Lima */
 export function formatDateKeyLima(date: Date): string {
   const parts = limaPartsFormatter.formatToParts(date);

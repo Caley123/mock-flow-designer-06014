@@ -13,6 +13,7 @@ interface StudentPhotoProps {
   name?: string;
   className?: string;
   imageClassName?: string;
+  fallbackClassName?: string;
   /** Prioridad de carga: baja en listados largos */
   priority?: 'low' | 'auto';
 }
@@ -22,6 +23,7 @@ export const StudentPhoto = ({
   name = '',
   className,
   imageClassName,
+  fallbackClassName,
   priority = 'low',
 }: StudentPhotoProps) => {
   /** URL pública resuelta al instante (sin round-trip a Storage). */
@@ -81,9 +83,9 @@ export const StudentPhoto = ({
           onError={() => setPhotoSrc(null)}
         />
       ) : null}
-      <AvatarFallback className="rounded-2xl bg-muted/60 text-muted-foreground">
+      <AvatarFallback className={cn('rounded-2xl bg-muted/60 text-muted-foreground', fallbackClassName)}>
         {initials ? (
-          <span className="text-sm font-semibold">{initials}</span>
+          <span className={cn(!fallbackClassName && 'text-sm font-semibold')}>{initials}</span>
         ) : (
           <User className="h-8 w-8" />
         )}

@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
 import { studentsService } from './studentsService';
-import { getLimaNow, getLimaTodayDate, getLimaMonthBounds } from '@/lib/utils/limaDateTime';
+import { getLimaNow, getLimaTodayDate, getLimaMonthBounds, getMonthBounds } from '@/lib/utils/limaDateTime';
 import { getCached, setCached } from '@/lib/utils/memoryCache';
 
 const ARRIVAL_LIMIT_CACHE_KEY = 'config:hora_limite_llegada';
@@ -818,9 +818,14 @@ function getTodayDate(): string {
   return getLimaTodayDate();
 }
 
-/** Asistencia del mes en curso (Lima) para portal público. */
-async function fetchMonthArrivalsForStudent(studentId: number): Promise<ArrivalRecord[]> {
-  const { start, end } = getLimaMonthBounds();
+/** Asistencia de un mes (Lima) para portal público de padres. */
+export async function fetchMonthArrivalsForStudent(
+  studentId: number,
+  year?: number,
+  month?: number
+): Promise<ArrivalRecord[]> {
+  const { start, end } =
+    year != null && month != null ? getMonthBounds(year, month) : getLimaMonthBounds();
   const { data, error } = await supabase
     .from('registros_llegada')
     .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
