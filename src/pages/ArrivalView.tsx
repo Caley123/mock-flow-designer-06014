@@ -5,8 +5,9 @@ import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord, Student } from '@/types';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { cn } from '@/lib/utils';
-import { format, parseISO, subDays, startOfDay } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { formatDateKeyLima, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 
 /* ── Tipos locales ───────────────────────────────────────────── */
 interface PublicInfo {
@@ -33,66 +34,107 @@ function formatDate(iso: string): string {
   }
 }
 
-/** Últimos N días como strings YYYY-MM-DD */
-function lastNDays(n: number): string[] {
-  return Array.from({ length: n }, (_, i) =>
-    startOfDay(subDays(new Date(), i)).toISOString().split('T')[0]
-  ).reverse();
+/** Últimos N días calendario (Lima), del más reciente al más antiguo. */
+function lastNDaysLima(n: number): string[] {
+  const today = getLimaTodayDate();
+  const [y, m, d] = today.split('-').map(Number);
+  const anchor = new Date(y, m - 1, d);
+  return Array.from({ length: n }, (_, i) => formatDateKeyLima(subDays(anchor, i)));
 }
 
-/* ── Sub-componente: tira de asistencia ─────────────────────── */
-function AttendanceStrip({ arrivals }: { arrivals: ArrivalRecord[] }) {
-  const days = lastNDays(14);
+function formatShortDay(iso: string): string {
+  try {
+    return format(parseISO(iso), "EEE d MMM", { locale: es });
+  } catch {
+    return iso;
+  }
+}
+
+/* ── Historial legible: día, estado y hora ─────────────────── */
+function AttendanceHistory({ arrivals }: { arrivals: ArrivalRecord[] }) {
+  const days = lastNDaysLima(14);
   const byDate = new Map(arrivals.map((a) => [a.date, a]));
+  const today = getLimaTodayDate();
 
   return (
-    <div className="mt-6">
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
-        Últimos 14 días
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">
+        Historial de llegadas
       </p>
-      <div className="grid grid-cols-7 gap-1.5">
+      <p className="text-[11px] text-slate-500 mb-4">Últimos 14 días — fecha, estado y hora</p>
+
+      <ul className="space-y-2" aria-label="Asistencia de los últimos 14 días">
         {days.map((day) => {
           const rec = byDate.get(day);
-          const label = format(parseISO(day), 'dd', { locale: es });
-          const dayLabel = format(parseISO(day), 'EEE', { locale: es }).slice(0, 1).toUpperCase();
-          const isToday = day === new Date().toISOString().split('T')[0];
-
-          let bg = 'bg-slate-800 text-slate-500';
-          let dot = null;
-          if (rec?.status === 'A tiempo') {
-            bg = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-            dot = <span className="block w-1.5 h-1.5 rounded-full bg-emerald-400 mx-auto mt-0.5" />;
-          } else if (rec?.status === 'Tarde') {
-            bg = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-            dot = <span className="block w-1.5 h-1.5 rounded-full bg-amber-400 mx-auto mt-0.5" />;
-          }
+          const isToday = day === today;
+          const onTime = rec?.status === 'A tiempo';
+          const late = rec?.status === 'Tarde';
 
           return (
-            <div
+            <li
               key={day}
-              title={`${formatDate(day)}${rec ? ` · ${rec.status} · ${parseTime(rec.arrivalTime)}` : ' · Sin registro'}`}
               className={cn(
-                'flex flex-col items-center rounded-lg p-1.5 text-center text-[10px] font-medium transition-colors',
-                bg,
-                isToday && 'ring-1 ring-white/30'
+                'flex items-center gap-3 rounded-xl border px-3 py-2.5',
+                isToday ? 'border-white/20 bg-slate-800/80' : 'border-slate-800 bg-slate-900/50',
+                rec && onTime && 'border-emerald-500/25 bg-emerald-500/5',
+                rec && late && 'border-amber-500/25 bg-amber-500/5'
               )}
             >
-              <span className="opacity-60">{dayLabel}</span>
-              <span className="font-bold leading-tight">{label}</span>
-              {dot}
-            </div>
+              <div className="min-w-[5.5rem] shrink-0">
+                <p className={cn('text-sm font-semibold capitalize leading-tight', isToday ? 'text-white' : 'text-slate-200')}>
+                  {formatShortDay(day)}
+                </p>
+                {isToday && (
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-primary/90">Hoy</span>
+                )}
+              </div>
+
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:justify-between">
+                {rec ? (
+                  <>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                        onTime
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-amber-500/15 text-amber-400'
+                      )}
+                    >
+                      {onTime ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      ) : (
+                        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      )}
+                      {rec.status}
+                    </span>
+                    <span className="text-sm font-bold tabular-nums text-white">
+                      {parseTime(rec.arrivalTime)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500">
+                    <MinusCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    Sin registro
+                  </span>
+                )}
+              </div>
+            </li>
           );
         })}
-      </div>
-      <div className="mt-3 flex items-center gap-4 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />A tiempo
+      </ul>
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+          A tiempo — llegó dentro del horario
         </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />Tarde
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+          Tarde — después del horario
         </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-slate-600" />Sin registro
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full bg-slate-600" />
+          Sin registro ese día
         </span>
       </div>
     </div>
@@ -212,7 +254,7 @@ export function ArrivalView() {
         aria-hidden
       />
 
-      <div className="relative mx-auto max-w-md px-4 pt-8 pb-16">
+      <div className="relative mx-auto max-w-lg px-4 pt-8 pb-16">
 
         {/* ── Header institución ── */}
         <header className="flex items-center gap-3 mb-8">
@@ -242,22 +284,22 @@ export function ArrivalView() {
             )}
           />
 
-          <div className="p-5">
-            {/* Foto + nombre */}
-            <div className="flex items-center gap-4 mb-5">
+          <div className="p-5 pb-6">
+            {/* Foto + nombre — centrado, foto grande */}
+            <div className="mb-6 flex flex-col items-center text-center">
               <StudentPhoto
                 src={student?.profilePhoto ?? null}
                 name={student?.fullName ?? ''}
-                className="h-16 w-16 rounded-xl border-2 border-slate-700 shrink-0"
+                priority="auto"
+                className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl border-2 border-slate-600 shadow-lg shadow-black/30 shrink-0"
+                imageClassName="object-cover"
               />
-              <div className="min-w-0">
-                <h1 className="font-bold text-white text-lg leading-snug truncate">
-                  {student?.fullName ?? '—'}
-                </h1>
-                {nivel && (
-                  <p className="text-slate-400 text-xs mt-0.5">{nivel}</p>
-                )}
-              </div>
+              <h1 className="mt-4 font-bold text-white text-xl leading-snug max-w-full">
+                {student?.fullName ?? '—'}
+              </h1>
+              {nivel && (
+                <p className="text-slate-400 text-sm mt-1">{nivel}</p>
+              )}
             </div>
 
             {/* Estado de llegada — badge grande */}
@@ -320,12 +362,10 @@ export function ArrivalView() {
           </div>
         </div>
 
-        {/* ── Tira de asistencia ── */}
-        {recentArrivals.length > 0 && (
-          <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-            <AttendanceStrip arrivals={recentArrivals} />
-          </section>
-        )}
+        {/* ── Historial de asistencia ── */}
+        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <AttendanceHistory arrivals={recentArrivals} />
+        </section>
 
         {/* ── Acceso al portal completo ── */}
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 flex items-center justify-between gap-4">
