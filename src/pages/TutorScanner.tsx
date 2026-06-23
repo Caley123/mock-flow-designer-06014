@@ -26,6 +26,7 @@ import {
   arrivalService,
   whatsappService,
   scheduleService,
+  sessionService,
 } from '@/lib/services';
 import { Student, FaultType, ArrivalRecord } from '@/types';
 import type { StudentScheduleStatus } from '@/lib/utils/sectionSchedule';
@@ -581,6 +582,10 @@ export const TutorScanner = () => {
 
   const startScan = useCallback(
     (rawInput: string) => {
+      // Cada escaneo es actividad real: mantiene viva la sesión del tutor (cliente
+      // y servidor) aunque no toque la pantalla, evitando cierres a los 15 min.
+      sessionService.touchActivity();
+      authService.renewSessionThrottled();
       const scanSeq = ++latestProfileScanRef.current;
       void processScanCode(rawInput, scanSeq);
     },

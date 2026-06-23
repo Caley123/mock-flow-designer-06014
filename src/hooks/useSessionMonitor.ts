@@ -50,6 +50,9 @@ export const useSessionMonitor = () => {
 
     sessionService.touchActivity();
     scheduleIdleLogout();
+    // Desliza también la ventana en el servidor (autolimitado a 1 vez cada pocos min)
+    // para que el token no caduque mientras haya actividad real.
+    authService.renewSessionThrottled();
   }, [logoutExpired, scheduleIdleLogout]);
 
   useEffect(() => {
@@ -77,6 +80,7 @@ export const useSessionMonitor = () => {
       }
       sessionService.touchActivity();
       scheduleIdleLogout();
+      authService.renewSessionThrottled();
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);

@@ -4,6 +4,19 @@ import { sessionService } from './sessionService';
 import { loginRateLimiter } from '@/lib/utils/rateLimit';
 import { sanitize } from '@/lib/utils/sanitize';
 
+/**
+ * El token de sesión vive en el servidor con una ventana de inactividad (15 min para
+ * tutor/padre). Para que NO caduque mientras el tutor sigue escaneando, deslizamos esa
+ * ventana en el servidor ante actividad real, pero limitamos la frecuencia de llamadas.
+ */
+const RENEW_THROTTLE_MS = 4 * 60 * 1000;
+let lastRenewAttempt = 0;
+
+interface SieRenewResponse {
+  ok?: boolean;
+  expiresInMs?: number;
+}
+
 interface SieLoginResponse {
   ok: boolean;
   error?: string;
@@ -75,6 +88,7 @@ export const authService = {
       };
 
       sessionService.saveSession(user, result.token, result.expiresInMs);
+      lastRenewAttempt = Date.now();
 
       return { user, error: null };
     } catch (error: unknown) {
@@ -82,6 +96,43 @@ export const authService = {
       const message = error instanceof Error ? error.message : 'Error al iniciar sesión';
       return { user: null, error: message };
     }
+  },
+
+  /**
+   * Renueva (desliza) la ventana de inactividad del token en el servidor.
+   * Devuelve true si la sesión sigue válida y se extendió.
+   */
+  async renewSession(): Promise<boolean> {
+    const token = sessionService.getApiToken();
+    if (!token) return false;
+
+    try {
+      const { data, error } = await supabase.rpc('sie_renovar_sesion', { p_token: token });
+      if (error) {
+        console.warn('Error al renovar sesión:', error.message);
+        return false;
+      }
+      const result = data as SieRenewResponse | null;
+      if (!result?.ok) return false;
+
+      sessionService.syncServerExpiry(result.expiresInMs);
+      return true;
+    } catch (error) {
+      console.warn('Error al renovar sesión:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Renueva la sesión en el servidor como máximo cada pocos minutos.
+   * Pensado para llamarse libremente ante cualquier actividad (incluido cada escaneo)
+   * sin saturar la red: mantiene viva la sesión del tutor mientras trabaja.
+   */
+  renewSessionThrottled(): void {
+    const now = Date.now();
+    if (now - lastRenewAttempt < RENEW_THROTTLE_MS) return;
+    lastRenewAttempt = now;
+    void this.renewSession();
   },
 
   /**
@@ -96,6 +147,7 @@ export const authService = {
         console.warn('Error al cerrar sesión en servidor:', error);
       }
     }
+    lastRenewAttempt = 0;
     sessionService.clearSession();
   },
 

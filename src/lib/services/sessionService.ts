@@ -121,6 +121,26 @@ export const sessionService = {
     }
   },
 
+  /**
+   * Sincroniza la expiración local con la nueva ventana devuelta por el servidor
+   * tras renovar el token (sie_renovar_sesion). Mantiene cliente y servidor alineados.
+   */
+  syncServerExpiry(expiresInMs?: number): void {
+    const session = this.readSessionRaw();
+    if (!session) return;
+
+    const now = Date.now();
+    const duration = expiresInMs ?? this.getIdleDurationMs(session.user.role);
+    session.lastActivity = now;
+    session.expiresAt = now + duration;
+
+    try {
+      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.error('Error al sincronizar expiración de sesión:', error);
+    }
+  },
+
   /** @deprecated Usar touchActivity */
   updateActivity(): void {
     this.touchActivity();

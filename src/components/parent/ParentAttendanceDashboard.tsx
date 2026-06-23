@@ -131,9 +131,9 @@ export function ParentAttendanceDashboard({
             src={student.profilePhoto ?? null}
             name={student.fullName}
             priority="auto"
-            className="h-[88px] w-[88px] rounded-full border-[3px] border-[#A8D88A] bg-[#EAF4E0] shrink-0"
-            imageClassName="object-cover rounded-full"
-            fallbackClassName="rounded-full bg-[#EAF4E0] text-[28px] font-semibold text-[#2E6B1A]"
+            className="h-36 w-36 shrink-0 rounded-2xl border border-[#E8EAF0] bg-[#F1F2F5] sm:h-40 sm:w-40"
+            imageClassName="object-cover rounded-2xl"
+            fallbackClassName="rounded-2xl bg-[#F1F2F5] text-2xl font-semibold text-[#6B7280] sm:text-3xl"
           />
           <h1 className="mt-3 text-xl font-semibold text-[#1A1D23] leading-snug">{student.fullName}</h1>
           {nivel && <p className="mt-1 text-[13px] text-[#6B7280]">{nivel}</p>}
