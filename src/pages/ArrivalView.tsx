@@ -345,7 +345,7 @@ export function ArrivalView() {
                 src={student?.profilePhoto ?? null}
                 name={student?.fullName ?? ''}
                 priority="auto"
-                className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl border-2 border-slate-600 shadow-lg shadow-black/30 shrink-0"
+                className="h-36 w-36 sm:h-40 sm:w-40 rounded-2xl border-2 border-slate-600 shadow-lg shadow-black/30 shrink-0"
                 imageClassName="object-cover"
               />
               <h1 className="mt-4 font-bold text-white text-xl leading-snug max-w-full">
