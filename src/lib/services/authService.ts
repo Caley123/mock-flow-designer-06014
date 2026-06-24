@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { User } from '@/types';
 import { sessionService } from './sessionService';
+import { resetSupabaseWarmup } from '@/lib/supabaseWarmup';
 import { loginRateLimiter } from '@/lib/utils/rateLimit';
 import { sanitize } from '@/lib/utils/sanitize';
 
@@ -148,6 +149,7 @@ export const authService = {
       }
     }
     lastRenewAttempt = 0;
+    resetSupabaseWarmup();
     sessionService.clearSession();
   },
 

@@ -4,7 +4,10 @@ import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
 import { getHomeRouteForRole } from '@/lib/utils/roleRoutes';
+import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 import { useErrorDialog } from '@/hooks/useErrorDialog';
+
+const STAFF_ROLES = new Set(['Supervisor', 'Director', 'Admin']);
 
 export function useLoginForm() {
   const navigate = useNavigate();
@@ -66,6 +69,9 @@ export function useLoginForm() {
         if (user.cambioPasswordObligatorio) {
           navigate('/cambiar-password', { replace: true });
           return;
+        }
+        if (STAFF_ROLES.has(user.role)) {
+          await ensureSupabaseReady();
         }
         navigate(getHomeRouteForRole(user.role));
       }

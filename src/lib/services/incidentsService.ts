@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { Incident, EducationalLevel, EstadoIncidencia } from '@/types';
 import { fetchAllPages } from '@/lib/utils/supabasePagination';
+import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 
 const INCIDENT_LIST_SELECT = `
   id_incidencia,
@@ -336,6 +337,7 @@ export const incidentsService = {
     filters?: IncidentsListFilters,
   ): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
     try {
+      await ensureSupabaseReady();
       const dateRange = await resolveDateRange(filters);
       const scope = await resolveIncidentQueryScope(filters);
       if (scope.empty) {
@@ -430,6 +432,7 @@ export const incidentsService = {
     filters?: Pick<IncidentsListFilters, 'nivelEducativo' | 'search' | 'fechaDesde' | 'fechaHasta' | 'grado' | 'seccion'>,
   ): Promise<{ summary: IncidentsListSummary; error: string | null }> {
     try {
+      await ensureSupabaseReady();
       const dateRange = await resolveDateRange(filters);
       const scope = await resolveIncidentQueryScope(filters);
 
@@ -456,38 +459,11 @@ export const incidentsService = {
         return count ?? 0;
       };
 
-      let summaryQuery = supabase
-        .from('incidencias')
-        .select('estado, estado_evidencia');
-      summaryQuery = applyIncidentFilters(
-        summaryQuery,
-        filters,
-        dateRange,
-        scope,
-      ) as typeof summaryQuery;
-      summaryQuery = summaryQuery.limit(15_000);
-
-      const { data: summaryRows, error: summaryError } = await summaryQuery;
-      if (summaryError) {
-        throw new Error(summaryError.message);
-      }
-
-      let total = 0;
-      let activas = 0;
-      let conEvidencia = 0;
-      for (const row of summaryRows ?? []) {
-        total += 1;
-        if (row.estado === 'Activa') activas += 1;
-        if (row.estado_evidencia === 'Con evidencia') conEvidencia += 1;
-      }
-
-      if ((summaryRows?.length ?? 0) >= 15_000) {
-        [total, activas, conEvidencia] = await Promise.all([
-          countFiltered(),
-          countFiltered({ estado: 'Activa' }),
-          countFiltered({ estado_evidencia: 'Con evidencia' }),
-        ]);
-      }
+      const [total, activas, conEvidencia] = await Promise.all([
+        countFiltered(),
+        countFiltered({ estado: 'Activa' }),
+        countFiltered({ estado_evidencia: 'Con evidencia' }),
+      ]);
 
       return {
         summary: { total, activas, conEvidencia },

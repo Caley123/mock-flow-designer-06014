@@ -9,7 +9,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/ui/loading-screen";
 import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
-import { supabase } from "./lib/supabaseClient";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
 import { useDeployVersionCheck } from "./hooks/useDeployVersionCheck";
 import { PageMetaManager } from "./components/seo/PageMetaManager";
@@ -220,17 +219,6 @@ const AppWithSessionMonitor = () => {
     const isLogin = pathname === '/login' || pathname.startsWith('/login/');
     document.documentElement.classList.toggle('route-login', isLogin);
   }, [pathname]);
-
-  // Warmup preventivo de Supabase: cuando el usuario está autenticado, lanzamos
-  // un SELECT mínimo (1 fila, sin JOINs) que fuerza a Postgres a abrir el pool de
-  // conexiones. Así, cuando el usuario navegue a páginas con queries pesados
-  // (Lista de Incidencias, Registrar Incidencia, etc.) la conexión ya está "caliente"
-  // y no se cuelga esperando el cold-start del servidor.
-  useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (!user) return;
-    void supabase.from('incidencias').select('id_incidencia').limit(1);
-  }, []);
 
   return (
     <>

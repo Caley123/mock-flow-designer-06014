@@ -250,7 +250,7 @@ export const IncidentsList = () => {
   const activeCount = summary?.activas;
   const withEvidence = summary?.conEvidencia;
   const listTotal = summary?.total ?? (pageData ? totalRecords : undefined);
-  const tableLoading = isLoading || isFetching;
+  const tableLoading = isLoading && !pageData;
 
   return (
     <div className="app-page app-page-shell relative overflow-hidden">

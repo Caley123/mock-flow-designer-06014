@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { FaultType, CatalogoFaltaDB, FaultCategory } from '@/types';
 import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
+import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 
 const FAULTS_CACHE_KEY = 'faults:active';
 const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
@@ -21,6 +22,7 @@ export const faultsService = {
     }
 
     try {
+      await ensureSupabaseReady();
       let query = supabase
         .from('catalogo_faltas')
         .select('*');
