@@ -103,14 +103,24 @@ export const Dashboard = () => {
     return (
       <div className="app-page">
         <div className="app-page-state border-l-4 border-l-destructive bg-destructive/5">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">
-                Error al cargar los datos del dashboard. Por favor, intente recargar la página.
+          <div className="flex items-start gap-3">
+            <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" aria-hidden="true" />
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-red-700">
+                No se pudieron cargar los datos del dashboard.
               </p>
+              <p className="text-xs text-red-600/80">
+                Puede ser un problema temporal de conexión. Intente de nuevo o recargue la página.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void statsQuery.refetch()}
+                disabled={statsQuery.isFetching}
+                className="border-red-300 text-red-700 hover:bg-red-50"
+              >
+                {statsQuery.isFetching ? 'Reintentando…' : 'Reintentar'}
+              </Button>
             </div>
           </div>
         </div>

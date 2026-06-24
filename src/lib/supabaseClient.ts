@@ -14,15 +14,21 @@ if (!import.meta.env.VITE_SUPABASE_URL && import.meta.env.PROD) {
 
 /**
  * Timeout por petición: si una petición a Supabase se queda colgada más de este
- * tiempo (red lenta, cold start), se cancela para que React Query pueda reintentar.
- * En redes del colegio 15 s es un umbral seguro; el reintento suele resolver en <1 s
- * porque la conexión ya está "caliente".
+ * tiempo (red lenta, cold-start de Supabase), se cancela para que React Query
+ * pueda reintentar. El reintento suele resolver en < 1 s porque la conexión
+ * ya está "caliente".
+ *
+ * NOTA: AbortSignal.timeout se comprueba en tiempo de ejecución para mantener
+ * compatibilidad con Safari < 15.4 / Chrome < 103 / Firefox < 100.
+ * En browsers sin soporte simplemente no se aplica el timeout; React Query
+ * sigue manejando errores y reintentos con normalidad.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
+const ABORT_TIMEOUT_SUPPORTED = typeof AbortSignal?.timeout === 'function';
 
 /**
- * Devuelve una señal AbortSignal que dispara cuando cualquiera de las señales
- * de entrada dispara. Compatible con browsers sin AbortSignal.any (iOS <17.4).
+ * Devuelve una AbortSignal combinada (primera en disparar gana).
+ * Compatible con browsers sin AbortSignal.any (iOS < 17.4).
  */
 function mergeSignals(signals: AbortSignal[]): AbortSignal {
   if (typeof AbortSignal.any === 'function') {
@@ -42,22 +48,28 @@ function mergeSignals(signals: AbortSignal[]): AbortSignal {
 /**
  * Cliente Supabase. Envía x-sie-token en cada petición cuando hay sesión activa
  * para que las políticas RLS identifiquen rol y usuario.
- * Incluye timeout de REQUEST_TIMEOUT_MS para evitar peticiones colgadas indefinidamente
- * (síntoma habitual en conexiones lentas o cold-start de Supabase).
+ * Incluye timeout de REQUEST_TIMEOUT_MS (si el browser lo soporta) para evitar
+ * peticiones colgadas indefinidamente.
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: (input, init) => {
-      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-      const signal = init?.signal
-        ? mergeSignals([init.signal, timeoutSignal])
-        : timeoutSignal;
-
       const apiToken = sessionService.getApiToken();
       const headers = new Headers(init?.headers);
       if (apiToken) {
         headers.set('x-sie-token', apiToken);
       }
+
+      if (!ABORT_TIMEOUT_SUPPORTED) {
+        // Browser antiguo: sin timeout, comportamiento original
+        return fetch(input, { ...init, headers });
+      }
+
+      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+      const signal = init?.signal
+        ? mergeSignals([init.signal, timeoutSignal])
+        : timeoutSignal;
+
       return fetch(input, { ...init, headers, signal });
     },
   },

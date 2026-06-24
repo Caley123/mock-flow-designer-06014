@@ -28,6 +28,7 @@ export function useIncidentsQuery(filters: IncidentsListFilters = {}) {
     },
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
+    refetchOnMount: true,
   });
 }
 
@@ -79,6 +80,7 @@ export function useJustifyIncidentsQuery(filters: JustifyIncidentsFilters = {}) 
     },
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
+    refetchOnMount: true,
   });
 }
 
