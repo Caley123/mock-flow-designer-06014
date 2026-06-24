@@ -743,6 +743,12 @@ export const StudentsList = () => {
                         </Badge>
                       </div>
                     </div>
+                    <div>
+                      <Label className="text-muted-foreground">Teléfono padre / apoderado</Label>
+                      <p className="text-lg font-semibold font-mono">
+                        {selectedStudent.contactPhone || '—'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -930,6 +936,87 @@ export const StudentsList = () => {
                           JPG o PNG, máx. 5MB
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Contacto familiar — usado para WhatsApp de llegada */}
+                  <div className="border-t pt-4 space-y-4">
+                    <h3 className="text-lg font-semibold">Contacto del padre / apoderado</h3>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="telefono_contacto"
+                        render={({ field }) => (
+                          <FormItem className="sm:col-span-2">
+                            <FormLabel>Teléfono del padre / apoderado</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="tel"
+                                inputMode="tel"
+                                placeholder="Ej. 987654321"
+                                autoComplete="tel"
+                                {...field}
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Número para avisos de llegada por WhatsApp
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="nombre_responsable"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre del responsable</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Nombre completo" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="parentesco_responsable"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Parentesco</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Padre, Madre, Apoderado…" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="email_contacto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email de contacto</FormLabel>
+                            <FormControl>
+                              <Input type="email" placeholder="padre@email.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="telefono_emergencia"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Teléfono de emergencia</FormLabel>
+                            <FormControl>
+                              <Input type="tel" inputMode="tel" placeholder="987654321" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
                   </div>
 
