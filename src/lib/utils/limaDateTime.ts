@@ -1,3 +1,5 @@
+import { normalizeTimeValue } from '@/config/systemSettings';
+
 const LIMA_TZ = 'America/Lima';
 
 const limaPartsFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -68,14 +70,9 @@ export function isSameCalendarDayLima(a: Date, b: Date): boolean {
   return formatDateKeyLima(a) === formatDateKeyLima(b);
 }
 
-/** Normaliza hora DB (HH:mm o HH:mm:ss) a HH:mm */
-export function normalizeTimeHHMM(hora: string): string {
-  const trimmed = hora.trim();
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return '08:00';
-  const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
-  const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+/** Normaliza hora DB (HH:mm, HH:mm:ss u otros) a HH:mm */
+export function normalizeTimeHHMM(hora: unknown): string {
+  return normalizeTimeValue(hora, '08:00');
 }
 
 /** Parsea fecha + hora de cita para el calendario (duración por defecto 30 min) */

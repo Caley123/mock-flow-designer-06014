@@ -67,9 +67,19 @@ export function getSettingDefinition(key: string): SystemSettingDefinition | und
   return SYSTEM_SETTINGS.find((s) => s.key === key);
 }
 
+/** Convierte valor de configuracion_sistema (texto, TIME, número) a string seguro. */
+export function coerceTimeConfigValue(raw: unknown, fallback = ''): string {
+  if (raw == null) return fallback;
+  if (typeof raw === 'string') return raw.trim();
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return String(raw);
+  }
+  return String(raw).trim() || fallback;
+}
+
 /** Normaliza HH:MM o HH:MM:SS a HH:MM para inputs y servicios */
-export function normalizeTimeValue(raw: string | undefined | null, fallback: string): string {
-  const trimmed = raw?.trim() || fallback;
+export function normalizeTimeValue(raw: unknown, fallback: string): string {
+  const trimmed = coerceTimeConfigValue(raw, fallback) || fallback;
   const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return fallback;
   const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));

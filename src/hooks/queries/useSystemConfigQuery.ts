@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   SYSTEM_SETTINGS,
   SYSTEM_SETTING_KEYS,
+  coerceTimeConfigValue,
   normalizeTimeValue,
   type SystemSettingKey,
 } from '@/config/systemSettings';
@@ -31,7 +32,7 @@ export function useAttendanceSettingsQuery() {
       const values = {} as AttendanceSettingsValues;
       for (const def of SYSTEM_SETTINGS) {
         const config = configs[def.key];
-        const hasValue = Boolean(config?.value?.trim());
+        const hasValue = Boolean(coerceTimeConfigValue(config?.value));
         const fallback =
           def.key === SYSTEM_SETTING_KEYS.arrivalLimitPrimary ||
           def.key === SYSTEM_SETTING_KEYS.arrivalLimitSecondary

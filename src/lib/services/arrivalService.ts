@@ -9,6 +9,7 @@ import {
   compareArrivalStatus,
   type ArrivalLimitsByLevel,
 } from '@/lib/utils/arrivalLimit';
+import { normalizeTimeValue } from '@/config/systemSettings';
 
 const ARRIVAL_LIMIT_CACHE_TTL = 15 * 60 * 1000;
 
@@ -73,20 +74,12 @@ async function getArrivalLimitTime(level?: string): Promise<string> {
   if (cached) return cached;
 
   const { config } = await configService.getByKey(configKey);
-  let raw = config?.value?.trim();
+  let raw = config?.value;
   if (!raw && configKey !== 'hora_limite_llegada') {
     const { config: legacy } = await configService.getByKey('hora_limite_llegada');
-    raw = legacy?.value?.trim();
+    raw = legacy?.value;
   }
-  raw = raw || '08:00';
-  const match = raw.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) {
-    setCached(cacheKey, '08:00', ARRIVAL_LIMIT_CACHE_TTL);
-    return '08:00';
-  }
-  const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
-  const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
-  const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const normalized = normalizeTimeValue(raw, '08:00');
   setCached(cacheKey, normalized, ARRIVAL_LIMIT_CACHE_TTL);
   return normalized;
 }
@@ -230,7 +223,10 @@ async function createArrivalRecordInner(
         .eq('id_estudiante', studentId)
         .maybeSingle();
       const limitHHMM = await getArrivalLimitTime(estRow?.nivel_educativo);
-      insertData.estado = compareArrivalStatus(formattedTime, limitHHMM);
+      insertData.estado = compareArrivalStatus(
+        normalizeTimeValue(formattedTime, '00:00'),
+        limitHHMM,
+      );
     }
 
     const { data, error } = await supabase
@@ -800,7 +796,7 @@ export async function getDepartureAlerts(date?: string, horaLimite?: string): Pr
     let limitHour = horaLimite || '15:00';
     if (!horaLimite) {
       const { config } = await configService.getByKey('hora_limite_salida');
-      limitHour = config?.value?.trim() || '15:00';
+      limitHour = normalizeTimeValue(config?.value, '15:00');
     }
 
     const { records, error } = await getStudentsWithoutDeparture(targetDate);
