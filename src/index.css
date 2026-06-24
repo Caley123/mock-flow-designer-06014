@@ -3098,6 +3098,7 @@
 
   .tutor-main {
     @apply flex-1 mx-auto w-full max-w-6xl px-3 py-4 sm:px-6 sm:py-8;
+    color: hsl(var(--foreground));
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 
@@ -3153,18 +3154,59 @@
     background: hsl(var(--card));
   }
 
-  .tutor-scan-input {
-    @apply h-12 sm:h-14 rounded-xl sm:rounded-2xl border border-input bg-background px-4 text-base font-mono tracking-wide text-foreground;
-    caret-color: hsl(var(--foreground));
+  .tutor-scan-input,
+  .tutor-field-input {
+    @apply h-12 sm:h-14 rounded-xl sm:rounded-2xl border px-4 text-base tracking-wide;
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    -webkit-text-fill-color: hsl(var(--foreground));
+    caret-color: hsl(var(--primary));
     font-size: 16px;
   }
 
-  .tutor-scan-input::placeholder {
-    @apply text-muted-foreground;
+  .tutor-scan-input {
+    @apply font-mono;
   }
 
-  .tutor-scan-input:focus-visible {
-    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background border-primary/50;
+  .tutor-scan-input::placeholder,
+  .tutor-field-input::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 1;
+    -webkit-text-fill-color: hsl(var(--muted-foreground));
+  }
+
+  .tutor-scan-input:focus-visible,
+  .tutor-field-input:focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background;
+    border-color: hsl(var(--primary) / 0.5);
+  }
+
+  .tutor-page input[type='search'] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .tutor-scan-card input,
+  .tutor-scan-card textarea,
+  .tutor-dialog input,
+  .tutor-dialog textarea {
+    color-scheme: light;
+  }
+
+  .tutor-scan-input:-webkit-autofill,
+  .tutor-scan-input:-webkit-autofill:hover,
+  .tutor-scan-input:-webkit-autofill:focus,
+  .tutor-field-input:-webkit-autofill,
+  .tutor-field-input:-webkit-autofill:hover,
+  .tutor-field-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--foreground)) !important;
+    -webkit-box-shadow: 0 0 0 1000px hsl(var(--card)) inset !important;
+    caret-color: hsl(var(--primary));
+  }
+
+  .tutor-page textarea.tutor-field-input {
+    @apply min-h-[5rem] h-auto py-3 font-sans;
   }
 
   .tutor-student-card {

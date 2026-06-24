@@ -114,10 +114,25 @@ export const TutorScanner = () => {
 
   const focusBarcodeInput = useCallback(() => {
     requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const nameInput = document.getElementById('name-search-input');
+      if (
+        active === nameInput &&
+        nameInput instanceof HTMLInputElement &&
+        nameInput.value.trim().length > 0
+      ) {
+        return;
+      }
+      if (active instanceof HTMLTextAreaElement || active?.closest('[role="dialog"]')) {
+        return;
+      }
+
       const input = barcodeInputRef.current;
       if (!input) return;
       input.focus({ preventScroll: true });
-      input.select();
+      if (input.value.length > 0) {
+        input.select();
+      }
     });
   }, []);
 
@@ -907,7 +922,7 @@ export const TutorScanner = () => {
                       ref={barcodeInputRef}
                       id="barcode-input"
                       type="text"
-                      inputMode="none"
+                      inputMode="text"
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
@@ -955,7 +970,7 @@ export const TutorScanner = () => {
                         autoComplete="off"
                         enterKeyHint="search"
                         disabled={lookupPending}
-                        className="pl-9 text-base min-h-12 sm:min-h-10"
+                        className="tutor-field-input pl-9 min-h-12 sm:min-h-10"
                         aria-describedby="name-search-hint"
                         aria-expanded={nameSearchResults.length > 0}
                         aria-controls="name-search-results"
@@ -1335,7 +1350,7 @@ export const TutorScanner = () => {
                 value={observations}
                 onChange={(e) => setObservations(e.target.value)}
                 rows={3}
-                className="resize-none"
+                className="tutor-field-input resize-none"
               />
             </div>
           </div>

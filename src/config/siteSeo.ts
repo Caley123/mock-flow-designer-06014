@@ -1,7 +1,12 @@
 /** Metadatos SEO centralizados — asiscole.com / I.E. San Ramón */
 export const SITE_URL = 'https://asiscole.com';
 
-export const OG_IMAGE_URL = `${SITE_URL}/og-asiscole.png`;
+/** Imagen única para vista previa de enlaces en WhatsApp (JPEG ligero, no SVG). */
+export const WHATSAPP_PREVIEW_VERSION = '1';
+export const WHATSAPP_PREVIEW_IMAGE = `${SITE_URL}/whatsapp-preview.jpg?v=${WHATSAPP_PREVIEW_VERSION}`;
+
+/** @deprecated Usar WHATSAPP_PREVIEW_IMAGE — se mantiene por compatibilidad. */
+export const OG_IMAGE_URL = WHATSAPP_PREVIEW_IMAGE;
 
 export const SITE_NAME = 'SIE Asiscole';
 

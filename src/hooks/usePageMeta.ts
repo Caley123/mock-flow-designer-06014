@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import {
   DEFAULT_PAGE_META,
   NOINDEX_PREFIXES,
-  OG_IMAGE_URL,
+  WHATSAPP_PREVIEW_IMAGE,
   PUBLIC_ROUTE_META,
   ARRIVAL_ROUTE_META,
 } from '@/config/siteSeo';
@@ -66,12 +66,15 @@ export function usePageMeta() {
     upsertMeta('og:url', pageUrl, 'property');
     upsertMeta('og:site_name', 'Asiscole', 'property');
     upsertMeta('og:type', 'website', 'property');
-    upsertMeta('og:image', OG_IMAGE_URL, 'property');
-    upsertMeta('og:image:secure_url', OG_IMAGE_URL, 'property');
+    upsertMeta('og:image', WHATSAPP_PREVIEW_IMAGE, 'property');
+    upsertMeta('og:image:secure_url', WHATSAPP_PREVIEW_IMAGE, 'property');
+    upsertMeta('og:image:type', 'image/jpeg', 'property');
+    upsertMeta('og:image:width', '1200', 'property');
+    upsertMeta('og:image:height', '630', 'property');
     upsertMeta('og:image:alt', 'SIE Asiscole — Sistema de Incidencias Escolares, I.E. San Ramón', 'property');
     upsertMeta('twitter:card', 'summary_large_image');
     upsertMeta('twitter:title', meta.title);
     upsertMeta('twitter:description', meta.description);
-    upsertMeta('twitter:image', OG_IMAGE_URL);
+    upsertMeta('twitter:image', WHATSAPP_PREVIEW_IMAGE);
   }, [pathname]);
 }

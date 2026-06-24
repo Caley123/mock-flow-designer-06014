@@ -70,6 +70,30 @@ async function renderOgImage(source) {
   console.log(`✓ og-image.png (${width}×${height})`);
 }
 
+/** Vista previa de enlaces en WhatsApp — JPEG ligero, siempre la misma imagen. */
+async function renderWhatsappPreview() {
+  const branded = resolve(publicDir, 'og-asiscole.png');
+  const fallback = resolve(publicDir, 'og-image.png');
+  const input = existsSync(branded) ? branded : fallback;
+  if (!existsSync(input)) {
+    console.warn('⚠ Sin og-asiscole.png; omitiendo whatsapp-preview.jpg');
+    return;
+  }
+
+  const out = resolve(publicDir, 'whatsapp-preview.jpg');
+  const meta = await sharp(input).metadata();
+  const pipeline = sharp(input).resize(1200, 630, { fit: 'cover', position: 'centre' });
+
+  if ((meta.width ?? 0) < 1000) {
+    await pipeline.jpeg({ quality: 88, mozjpeg: true }).toFile(out);
+  } else {
+    await pipeline.jpeg({ quality: 82, mozjpeg: true }).toFile(out);
+  }
+
+  const { size } = await import('node:fs/promises').then((fs) => fs.stat(out));
+  console.log(`✓ whatsapp-preview.jpg (${Math.round(size / 1024)} KB)`);
+}
+
 async function renderReportAssets(source) {
   await sharp(source)
     .resize(420, 420, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -118,8 +142,9 @@ async function main() {
   await renderPng(source, 512, 'favicon-512.png', 0.15);
   await renderReportAssets(source);
   await renderOgImage(source);
+  await renderWhatsappPreview();
   await renderIco(source);
-  console.log('\nListo. PNG para WhatsApp/reportes; favicon.svg se mantiene para la UI.');
+  console.log('\nListo. whatsapp-preview.jpg para vista previa en WhatsApp; favicon.svg solo en la UI.');
 }
 
 main().catch((err) => {

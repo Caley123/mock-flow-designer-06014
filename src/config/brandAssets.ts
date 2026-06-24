@@ -16,8 +16,8 @@ export const BRAND_LOGIN_LOGO = '/guardy-logo.png';
 export const BRAND_ICON_SM = '/favicon-192.png';
 export const BRAND_ICON_MD = '/favicon-512.png';
 
-/** Vista previa al compartir enlaces (WhatsApp, redes) — obligatorio PNG */
-export const BRAND_OG_IMAGE = '/og-asiscole.png';
+/** Vista previa al compartir enlaces (WhatsApp) — JPEG fijo, nunca SVG */
+export const BRAND_WHATSAPP_PREVIEW = '/whatsapp-preview.jpg';
 
 /** Reportes PDF/Excel */
 export const BRAND_WATERMARK = '/guardy-watermark.png';

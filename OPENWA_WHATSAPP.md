@@ -162,4 +162,4 @@ Campo `telefono_contacto` en estudiantes (ej. `900116737` → WhatsApp `51900116
 
 ## Mensaje enviado
 
-Nombre, curso, fecha, hora y estado de llegada. El registro en Supabase **siempre se guarda**, aunque falle WhatsApp.
+Nombre, curso, fecha, hora, estado de llegada y enlace a la asistencia del día. La vista previa del enlace en WhatsApp usa siempre `whatsapp-preview.jpg` (marca Asiscole). El registro en Supabase **siempre se guarda**, aunque falle WhatsApp.

@@ -7,6 +7,11 @@ export interface Env {
 /** Proxy same-origin hacia OpenWA en el VPS. */
 const OPENWA_PREFIX = '/sc-proxy';
 
+const SOCIAL_CRAWLER_RE =
+  /facebookexternalhit|facebot|whatsapp|twitterbot|linkedinbot|telegrambot|slackbot|discordbot|pinterest/i;
+
+const WHATSAPP_PREVIEW_IMAGE = 'https://asiscole.com/whatsapp-preview.jpg?v=1';
+
 function resolveUpstreamBase(raw?: string): string {
   const base = (raw || 'http://178.104.115.2/api').trim().replace(/\/$/, '');
   return base.endsWith('/api') ? base : `${base}/api`;
@@ -62,12 +67,83 @@ async function proxyOpenwa(request: Request, requestUrl: URL, upstreamBase: stri
   }
 }
 
+function isSocialCrawler(userAgent: string | null): boolean {
+  return SOCIAL_CRAWLER_RE.test(userAgent ?? '');
+}
+
+function isWhatsAppLinkPreviewPath(pathname: string): boolean {
+  return (
+    pathname.startsWith('/llegada/') ||
+    pathname === '/portal-padres' ||
+    pathname.startsWith('/portal-padres/')
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildSocialPreviewHtml(pathname: string, origin: string): string {
+  const pageUrl = `${origin}${pathname}`;
+  const isArrival = pathname.startsWith('/llegada/');
+  const title = isArrival
+    ? 'Consulta de asistencia | I.E. San Ramón — Asiscole'
+    : 'Portal de padres | Consulta de asistencia — I.E. San Ramón';
+  const description = isArrival
+    ? 'Registro de llegada del estudiante. Consulte la asistencia diaria en el Sistema de Incidencias Escolares de la I.E. San Ramón.'
+    : 'Consulte la asistencia diaria de su hijo o hija en la I.E. San Ramón ingresando el DNI del estudiante.';
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}" />
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  <meta property="og:url" content="${escapeHtml(pageUrl)}" />
+  <meta property="og:site_name" content="Asiscole" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="es_PE" />
+  <meta property="og:image" content="${WHATSAPP_PREVIEW_IMAGE}" />
+  <meta property="og:image:secure_url" content="${WHATSAPP_PREVIEW_IMAGE}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="SIE Asiscole — Sistema de Incidencias Escolares, I.E. San Ramón" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${WHATSAPP_PREVIEW_IMAGE}" />
+  <link rel="canonical" href="${escapeHtml(pageUrl)}" />
+</head>
+<body><p>${escapeHtml(description)}</p></body>
+</html>`;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === OPENWA_PREFIX || url.pathname.startsWith(`${OPENWA_PREFIX}/`)) {
       return proxyOpenwa(request, url, resolveUpstreamBase(env.OPENWA_UPSTREAM));
+    }
+
+    const ua = request.headers.get('user-agent');
+    if (
+      request.method === 'GET' &&
+      isSocialCrawler(ua) &&
+      isWhatsAppLinkPreviewPath(url.pathname)
+    ) {
+      return new Response(buildSocialPreviewHtml(url.pathname, url.origin), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=300',
+        },
+      });
     }
 
     return env.ASSETS.fetch(request);

@@ -29,6 +29,12 @@ asiscole.com, www.asiscole.com {
 	@static path *.ico *.svg *.png *.jpg *.webp
 	header @static Cache-Control "public, max-age=86400"
 
+	@wa_preview path /whatsapp-preview.jpg
+	header @wa_preview {
+		Cache-Control "public, max-age=31536000, immutable"
+		Cross-Origin-Resource-Policy "cross-origin"
+	}
+
 	handle /api/* {
 		reverse_proxy 127.0.0.1:2785
 	}
