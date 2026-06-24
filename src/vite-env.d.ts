@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_OPENWA_SESSION_ID?: string;
   readonly VITE_OPENWA_API_KEY?: string;
   readonly VITE_GA_MEASUREMENT_ID?: string;
+  readonly VITE_BUILD_ID?: string;
 }
 
 interface ImportMeta {

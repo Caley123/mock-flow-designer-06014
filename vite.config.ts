@@ -1,8 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { writeFileSync } from "fs";
 import { componentTagger } from "lovable-tagger";
 import { cspConnectSrcPlugin } from "./vite-plugin-csp-connect";
+
+function buildVersionPlugin() {
+  return {
+    name: "sie-build-version",
+    apply: "build" as const,
+    closeBundle() {
+      const version =
+        process.env.VITE_BUILD_ID ||
+        process.env.GITHUB_SHA?.slice(0, 7) ||
+        "dev";
+      writeFileSync(
+        path.resolve(__dirname, "dist/build-version.json"),
+        JSON.stringify({ version, builtAt: new Date().toISOString() }),
+      );
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -18,7 +36,7 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [react(), cspConnectSrcPlugin(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), cspConnectSrcPlugin(), buildVersionPlugin(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

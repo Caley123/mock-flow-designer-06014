@@ -34,10 +34,20 @@
   # - upgrade-insecure-requests: fuerza HTTP→HTTPS automáticamente
   Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; media-src 'self' blob: data:; connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co https://www.google-analytics.com https://region1.google-analytics.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
-# index.html: nunca cachear (el usuario siempre recibe la versión más reciente)
+# index.html y rutas SPA: nunca cachear (usuario recibe versión nueva tras deploy)
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate
   Pragma: no-cache
+
+/build-version.json
+  Cache-Control: no-store, no-cache, must-revalidate
+
+# Scripts de arranque sin hash en public/
+/route-login.js
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/trusted-types.js
+  Cache-Control: no-store, no-cache, must-revalidate
 
 # Assets con hash (Vite): cachear agresivamente (inmutable por diseño)
 /assets/*

@@ -38,6 +38,7 @@ else
 fi
 
 npm ci --no-audit --no-fund
+export VITE_BUILD_ID="$(git rev-parse --short HEAD)"
 npm run build
 
 mkdir -p "$DIST_DIR"
@@ -51,8 +52,23 @@ fi
 
 # CSP en producción la envía Caddy (no dist/_headers). Parches de compatibilidad.
 CADDY_FILE="/etc/caddy/Caddyfile"
+CADDY_SRC="${APP_DIR}/scripts/asiscole-caddy.caddy"
 CSP_MEDIA="media-src 'self' blob: data:"
 CADDY_RELOAD=0
+if [[ -f "$CADDY_SRC" ]] && [[ -f "$CADDY_FILE" ]]; then
+  if ! cmp -s "$CADDY_SRC" "$CADDY_FILE"; then
+    cp "$CADDY_FILE" "${CADDY_FILE}.bak.$(date +%s)"
+    cp "$CADDY_SRC" "$CADDY_FILE"
+    sed -i 's/\r$//' "$CADDY_FILE"
+    if caddy validate --config "$CADDY_FILE"; then
+      systemctl reload caddy
+      log "Caddyfile actualizado (cache SPA + seguridad)"
+    else
+      log "ERROR: Caddyfile inválido tras copia; revise ${CADDY_FILE}.bak.*"
+    fi
+  fi
+fi
+
 if [[ -f "$CADDY_FILE" ]] && grep -q "Content-Security-Policy" "$CADDY_FILE"; then
   if ! grep -qF "$CSP_MEDIA" "$CADDY_FILE"; then
     sed -i "s/media-src 'none'/${CSP_MEDIA}/g" "$CADDY_FILE"

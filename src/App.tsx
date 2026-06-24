@@ -11,6 +11,7 @@ import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
 import { supabase } from "./lib/supabaseClient";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
+import { useDeployVersionCheck } from "./hooks/useDeployVersionCheck";
 import { PageMetaManager } from "./components/seo/PageMetaManager";
 import { SiteAnalytics } from "./components/seo/SiteAnalytics";
 import { StaffLayoutShell } from "./components/layout/StaffLayoutShell";
@@ -206,6 +207,7 @@ const AppContent = () => {
 
 const AppWithSessionMonitor = () => {
   useSessionMonitor();
+  useDeployVersionCheck();
 
   // route-login.js agrega la clase 'route-login' al <html> en el momento
   // de la carga inicial cuando la URL es /login (para mostrar fondo oscuro

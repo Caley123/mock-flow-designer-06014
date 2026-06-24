@@ -20,8 +20,16 @@ asiscole.com, www.asiscole.com {
 	# Sin require-trusted-types-for: tablets con WebView antiguo quedan en blanco si lo exige el CSP
 	header @sie_app Content-Security-Policy "default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; media-src 'self' blob: data:; connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests"
 
-	@html path / /index.html
-	header @html Cache-Control "no-cache, no-store, must-revalidate"
+	# SPA (/incidents, /dashboard, …) y JS de arranque sin hash: revalidar siempre.
+	# Antes solo / e /index.html tenían no-cache; /incidents se cacheaba con etag.
+	@app_shell {
+		not path /assets/*
+		not path /api/*
+		not path /openwa-dashboard*
+		not path /whatsapp-preview.jpg
+		not path *.ico *.svg *.png *.jpg *.jpeg *.webp
+	}
+	header @app_shell Cache-Control "no-cache, no-store, must-revalidate"
 
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
