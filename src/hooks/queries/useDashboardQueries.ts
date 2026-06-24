@@ -3,7 +3,7 @@ import { dashboardService, arrivalService, incidentsService } from '@/lib/servic
 import { queryKeys } from '@/lib/query/queryKeys';
 
 const DEPARTURE_ALERTS_INTERVAL_MS = 5 * 60 * 1000;
-const DASHBOARD_STALE_MS = 5 * 60 * 1000; // mismo que global
+const DASHBOARD_STALE_MS = 5 * 60 * 1000;
 
 export function useDashboardStatsQuery() {
   return useQuery({
@@ -19,7 +19,7 @@ export function useDashboardStatsQuery() {
   });
 }
 
-export function useDepartureAlertsQuery() {
+export function useDepartureAlertsQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboard.departureAlerts(),
     queryFn: async () => {
@@ -27,12 +27,13 @@ export function useDepartureAlertsQuery() {
       if (error) throw new Error(error);
       return alerts ?? [];
     },
+    enabled,
     refetchInterval: DEPARTURE_ALERTS_INTERVAL_MS,
     staleTime: 60 * 1000,
   });
 }
 
-export function useRecentIncidentsQuery() {
+export function useRecentIncidentsQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboard.recentIncidents(),
     queryFn: async () => {
@@ -40,11 +41,12 @@ export function useRecentIncidentsQuery() {
       if (error) throw new Error(error);
       return incidents;
     },
+    enabled,
     staleTime: 2 * 60 * 1000,
   });
 }
 
-export function useMonthlyTrendQuery() {
+export function useMonthlyTrendQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboard.monthlyTrend(),
     queryFn: async () => {
@@ -52,6 +54,7 @@ export function useMonthlyTrendQuery() {
       if (error) throw new Error(error);
       return monthlyTrend ?? [];
     },
+    enabled,
     staleTime: DASHBOARD_STALE_MS,
     placeholderData: keepPreviousData,
   });

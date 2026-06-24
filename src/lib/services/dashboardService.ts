@@ -10,6 +10,129 @@ type IncidentCountFilters = {
   grado?: string;
 };
 
+const DASHBOARD_INCIDENT_LEAN_SELECT = `
+  nivel_reincidencia,
+  fecha_hora_registro,
+  estudiantes:id_estudiante (grado, nivel_educativo),
+  catalogos_faltas:id_falta (nombre_falta)
+`;
+
+const DASHBOARD_LEAN_LIMIT = 12_000;
+
+type LeanDashboardIncident = {
+  nivel_reincidencia: number;
+  fecha_hora_registro: string;
+  estudiantes: { grado: string | null; nivel_educativo: string | null } | null;
+  catalogos_faltas: { nombre_falta: string | null } | null;
+};
+
+async function fetchLeanActiveIncidents(options?: {
+  fechaDesde?: string;
+  fechaHasta?: string;
+}): Promise<LeanDashboardIncident[]> {
+  let query = supabase
+    .from('incidencias')
+    .select(DASHBOARD_INCIDENT_LEAN_SELECT)
+    .eq('estado', 'Activa')
+    .order('fecha_hora_registro', { ascending: false })
+    .limit(DASHBOARD_LEAN_LIMIT);
+
+  if (options?.fechaDesde) {
+    query = query.gte('fecha_hora_registro', options.fechaDesde);
+  }
+  if (options?.fechaHasta) {
+    query = query.lte('fecha_hora_registro', options.fechaHasta);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error al cargar incidencias del dashboard:', error);
+    return [];
+  }
+  return (data ?? []) as LeanDashboardIncident[];
+}
+
+function aggregateDashboardIncidents(
+  rows: LeanDashboardIncident[],
+  opts: {
+    hoy: Date;
+    inicioSemana: Date;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  },
+) {
+  const fechaDesdeMs = opts.fechaDesde ? new Date(opts.fechaDesde).getTime() : null;
+  const fechaHastaMs = opts.fechaHasta ? new Date(opts.fechaHasta).getTime() : null;
+  const hoyMs = opts.hoy.getTime();
+  const weekMs = opts.inicioSemana.getTime();
+
+  const levelCounts = [0, 0, 0, 0, 0, 0];
+  let todayCount = 0;
+  let weekCount = 0;
+  let totalCount = 0;
+  const gradoCounts: Record<string, { level: EducationalLevel; grade: string; count: number }> = {};
+  const faltasCounts: Record<string, number> = {};
+
+  for (const inc of rows) {
+    const ts = new Date(inc.fecha_hora_registro).getTime();
+    if (ts >= hoyMs) todayCount += 1;
+    if (ts >= weekMs) weekCount += 1;
+
+    if (fechaDesdeMs != null && ts < fechaDesdeMs) continue;
+    if (fechaHastaMs != null && ts > fechaHastaMs) continue;
+
+    totalCount += 1;
+    const lvl = Math.min(5, Math.max(0, Number(inc.nivel_reincidencia) || 0));
+    levelCounts[lvl] += 1;
+
+    const grado = inc.estudiantes?.grado || 'Sin grado';
+    const nivel = (inc.estudiantes?.nivel_educativo || 'Secundaria') as EducationalLevel;
+    const key = `${nivel}-${grado}`;
+    if (!gradoCounts[key]) {
+      gradoCounts[key] = { level: nivel, grade: grado, count: 0 };
+    }
+    gradoCounts[key].count += 1;
+
+    const faultName = inc.catalogos_faltas?.nombre_falta || 'Desconocida';
+    faltasCounts[faultName] = (faltasCounts[faultName] || 0) + 1;
+  }
+
+  const levelDistribution = {
+    level0: levelCounts[0],
+    level1: levelCounts[1],
+    level2: levelCounts[2],
+    level3: levelCounts[3],
+    level4: levelCounts[4],
+    level5: levelCounts[5],
+  };
+  const totalForAvg = levelCounts.reduce((s, n) => s + n, 0);
+  const avgLevel =
+    totalForAvg > 0
+      ? levelCounts.reduce((s, n, i) => s + i * n, 0) / totalForAvg
+      : 0;
+
+  const incidentsByGrade = Object.values(gradoCounts).map((entry) => ({
+    ...entry,
+    label: `${entry.level} • ${entry.grade}`,
+  }));
+
+  const topFaults = Object.entries(faltasCounts)
+    .map(([faultType, count]) => ({ faultType, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return {
+    totalCount,
+    todayCount,
+    weekCount,
+    levelDistribution,
+    avgLevel,
+    incidentsByGrade,
+    topFaults,
+  };
+}
+
+/** Conteo puntual (reportes con filtros de grado/nivel). */
 async function countIncidents(filters: IncidentCountFilters = {}): Promise<number> {
   let query = supabase.from('incidencias').select('id_incidencia', { count: 'exact', head: true });
 
@@ -65,96 +188,30 @@ export const dashboardService = {
       hoy.setHours(0, 0, 0, 0);
       const inicioSemana = new Date(hoy);
       inicioSemana.setDate(hoy.getDate() - hoy.getDay());
-      const base: IncidentCountFilters = { estado: 'Activa', fechaDesde, fechaHasta };
 
-      // 2. Construir queries de grado y falta con fechas
-      let gradoQ = supabase
-        .from('incidencias')
-        .select('nivel_reincidencia, estudiantes:id_estudiante(grado, nivel_educativo)')
-        .eq('estado', 'Activa')
-        .limit(600);
-      let faltaQ = supabase
-        .from('incidencias')
-        .select('catalogos_faltas:id_falta(nombre_falta)')
-        .eq('estado', 'Activa')
-        .limit(600);
-      if (fechaDesde) {
-        gradoQ = gradoQ.gte('fecha_hora_registro', fechaDesde);
-        faltaQ = faltaQ.gte('fecha_hora_registro', fechaDesde);
-      }
-      if (fechaHasta) {
-        gradoQ = gradoQ.lte('fecha_hora_registro', fechaHasta);
-        faltaQ = faltaQ.lte('fecha_hora_registro', fechaHasta);
-      }
-
-      // 3. TODAS las llamadas de red en un único Promise.all — 0 cascada
-      const [
-        { data: executiveData },
-        todayCount,
-        weekCount,
-        totalCount,
-        lv0, lv1, lv2, lv3, lv4, lv5,
-        { data: incidenciasConGrado },
-        { data: faltasData },
-      ] = await Promise.all([
+      // 2 consultas en red (vista ejecutiva + filas ligeras) en lugar de 12+ conteos
+      const [{ data: executiveData }, leanRows] = await Promise.all([
         supabase.from('v_dashboard_ejecutivo').select('*').single(),
-        countIncidents({ estado: 'Activa', fechaDesde: hoy.toISOString() }),
-        countIncidents({ estado: 'Activa', fechaDesde: inicioSemana.toISOString() }),
-        countIncidents(base),
-        countIncidents({ ...base, nivelReincidencia: 0 }),
-        countIncidents({ ...base, nivelReincidencia: 1 }),
-        countIncidents({ ...base, nivelReincidencia: 2 }),
-        countIncidents({ ...base, nivelReincidencia: 3 }),
-        countIncidents({ ...base, nivelReincidencia: 4 }),
-        countIncidents({ ...base, nivelReincidencia: 5 }),
-        gradoQ,
-        faltaQ,
+        fetchLeanActiveIncidents(),
       ]);
 
-      // 4. Cómputo local (sin red)
-      const levelCounts = [lv0, lv1, lv2, lv3, lv4, lv5];
-      const levelDistribution = {
-        level0: lv0, level1: lv1, level2: lv2,
-        level3: lv3, level4: lv4, level5: lv5,
-      };
-      const totalForAvg = levelCounts.reduce((s, n) => s + n, 0);
-      const avgLevel = totalForAvg > 0
-        ? levelCounts.reduce((s, n, i) => s + i * n, 0) / totalForAvg
-        : 0;
-
-      const gradoCounts: Record<string, { level: EducationalLevel; grade: string; count: number }> = {};
-      (incidenciasConGrado ?? []).forEach((inc: any) => {
-        const grado = inc.estudiantes?.grado || 'Sin grado';
-        const nivel = (inc.estudiantes?.nivel_educativo || 'Secundaria') as EducationalLevel;
-        const key = `${nivel}-${grado}`;
-        if (!gradoCounts[key]) gradoCounts[key] = { level: nivel, grade: grado, count: 0 };
-        gradoCounts[key].count += 1;
+      const aggregated = aggregateDashboardIncidents(leanRows, {
+        hoy,
+        inicioSemana,
+        fechaDesde,
+        fechaHasta,
       });
-      const incidentsByGrade = Object.values(gradoCounts).map((e) => ({
-        ...e,
-        label: `${e.level} • ${e.grade}`,
-      }));
-
-      const faltasCounts: Record<string, number> = {};
-      (faltasData ?? []).forEach((inc: any) => {
-        const f = inc.catalogos_faltas?.nombre_falta || 'Desconocida';
-        faltasCounts[f] = (faltasCounts[f] || 0) + 1;
-      });
-      const topFaults = Object.entries(faltasCounts)
-        .map(([faultType, count]) => ({ faultType, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
 
       const stats: DashboardStats = {
-        totalIncidents: totalCount || 0,
-        incidentsToday: todayCount || 0,
-        incidentsThisWeek: weekCount || 0,
+        totalIncidents: aggregated.totalCount,
+        incidentsToday: aggregated.todayCount,
+        incidentsThisWeek: aggregated.weekCount,
         incidentsThisMonth: executiveData?.total_incidencias_mes || 0,
         studentsWithIncidents: executiveData?.estudiantes_afectados_mes || 0,
-        averageReincidenceLevel: Math.round(avgLevel * 100) / 100,
-        levelDistribution,
-        topFaults,
-        incidentsByGrade,
+        averageReincidenceLevel: Math.round(aggregated.avgLevel * 100) / 100,
+        levelDistribution: aggregated.levelDistribution,
+        topFaults: aggregated.topFaults,
+        incidentsByGrade: aggregated.incidentsByGrade,
       };
 
       return { stats, error: null };
@@ -195,37 +252,60 @@ export const dashboardService = {
       const currentYear = year || now.getFullYear();
       const currentMonth = now.getMonth(); // 0-11
       
-      // Obtener los últimos 5 meses
+      const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       const months: { month: number; year: number; label: string }[] = [];
       for (let i = 4; i >= 0; i--) {
         const date = new Date(currentYear, currentMonth - i, 1);
-        const monthNum = date.getMonth();
-        const monthYear = date.getFullYear();
-        const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         months.push({
-          month: monthNum,
-          year: monthYear,
-          label: monthLabels[monthNum],
+          month: date.getMonth(),
+          year: date.getFullYear(),
+          label: monthLabels[date.getMonth()],
         });
       }
 
-      // Obtener incidencias agrupadas por mes (en paralelo)
-      const monthlyTrend = await Promise.all(
-        months.map(async ({ month, year: monthYear, label }) => {
-          const startDate = new Date(monthYear, month, 1);
-          const endDate = new Date(monthYear, month + 1, 0, 23, 59, 59, 999);
-
-          const incidents = await countIncidents({
-            estado: 'Activa',
-            fechaDesde: startDate.toISOString(),
-            fechaHasta: endDate.toISOString(),
-            nivelEducativo: level,
-            grado: grade,
-          });
-
-          return { month: label, incidents };
-        }),
+      const rangeStart = new Date(months[0].year, months[0].month, 1);
+      const rangeEnd = new Date(
+        months[months.length - 1].year,
+        months[months.length - 1].month + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
       );
+
+      let query = supabase
+        .from('incidencias')
+        .select('fecha_hora_registro, estudiantes:id_estudiante(grado, nivel_educativo)')
+        .eq('estado', 'Activa')
+        .gte('fecha_hora_registro', rangeStart.toISOString())
+        .lte('fecha_hora_registro', rangeEnd.toISOString())
+        .limit(DASHBOARD_LEAN_LIMIT);
+
+      const { data, error } = await query;
+      if (error) {
+        return { monthlyTrend: [], error: error.message };
+      }
+
+      const buckets = months.map(({ month, year, label }) => ({
+        month: label,
+        incidents: 0,
+        key: `${year}-${month}`,
+      }));
+
+      for (const row of data ?? []) {
+        const estudiante = (row as { estudiantes?: { grado?: string; nivel_educativo?: string } })
+          .estudiantes;
+        if (level && estudiante?.nivel_educativo !== level) continue;
+        if (grade && estudiante?.grado !== grade) continue;
+
+        const d = new Date((row as { fecha_hora_registro: string }).fecha_hora_registro);
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        const bucket = buckets.find((b) => b.key === key);
+        if (bucket) bucket.incidents += 1;
+      }
+
+      const monthlyTrend = buckets.map(({ month, incidents }) => ({ month, incidents }));
 
       return { monthlyTrend, error: null };
     } catch (error: any) {
@@ -267,24 +347,38 @@ export const dashboardService = {
       
       weekDays.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-      const weeklyData = await Promise.all(
-        weekDays.map(async ({ date, label }) => {
-          const startDate = new Date(date);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(date);
-          endDate.setHours(23, 59, 59, 999);
+      const rangeStart = new Date(weekDays[0].date);
+      rangeStart.setHours(0, 0, 0, 0);
+      const rangeEnd = new Date(weekDays[weekDays.length - 1].date);
+      rangeEnd.setHours(23, 59, 59, 999);
 
-          const count = await countIncidents({
-            estado: 'Activa',
-            fechaDesde: startDate.toISOString(),
-            fechaHasta: endDate.toISOString(),
-            nivelEducativo: level,
-            grado: grade,
-          });
+      let query = supabase
+        .from('incidencias')
+        .select('fecha_hora_registro, estudiantes:id_estudiante(grado, nivel_educativo)')
+        .eq('estado', 'Activa')
+        .gte('fecha_hora_registro', rangeStart.toISOString())
+        .lte('fecha_hora_registro', rangeEnd.toISOString())
+        .limit(5000);
 
-          return { day: label, count };
-        }),
-      );
+      const { data, error } = await query;
+      if (error) {
+        return { weeklyData: [], error: error.message };
+      }
+
+      const weeklyData = weekDays.map(({ date, label }) => {
+        const startMs = new Date(date).setHours(0, 0, 0, 0);
+        const endMs = new Date(date).setHours(23, 59, 59, 999);
+        let count = 0;
+        for (const row of data ?? []) {
+          const estudiante = (row as { estudiantes?: { grado?: string; nivel_educativo?: string } })
+            .estudiantes;
+          if (level && estudiante?.nivel_educativo !== level) continue;
+          if (grade && estudiante?.grado !== grade) continue;
+          const ts = new Date((row as { fecha_hora_registro: string }).fecha_hora_registro).getTime();
+          if (ts >= startMs && ts <= endMs) count += 1;
+        }
+        return { day: label, count };
+      });
 
       return { weeklyData, error: null };
     } catch (error: any) {

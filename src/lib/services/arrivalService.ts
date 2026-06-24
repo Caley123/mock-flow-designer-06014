@@ -789,52 +789,59 @@ export async function getDepartureAlerts(date?: string, horaLimite?: string): Pr
   error: string | null;
 }> {
   try {
-    // Usar fecha actual si no se especifica
     const targetDate = date || getTodayDate();
-    
-    // Obtener hora límite desde configuración o usar 15:00 por defecto
+
     let limitHour = horaLimite || '15:00';
     if (!horaLimite) {
       const { config } = await configService.getByKey('hora_limite_salida');
       limitHour = normalizeTimeValue(config?.value, '15:00');
     }
 
-    const { records, error } = await getStudentsWithoutDeparture(targetDate);
-    
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select(`
+        id_registro, id_estudiante, fecha, hora_llegada, hora_salida, estado, fecha_creacion, registrado_por,
+        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(
+          id_estudiante, nombre_completo, grado, seccion, nivel_educativo, codigo_barras, activo
+        )
+      `)
+      .eq('fecha', targetDate)
+      .is('hora_salida', null)
+      .order('hora_llegada', { ascending: false })
+      .limit(500);
+
     if (error) {
-      return { alerts: [], error };
+      return { alerts: [], error: error.message };
     }
 
-    // Filtrar solo los que ya pasaron la hora límite
     const now = new Date();
     const [limitH, limitM] = limitHour.split(':').map(Number);
     const limitTime = new Date();
     limitTime.setHours(limitH, limitM, 0, 0);
 
-    const alerts = records
-      .map(record => {
-        // Calcular horas desde la llegada
+    const alerts = (data ?? [])
+      .map((row) => {
+        const record = mapArrivalRecord(row as RegistroLlegadaDB & { estudiante?: unknown });
         const [arrivalH, arrivalM] = record.arrivalTime.split(':').map(Number);
         const arrivalTime = new Date();
         arrivalTime.setHours(arrivalH, arrivalM, 0, 0);
-        
+
         const hoursSinceArrival = (now.getTime() - arrivalTime.getTime()) / (1000 * 60 * 60);
-        
-        // Es crítico si ya pasó la hora límite
         const isCritical = now > limitTime;
-        
+
         return {
           record,
           hoursSinceArrival: Math.max(0, hoursSinceArrival),
           isCritical,
         };
       })
-      .filter(alert => alert.isCritical || alert.hoursSinceArrival > 2); // Mostrar si es crítico o han pasado más de 2 horas
-    
+      .filter((alert) => alert.isCritical || alert.hoursSinceArrival > 2);
+
     return { alerts, error: null };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error al obtener alertas de salida';
     console.error('Error en getDepartureAlerts:', error);
-    return { alerts: [], error: error.message || 'Error al obtener alertas de salida' };
+    return { alerts: [], error: message };
   }
 }
 

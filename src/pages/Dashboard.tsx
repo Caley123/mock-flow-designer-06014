@@ -70,9 +70,10 @@ const CHART = {
 
 export const Dashboard = () => {
   const statsQuery = useDashboardStatsQuery();
-  const alertsQuery = useDepartureAlertsQuery();
-  const recentIncidentsQuery = useRecentIncidentsQuery();
-  const monthlyTrendQuery = useMonthlyTrendQuery();
+  const statsReady = statsQuery.isSuccess || Boolean(statsQuery.data);
+  const alertsQuery = useDepartureAlertsQuery(statsReady);
+  const recentIncidentsQuery = useRecentIncidentsQuery(statsReady);
+  const monthlyTrendQuery = useMonthlyTrendQuery(statsReady);
   const navigate = useNavigate();
 
   useEffect(() => {

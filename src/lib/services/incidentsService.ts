@@ -456,11 +456,38 @@ export const incidentsService = {
         return count ?? 0;
       };
 
-      const [total, activas, conEvidencia] = await Promise.all([
-        countFiltered(),
-        countFiltered({ estado: 'Activa' }),
-        countFiltered({ estado_evidencia: 'Con evidencia' }),
-      ]);
+      let summaryQuery = supabase
+        .from('incidencias')
+        .select('estado, estado_evidencia');
+      summaryQuery = applyIncidentFilters(
+        summaryQuery,
+        filters,
+        dateRange,
+        scope,
+      ) as typeof summaryQuery;
+      summaryQuery = summaryQuery.limit(15_000);
+
+      const { data: summaryRows, error: summaryError } = await summaryQuery;
+      if (summaryError) {
+        throw new Error(summaryError.message);
+      }
+
+      let total = 0;
+      let activas = 0;
+      let conEvidencia = 0;
+      for (const row of summaryRows ?? []) {
+        total += 1;
+        if (row.estado === 'Activa') activas += 1;
+        if (row.estado_evidencia === 'Con evidencia') conEvidencia += 1;
+      }
+
+      if ((summaryRows?.length ?? 0) >= 15_000) {
+        [total, activas, conEvidencia] = await Promise.all([
+          countFiltered(),
+          countFiltered({ estado: 'Activa' }),
+          countFiltered({ estado_evidencia: 'Con evidencia' }),
+        ]);
+      }
 
       return {
         summary: { total, activas, conEvidencia },
