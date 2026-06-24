@@ -2,18 +2,25 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { writeFileSync } from "fs";
+import { execSync } from "child_process";
 import { componentTagger } from "lovable-tagger";
 import { cspConnectSrcPlugin } from "./vite-plugin-csp-connect";
+
+function resolveBuildId(): string {
+  if (process.env.VITE_BUILD_ID) return process.env.VITE_BUILD_ID;
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    return "dev";
+  }
+}
 
 function buildVersionPlugin() {
   return {
     name: "sie-build-version",
     apply: "build" as const,
     closeBundle() {
-      const version =
-        process.env.VITE_BUILD_ID ||
-        process.env.GITHUB_SHA?.slice(0, 7) ||
-        "dev";
+      const version = resolveBuildId();
       writeFileSync(
         path.resolve(__dirname, "dist/build-version.json"),
         JSON.stringify({ version, builtAt: new Date().toISOString() }),
@@ -23,7 +30,10 @@ function buildVersionPlugin() {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  const buildId = resolveBuildId();
+
+  return {
   base: "/",
   server: {
     host: "::",
@@ -110,4 +120,8 @@ export default defineConfig(({ mode }) => ({
       '@tanstack/react-query',
     ],
   },
-}));
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
+  },
+};
+});
