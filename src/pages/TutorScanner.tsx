@@ -908,7 +908,7 @@ export const TutorScanner = () => {
 
                   <div className="relative space-y-2">
                     <Label htmlFor="name-search-input" className="text-sm font-medium text-foreground">
-                      Búsqueda por nombre
+                      Buscar por nombre o DNI
                     </Label>
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -917,8 +917,9 @@ export const TutorScanner = () => {
                         type="search"
                         value={nameSearch}
                         onChange={(e) => setNameSearch(e.target.value)}
-                        placeholder="Escriba al menos 2 letras del nombre…"
+                        placeholder="Nombre, apellido o DNI…"
                         autoComplete="off"
+                        enterKeyHint="search"
                         disabled={lookupPending}
                         className="pl-9 text-base min-h-12 sm:min-h-10"
                         aria-describedby="name-search-hint"
@@ -995,7 +996,9 @@ export const TutorScanner = () => {
                 </form>
               </CardContent>
             </div>
+          </section>
 
+          <aside className="tutor-right">
             {showStudentProfile && student && (
               <>
                 <button
@@ -1120,9 +1123,7 @@ export const TutorScanner = () => {
                 </div>
               </>
             )}
-          </section>
-
-          <aside className="tutor-right hidden md:block">
+            <div className="tutor-side-stack hidden md:block">
             <div className="tutor-side-card">
               <div className="tutor-side-card__head">
                 <CardTitle className="text-base font-semibold">Estado del turno</CardTitle>
@@ -1212,6 +1213,7 @@ export const TutorScanner = () => {
                 </ol>
               </CardContent>
             </Card>
+            </div>
           </aside>
         </div>
 

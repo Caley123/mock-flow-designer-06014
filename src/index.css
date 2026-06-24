@@ -3119,6 +3119,30 @@
     @apply space-y-5 lg:sticky lg:top-6;
   }
 
+  /* Cuando hay perfil de estudiante en la columna derecha, dejamos que toda la
+     columna pueda scrollear internamente si la pantalla del laptop es baja,
+     manteniendo la foto siempre visible arriba sin mover la búsqueda. */
+  @media (min-width: 1024px) {
+    .tutor-right {
+      max-height: calc(100dvh - 3rem);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .tutor-right::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .tutor-right::-webkit-scrollbar-thumb {
+      background: hsl(var(--border));
+      border-radius: 9999px;
+    }
+  }
+
+  .tutor-side-stack {
+    @apply space-y-5;
+  }
+
   .tutor-scan-card {
     @apply rounded-2xl sm:rounded-[28px] border border-border bg-card overflow-hidden;
   }
