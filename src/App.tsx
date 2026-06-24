@@ -40,7 +40,11 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: 3,
+      // 1 s → 2 s → 4 s entre reintentos; máximo 10 s para no bloquear demasiado.
+      // Esto cubre el cold-start de Supabase: el primer intento puede fallar por
+      // timeout (15 s), pero el segundo ya encuentra la conexión "caliente".
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       staleTime: 5 * 60 * 1000,   // 5 min: datos frescos mientras navegas

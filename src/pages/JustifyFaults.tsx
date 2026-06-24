@@ -179,6 +179,32 @@ export const JustifyFaults = () => {
     return <PageLoader message="Cargando incidencias..." />;
   }
 
+  if (isError && !pageData) {
+    return (
+      <div className="app-page app-page-shell">
+        <PageHeader
+          icon={CheckCircle2}
+          eyebrow="Incidencias"
+          title="Justificar Faltas"
+          description="Gestione incidencias activas y registre justificaciones con motivo documentado"
+          accent="success"
+        />
+        <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+          <AlertCircle className="h-10 w-10 text-destructive/70" />
+          <div>
+            <p className="font-semibold text-foreground">No se pudieron cargar las incidencias</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Error de conexión con el servidor. Verifique el WiFi e intente nuevamente.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => void refetch()}>
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-page app-page-shell">
       <PageHeader
@@ -264,7 +290,18 @@ export const JustifyFaults = () => {
           }
         />
         <div className="p-4 pt-0 sm:p-5 sm:pt-0">
-          {incidents.length === 0 ? (
+          {isError && incidents.length === 0 ? (
+            <StaffEmptyState
+              icon={AlertCircle}
+              title="Error al cargar incidencias"
+              description="No se pudo conectar. Verifique la conexión e intente de nuevo."
+              action={
+                <Button size="sm" variant="outline" onClick={() => void refetch()}>
+                  Reintentar
+                </Button>
+              }
+            />
+          ) : incidents.length === 0 ? (
             <StaffEmptyState
               icon={FileText}
               title="Sin resultados"

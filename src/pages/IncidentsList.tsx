@@ -98,6 +98,7 @@ export const IncidentsList = () => {
     isLoading,
     isFetching,
     isError,
+    refetch,
   } = useIncidentsQuery(incidentFilters);
 
   const { data: summary } = useIncidentsSummaryQuery(summaryFilters);
@@ -349,6 +350,17 @@ export const IncidentsList = () => {
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Cargando incidencias…
               </div>
+            ) : isError && incidents.length === 0 ? (
+              <StaffEmptyState
+                icon={AlertCircle}
+                title="Error al cargar incidencias"
+                description="No se pudo conectar con el servidor. Verifique la conexión e intente de nuevo."
+                action={
+                  <Button size="sm" variant="outline" onClick={() => void refetch()}>
+                    Reintentar
+                  </Button>
+                }
+              />
             ) : incidents.length === 0 ? (
               <StaffEmptyState
                 icon={FileText}
