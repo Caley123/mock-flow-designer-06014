@@ -85,6 +85,11 @@ export async function prefetchArrivalConfig(): Promise<void> {
   await getArrivalLimitTime();
 }
 
+/** Hora límite de llegada (HH:MM) desde configuracion_sistema.hora_limite_llegada */
+export async function fetchArrivalLimitTime(): Promise<string> {
+  return getArrivalLimitTime();
+}
+
 function getNowHHMM(): string {
   // Usar la hora actual en la zona horaria de Lima
   const now = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
@@ -1006,6 +1011,7 @@ export const arrivalService = {
   getStudentsWithoutDeparture,
   getDepartureAlerts,
   prefetchArrivalConfig,
+  fetchArrivalLimitTime,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
 };

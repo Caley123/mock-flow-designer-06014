@@ -236,15 +236,8 @@ export const TutorScanner = () => {
 
   const loadArrivalLimit = async () => {
     try {
-      // Límite de llegada: fin de ventana de entrada según horario configurado
-      const schedConfig = await scheduleService.getConfig();
-      const rawLimit = schedConfig.defaults.entradaFin?.trim() || '08:00';
-      const mLimit = rawLimit.match(/^(\d{1,2}):(\d{2})$/);
-      if (mLimit) {
-        const h = Math.min(23, Math.max(0, parseInt(mLimit[1], 10)));
-        const m = Math.min(59, Math.max(0, parseInt(mLimit[2], 10)));
-        setArrivalLimit(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-      }
+      const limit = await arrivalService.fetchArrivalLimitTime();
+      setArrivalLimit(normalizeTimeValue(limit, '08:00'));
 
       // Hora de cierre: desde cuándo mostrar "Fuera de jornada"
       const { config: closeCfg } = await configService.getByKey(SYSTEM_SETTING_KEYS.schoolClose);
@@ -434,6 +427,32 @@ export const TutorScanner = () => {
             appendToSessionStats(studentToShow, record);
           } else if (isLatestProfile) {
             setArrivalRecord(record);
+            if (record.status !== optimisticStatus) {
+              setSessionCount((prev) => ({
+                total: prev.total,
+                onTime:
+                  prev.onTime -
+                  (optimisticStatus === 'A tiempo' ? 1 : 0) +
+                  (record.status === 'A tiempo' ? 1 : 0),
+                late:
+                  prev.late -
+                  (optimisticStatus === 'Tarde' ? 1 : 0) +
+                  (record.status === 'Tarde' ? 1 : 0),
+              }));
+              setRecentScans((prev) => {
+                if (!prev.length) return prev;
+                const [head, ...tail] = prev;
+                if (head.name !== studentToShow.fullName) return prev;
+                return [
+                  {
+                    ...head,
+                    status: record.status,
+                    time: record.arrivalTime ?? head.time,
+                  },
+                  ...tail,
+                ];
+              });
+            }
           }
 
           if (whatsappService.isEnabled()) {
@@ -509,7 +528,7 @@ export const TutorScanner = () => {
       const arrivalOpts: CreateArrivalOptions = {
         date,
         arrivalTime: time,
-        status,
+        // estado: lo calcula el servidor con hora_limite_llegada (misma fuente que la UI)
       };
 
       if (foundStudent.barcode?.trim()) {
