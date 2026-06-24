@@ -14,6 +14,17 @@ export const queryKeys = {
       [...queryKeys.incidents.all, 'list', filters] as const,
     summary: (filters: { nivelEducativo?: EducationalLevel; search?: string }) =>
       [...queryKeys.incidents.all, 'summary', filters] as const,
+    justify: (filters: Record<string, unknown>) =>
+      [...queryKeys.incidents.all, 'justify', filters] as const,
+  },
+  faults: {
+    all: ['faults'] as const,
+    list: (activeOnly: boolean) => [...queryKeys.faults.all, 'list', activeOnly] as const,
+  },
+  systemConfig: {
+    all: ['system-config'] as const,
+    attendance: () => [...queryKeys.systemConfig.all, 'attendance'] as const,
+    reincidence: () => [...queryKeys.systemConfig.all, 'reincidence'] as const,
   },
   students: {
     all: ['students'] as const,

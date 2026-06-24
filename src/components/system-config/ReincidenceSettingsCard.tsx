@@ -13,6 +13,10 @@ import { reincidenceConfigService } from '@/lib/services';
 import type { ReincidenceLevel, ReincidenceSettings } from '@/types';
 import { toast } from 'sonner';
 import { getReincidenceLevelSummaryLabel } from '@/lib/utils/reincidenceUtils';
+import {
+  useInvalidateSystemConfig,
+  useReincidenceSettingsQuery,
+} from '@/hooks/queries/useSystemConfigQuery';
 
 const THRESHOLD_FIELDS = [
   { key: 'level1' as const, level: 1 as ReincidenceLevel, label: 'Nivel 1' },
@@ -25,7 +29,8 @@ const THRESHOLD_FIELDS = [
 type ThresholdForm = ReincidenceSettings['thresholds'];
 
 export function ReincidenceSettingsCard() {
-  const [loading, setLoading] = useState(true);
+  const { data: loadedSettings, isLoading, isError } = useReincidenceSettingsQuery();
+  const invalidateSystemConfig = useInvalidateSystemConfig();
   const [saving, setSaving] = useState(false);
   const [windowDays, setWindowDays] = useState('60');
   const [thresholds, setThresholds] = useState<ThresholdForm>({
@@ -37,20 +42,17 @@ export function ReincidenceSettingsCard() {
   });
 
   useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    setLoading(true);
-    const { settings, error } = await reincidenceConfigService.ensureDefault();
-    if (error) {
-      toast.error('Error al cargar configuración de reincidencia');
-    } else if (settings) {
-      setWindowDays(String(settings.windowDays));
-      setThresholds(settings.thresholds);
+    if (loadedSettings) {
+      setWindowDays(String(loadedSettings.windowDays));
+      setThresholds(loadedSettings.thresholds);
     }
-    setLoading(false);
-  };
+  }, [loadedSettings]);
+
+  useEffect(() => {
+    if (isError) {
+      toast.error('Error al cargar configuración de reincidencia');
+    }
+  }, [isError]);
 
   const handleSave = async () => {
     const days = parseInt(windowDays, 10);
@@ -79,6 +81,7 @@ export function ReincidenceSettingsCard() {
       setWindowDays(String(settings.windowDays));
       setThresholds(settings.thresholds);
       toast.success('Reglas de reincidencia actualizadas');
+      invalidateSystemConfig();
     }
     setSaving(false);
   };
@@ -93,7 +96,7 @@ export function ReincidenceSettingsCard() {
         description="Suma los puntos de las faltas activas del catálogo dentro de la ventana de días y asigna el nivel de comportamiento (0–5) del estudiante."
       />
       <StaffDataPanelBody className="space-y-6">
-        {loading ? (
+        {isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando reglas de reincidencia…</p>
         ) : (
           <>

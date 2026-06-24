@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 import type { ConfiguracionReincidenciaDB, ReincidenceSettings } from '@/types';
+import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
+
+const REINCIDENCE_CACHE_KEY = 'reincidence:settings';
+const REINCIDENCE_CACHE_TTL = 15 * 60 * 1000;
 
 const DEFAULT_CONFIG: Omit<ConfiguracionReincidenciaDB, 'id_configuracion_reincidencia' | 'id_config_reincidencia'> = {
   ventana_dias: 60,
@@ -40,6 +44,11 @@ export async function getActive(): Promise<{
   settings: ReincidenceSettings | null;
   error: string | null;
 }> {
+  const cached = getCached<ReincidenceSettings>(REINCIDENCE_CACHE_KEY);
+  if (cached) {
+    return { settings: cached, error: null };
+  }
+
   try {
     const { data, error } = await supabase
       .from('configuracion_reincidencia')
@@ -56,7 +65,9 @@ export async function getActive(): Promise<{
       return { settings: null, error: null };
     }
 
-    return { settings: mapSettings(data as ConfiguracionReincidenciaDB), error: null };
+    const settings = mapSettings(data as ConfiguracionReincidenciaDB);
+    setCached(REINCIDENCE_CACHE_KEY, settings, REINCIDENCE_CACHE_TTL);
+    return { settings, error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error desconocido';
     return { settings: null, error: message };
@@ -86,7 +97,9 @@ export async function ensureDefault(): Promise<{
       return { settings: null, error: error.message };
     }
 
-    return { settings: mapSettings(data as ConfiguracionReincidenciaDB), error: null };
+    const settings = mapSettings(data as ConfiguracionReincidenciaDB);
+    setCached(REINCIDENCE_CACHE_KEY, settings, REINCIDENCE_CACHE_TTL);
+    return { settings, error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error desconocido';
     return { settings: null, error: message };
@@ -164,7 +177,10 @@ export async function updateSettings(input: {
       return { settings: null, error: 'No hay configuración activa para actualizar' };
     }
 
-    return { settings: mapSettings(data as ConfiguracionReincidenciaDB), error: null };
+    const settings = mapSettings(data as ConfiguracionReincidenciaDB);
+    invalidateCache(REINCIDENCE_CACHE_KEY);
+    setCached(REINCIDENCE_CACHE_KEY, settings, REINCIDENCE_CACHE_TTL);
+    return { settings, error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error desconocido';
     return { settings: null, error: message };

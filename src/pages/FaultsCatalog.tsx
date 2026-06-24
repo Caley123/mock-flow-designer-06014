@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,7 @@ import * as z from 'zod';
 import { toast } from 'sonner';
 import { faultsService } from '@/lib/services';
 import { FaultType } from '@/types';
+import { useFaultsQuery, useInvalidateFaults } from '@/hooks/queries/useFaultsQuery';
 
 const faultFormSchema = z.object({
   nombre_falta: z.string()
@@ -76,8 +77,9 @@ export const FaultsCatalog = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<FaultCategory | 'all'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [faults, setFaults] = useState<FaultType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: faults = [], isLoading, refetch } = useFaultsQuery(false);
+  const invalidateFaults = useInvalidateFaults();
+  const [submitting, setSubmitting] = useState(false);
   // Estado temporal para Select dentro del Dialog
   const [tempCategoria, setTempCategoria] = useState<FaultCategory | undefined>(undefined);
 
@@ -85,22 +87,6 @@ export const FaultsCatalog = () => {
     resolver: zodResolver(faultFormSchema),
     defaultValues: faultFormDefaults,
   });
-
-  useEffect(() => {
-    loadFaults();
-  }, []);
-
-  const loadFaults = async () => {
-    setLoading(true);
-    const { faults: faultList, error } = await faultsService.getAll(true);
-    if (error) {
-      toast.error('Error al cargar catálogo de faltas');
-      setFaults([]);
-    } else {
-      setFaults(faultList);
-    }
-    setLoading(false);
-  };
 
   const filteredFaults = faults.filter(fault => {
     const matchesSearch = fault.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -118,7 +104,7 @@ export const FaultsCatalog = () => {
   ];
 
   const onSubmit = async (data: FaultFormValues) => {
-    setLoading(true);
+    setSubmitting(true);
     const { fault, error } = await faultsService.create({
       nombre_falta: data.nombre_falta,
       categoria: data.categoria,
@@ -134,12 +120,13 @@ export const FaultsCatalog = () => {
       setDialogOpen(false);
       form.reset(faultFormDefaults);
       setTempCategoria('Conducta');
-      loadFaults();
+      invalidateFaults();
+      void refetch();
     }
-    setLoading(false);
+    setSubmitting(false);
   };
 
-  if (loading && faults.length === 0) {
+  if (isLoading && faults.length === 0) {
     return (
       <div className="app-page">
         <div className="app-page-state">
@@ -299,8 +286,8 @@ export const FaultsCatalog = () => {
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit" variant="success" disabled={loading}>
-                    {loading ? (
+                  <Button type="submit" variant="success" disabled={submitting}>
+                    {submitting ? (
                       <span className="flex items-center">
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Guardando...

@@ -16,42 +16,33 @@ import {
 import { configService } from '@/lib/services';
 import { toast } from 'sonner';
 import { invalidateCache } from '@/lib/utils/memoryCache';
+import {
+  useAttendanceSettingsQuery,
+  useInvalidateSystemConfig,
+  type AttendanceSettingsValues,
+} from '@/hooks/queries/useSystemConfigQuery';
 
 export function AttendanceSettingsCard() {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  const { data: loadedValues, isLoading, isError } = useAttendanceSettingsQuery();
+  const invalidateSystemConfig = useInvalidateSystemConfig();
+  const [values, setValues] = useState<AttendanceSettingsValues | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    setLoading(true);
-    const next: Record<string, string> = {};
-
-    const { config: legacy } = await configService.getByKey('hora_limite_llegada');
-    const legacyLimit = normalizeTimeValue(legacy?.value, '08:00');
-
-    for (const def of SYSTEM_SETTINGS) {
-      const { config } = await configService.getByKey(def.key);
-      const hasValue = Boolean(config?.value?.trim());
-      const fallback =
-        def.key === 'hora_limite_llegada_primaria' ||
-        def.key === 'hora_limite_llegada_secundaria'
-          ? legacyLimit
-          : def.defaultValue;
-      next[def.key] = normalizeTimeValue(
-        hasValue ? config?.value : fallback,
-        def.defaultValue
-      );
+    if (loadedValues) {
+      setValues(loadedValues);
     }
+  }, [loadedValues]);
 
-    setValues(next);
-    setLoading(false);
-  };
+  useEffect(() => {
+    if (isError) {
+      toast.error('Error al cargar horarios de asistencia');
+    }
+  }, [isError]);
 
   const handleSave = async () => {
+    if (!values) return;
+
     setSaving(true);
     try {
       for (const def of SYSTEM_SETTINGS) {
@@ -72,7 +63,7 @@ export function AttendanceSettingsCard() {
         invalidateCache(`config:${def.key}`);
       }
       invalidateCache('config:hora_limite_llegada');
-      await loadSettings();
+      invalidateSystemConfig();
     } catch {
       toast.error('Error al guardar horarios');
     } finally {
@@ -88,7 +79,7 @@ export function AttendanceSettingsCard() {
         description="Reglas de puntualidad para el control de llegadas y alertas de salida sin registrar."
       />
       <StaffDataPanelBody className="space-y-5">
-        {loading ? (
+        {isLoading || !values ? (
           <p className="text-sm text-muted-foreground">Cargando horarios…</p>
         ) : (
           <>
@@ -109,7 +100,14 @@ export function AttendanceSettingsCard() {
                     type="time"
                     value={values[def.key] ?? def.defaultValue}
                     onChange={(e) =>
-                      setValues((prev) => ({ ...prev, [def.key]: e.target.value }))
+                      setValues((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              [def.key]: normalizeTimeValue(e.target.value, def.defaultValue),
+                            }
+                          : prev,
+                      )
                     }
                     className="max-w-[10rem] font-mono tabular-nums"
                   />

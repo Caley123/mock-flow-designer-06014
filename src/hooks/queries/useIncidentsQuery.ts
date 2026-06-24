@@ -27,6 +27,7 @@ export function useIncidentsQuery(filters: IncidentsListFilters = {}) {
       return { incidents, total };
     },
     placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
   });
 }
 
@@ -44,6 +45,40 @@ export function useIncidentsSummaryQuery(
       return summary;
     },
     staleTime: 60 * 1000,
+  });
+}
+
+export interface JustifyIncidentsFilters {
+  nivelEducativo?: EducationalLevel;
+  search?: string;
+  page?: number;
+  estado?: 'Activa' | 'Justificada';
+  fechaDesde?: string;
+  fechaHasta?: string;
+}
+
+export const JUSTIFY_INCIDENTS_PAGE_SIZE = 20;
+
+export function useJustifyIncidentsQuery(filters: JustifyIncidentsFilters = {}) {
+  const page = filters.page ?? 1;
+
+  return useQuery({
+    queryKey: queryKeys.incidents.justify({ ...filters, page }),
+    queryFn: async () => {
+      const { incidents, total, error } = await incidentsService.getAll({
+        nivelEducativo: filters.nivelEducativo,
+        search: filters.search,
+        estado: filters.estado,
+        fechaDesde: filters.fechaDesde,
+        fechaHasta: filters.fechaHasta,
+        page,
+        pageSize: JUSTIFY_INCIDENTS_PAGE_SIZE,
+      });
+      if (error) throw new Error(error);
+      return { incidents, total };
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
   });
 }
 

@@ -32,12 +32,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getReincidenceLevelDescription, getSuggestedAction } from '@/lib/utils/reincidenceUtils';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
-import { studentsService, faultsService, incidentsService, evidenceService } from '@/lib/services';
+import { studentsService, incidentsService, evidenceService } from '@/lib/services';
 import { authService } from '@/lib/services';
 import { ErrorDialog } from '@/components/ui/error-dialog';
 import { useErrorDialog } from '@/hooks/useErrorDialog';
 import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
 import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
+import { useFaultsQuery } from '@/hooks/queries/useFaultsQuery';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -49,11 +50,20 @@ export const RegisterIncident = () => {
   const [selectedFault, setSelectedFault] = useState<string>('');
   const [observations, setObservations] = useState('');
   const [showReincidenceAlert, setShowReincidenceAlert] = useState(false);
-  const [faults, setFaults] = useState<FaultType[]>([]);
-  const [faultsLoadState, setFaultsLoadState] = useState<
-    'loading' | 'ready' | 'error' | 'empty'
-  >('loading');
-  const [faultsError, setFaultsError] = useState<string | null>(null);
+  const {
+    data: faults = [],
+    isLoading: faultsLoading,
+    isError: faultsIsError,
+    refetch: refetchFaults,
+  } = useFaultsQuery(true);
+  const faultsLoadState: 'loading' | 'ready' | 'error' | 'empty' = faultsLoading
+    ? 'loading'
+    : faultsIsError
+      ? 'error'
+      : faults.length === 0
+        ? 'empty'
+        : 'ready';
+  const faultsError = faultsIsError ? 'No se pudo cargar el catálogo' : null;
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
     null,
@@ -68,38 +78,18 @@ export const RegisterIncident = () => {
   const invalidateStudents = useInvalidateStudents();
   const queryClient = useQueryClient();
 
-  const loadFaults = async () => {
-    setFaultsLoadState('loading');
-    setFaultsError(null);
-    const { faults: faultList, error } = await faultsService.getAll(true);
-    if (!isMountedRef.current) return;
-    if (error) {
-      setFaults([]);
-      setFaultsLoadState('error');
-      setFaultsError(error);
-      toast.error('Error al cargar catálogo de faltas');
-      return;
-    }
-    if (faultList.length === 0) {
-      setFaults([]);
-      setFaultsLoadState('empty');
-      return;
-    }
-    setFaults(faultList);
-    setFaultsLoadState('ready');
-  };
-
-  // Cargar faltas al montar el componente
   useEffect(() => {
     isMountedRef.current = true;
-    void loadFaults();
+    if (faultsIsError) {
+      toast.error('Error al cargar catálogo de faltas');
+    }
 
     return () => {
       isMountedRef.current = false;
       previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       previewUrlsRef.current = [];
     };
-  }, []);
+  }, [faultsIsError]);
 
   // Búsqueda de estudiantes por nombre
   useEffect(() => {
@@ -559,7 +549,7 @@ export const RegisterIncident = () => {
                     <AlertTitle>No se pudo cargar el catálogo</AlertTitle>
                     <AlertDescription className="space-y-2">
                       <p>{faultsError ?? 'Error de conexión con el servidor.'}</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void loadFaults()}>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void refetchFaults()}>
                         Reintentar
                       </Button>
                     </AlertDescription>

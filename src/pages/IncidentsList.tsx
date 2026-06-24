@@ -32,11 +32,11 @@ import { SeverityBadge } from '@/components/shared/SeverityBadge';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { PageLoader } from '@/components/ui/page-loader';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Incident, EducationalLevel, IncidentEvidence } from '@/types';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import {
   useIncidentsQuery,
   useIncidentsSummaryQuery,
@@ -233,13 +233,10 @@ export const IncidentsList = () => {
     }
   };
 
-  if (isLoading && !pageData) {
-    return <PageLoader message="Cargando incidencias..." />;
-  }
-
-  const activeCount = summary?.activas ?? 0;
-  const withEvidence = summary?.conEvidencia ?? 0;
-  const listTotal = summary?.total ?? totalRecords;
+  const activeCount = summary?.activas;
+  const withEvidence = summary?.conEvidencia;
+  const listTotal = summary?.total ?? (pageData ? totalRecords : undefined);
+  const tableLoading = isLoading || isFetching;
 
   return (
     <div className="app-page app-page-shell relative overflow-hidden">
@@ -265,7 +262,7 @@ export const IncidentsList = () => {
           <Button
             variant="outline-primary"
             onClick={() => void handleExportExcel()}
-            disabled={exporting || listTotal === 0}
+            disabled={exporting || !listTotal}
             className="transition-transform hover:scale-[1.03]"
           >
             {exporting ? (
@@ -281,14 +278,14 @@ export const IncidentsList = () => {
       <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
         <StaffKpiStat
           label="En listado"
-          value={listTotal}
-          hint={isFetching ? 'Actualizando…' : `${PAGE_SIZE} por página`}
+          value={listTotal ?? '…'}
+          hint={tableLoading ? 'Actualizando…' : `${PAGE_SIZE} por página`}
           icon={FileText}
           tone="primary"
         />
         <StaffKpiStat
           label="Activas"
-          value={activeCount}
+          value={activeCount ?? '…'}
           hint="Pendientes de gestión"
           hintIcon={AlertCircle}
           icon={AlertCircle}
@@ -296,7 +293,7 @@ export const IncidentsList = () => {
         />
         <StaffKpiStat
           label="Con evidencia"
-          value={withEvidence}
+          value={withEvidence ?? '…'}
           hint="Registros documentados"
           hintIcon={CheckCircle2}
           icon={Camera}
@@ -337,9 +334,9 @@ export const IncidentsList = () => {
           </div>
         </StaffToolbar>
 
-        <StaffDataPanel className="overflow-hidden border-l-[3px] border-l-primary/40">
+        <StaffDataPanel className={cn('overflow-hidden border-l-[3px] border-l-primary/40', tableLoading && 'opacity-70')}>
           <StaffDataPanelHeader
-            title={`Registros (${listTotal})`}
+            title={`Registros (${listTotal ?? '…'})`}
             description={
               listTotal > PAGE_SIZE
                 ? `Página ${currentPage} de ${totalPages} · ${PAGE_SIZE} por página`
@@ -347,7 +344,12 @@ export const IncidentsList = () => {
             }
           />
           <div className="p-4 pt-0 sm:p-5 sm:pt-0">
-            {incidents.length === 0 ? (
+            {tableLoading && incidents.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Cargando incidencias…
+              </div>
+            ) : incidents.length === 0 ? (
               <StaffEmptyState
                 icon={FileText}
                 title="No hay incidencias"

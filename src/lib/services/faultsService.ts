@@ -168,6 +168,7 @@ export const faultsService = {
         ordenVisualizacion: data.orden_visualizacion,
       };
 
+      invalidateCache(FAULTS_CACHE_KEY);
       return { fault: newFault, error: null };
     } catch (error: any) {
       console.error('Error en create:', error);
@@ -200,6 +201,7 @@ export const faultsService = {
         return { success: false, error: error.message };
       }
 
+      invalidateCache(FAULTS_CACHE_KEY);
       return { success: true, error: null };
     } catch (error: any) {
       console.error('Error en update:', error);
@@ -221,6 +223,7 @@ export const faultsService = {
         return { success: false, error: error.message };
       }
 
+      invalidateCache(FAULTS_CACHE_KEY);
       return { success: true, error: null };
     } catch (error: any) {
       console.error('Error en delete:', error);

@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { useInvalidateIncidents } from '@/hooks/queries/useIncidentsQuery';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  useInvalidateIncidents,
+  useJustifyIncidentsQuery,
+  JUSTIFY_INCIDENTS_PAGE_SIZE,
+} from '@/hooks/queries/useIncidentsQuery';
 import { useInvalidateStudents } from '@/hooks/queries/useStudentsQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useQueryClient } from '@tanstack/react-query';
@@ -44,7 +48,7 @@ import {
 } from '@/components/staff';
 import { getLimaDayRangeISO } from '@/lib/utils/limaDateTime';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { incidentsService, studentsService, authService } from '@/lib/services';
+import { incidentsService, authService } from '@/lib/services';
 import { Incident, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -61,12 +65,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 
-const JUSTIFY_PAGE_SIZE = 20;
-
 export const JustifyFaults = () => {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm, 350);
   const [currentPage, setCurrentPage] = useState(1);
@@ -80,68 +79,51 @@ export const JustifyFaults = () => {
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Activa' | 'Justificada'>('Activa');
   const [dateFilter, setDateFilter] = useState<string>('');
-  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    loadIncidents();
-
-    return () => {
-      isMountedRef.current = false;
+  const incidentFilters = useMemo(() => {
+    const filters: {
+      page: number;
+      search?: string;
+      estado?: 'Activa' | 'Justificada';
+      nivelEducativo?: EducationalLevel;
+      fechaDesde?: string;
+      fechaHasta?: string;
+    } = {
+      page: currentPage,
+      search: debouncedSearch.trim() || undefined,
+      estado: statusFilter === 'all' ? undefined : statusFilter,
+      nivelEducativo: levelFilter === 'all' ? undefined : levelFilter,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelFilter, statusFilter, dateFilter, debouncedSearch, currentPage]);
+
+    if (dateFilter) {
+      const { desde, hasta } = getLimaDayRangeISO(dateFilter);
+      filters.fechaDesde = desde;
+      filters.fechaHasta = hasta;
+    }
+
+    return filters;
+  }, [currentPage, debouncedSearch, statusFilter, levelFilter, dateFilter]);
+
+  const {
+    data: pageData,
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useJustifyIncidentsQuery(incidentFilters);
+
+  const incidents = pageData?.incidents ?? [];
+  const totalRecords = pageData?.total ?? 0;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [levelFilter, statusFilter, dateFilter, debouncedSearch]);
 
-  const loadIncidents = async () => {
-    if (!isMountedRef.current) return;
-
-    setLoading(true);
-    try {
-      const filters: Parameters<typeof incidentsService.getAll>[0] = {
-        estado: statusFilter === 'all' ? undefined : statusFilter,
-        page: currentPage,
-        pageSize: JUSTIFY_PAGE_SIZE,
-        search: debouncedSearch.trim() || undefined,
-      };
-
-      if (levelFilter !== 'all') {
-        filters.nivelEducativo = levelFilter;
-      }
-
-      if (dateFilter) {
-        const { desde, hasta } = getLimaDayRangeISO(dateFilter);
-        filters.fechaDesde = desde;
-        filters.fechaHasta = hasta;
-      }
-
-      const { incidents: incidentsList, total, error } = await incidentsService.getAll(filters);
-
-      if (!isMountedRef.current) return;
-
-      if (error) {
-        toast.error('Error al cargar incidencias');
-        setIncidents([]);
-        setTotalRecords(0);
-      } else {
-        setIncidents(incidentsList);
-        setTotalRecords(total);
-      }
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      console.error('Error en loadIncidents:', error);
-      toast.error('Error al procesar las incidencias');
-      setIncidents([]);
-      setTotalRecords(0);
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+  useEffect(() => {
+    if (isError) {
+      toast.error('Error al cargar incidencias');
     }
-  };
+  }, [isError]);
 
   const handleJustify = async () => {
     if (!selectedIncident || !justificationReason.trim()) {
@@ -160,8 +142,6 @@ export const JustifyFaults = () => {
       return;
     }
 
-    if (!isMountedRef.current) return;
-
     setJustifying(true);
     try {
       const { success, error } = await incidentsService.justify(
@@ -170,8 +150,6 @@ export const JustifyFaults = () => {
         justificationReason.trim()
       );
 
-      if (!isMountedRef.current) return;
-
       if (error || !success) {
         toast.error(error || 'Error al justificar la falta');
       } else {
@@ -179,28 +157,25 @@ export const JustifyFaults = () => {
         setDialogOpen(false);
         setJustificationReason('');
         setSelectedIncident(null);
-        loadIncidents();
         invalidateIncidents();
         invalidateStudents();
+        void refetch();
         void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats() });
         void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.recentIncidents() });
       }
-    } catch (error: any) {
-      if (!isMountedRef.current) return;
+    } catch (error: unknown) {
       console.error('Error en handleJustify:', error);
       toast.error('Error al justificar la falta');
     } finally {
-      if (isMountedRef.current) {
-        setJustifying(false);
-      }
+      setJustifying(false);
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(totalRecords / JUSTIFY_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalRecords / JUSTIFY_INCIDENTS_PAGE_SIZE));
   const activeOnPage = incidents.filter((i) => i.status === 'Activa').length;
   const justifiedOnPage = incidents.filter((i) => i.status === 'Justificada').length;
 
-  if (loading && incidents.length === 0) {
+  if (isLoading && !pageData) {
     return <PageLoader message="Cargando incidencias..." />;
   }
 
@@ -491,7 +466,7 @@ export const JustifyFaults = () => {
             </Table>
             </div>
           )}
-          {totalRecords > JUSTIFY_PAGE_SIZE && (
+          {totalRecords > JUSTIFY_INCIDENTS_PAGE_SIZE && (
             <Pagination className="mt-4">
               <PaginationContent>
                 <PaginationItem>

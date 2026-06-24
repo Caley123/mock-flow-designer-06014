@@ -46,6 +46,54 @@ export async function getAll(): Promise<{ configs: SystemConfig[]; error: string
 }
 
 /**
+ * Obtener varias configuraciones por clave en una sola consulta.
+ */
+export async function getByKeys(
+  keys: string[],
+): Promise<{ configs: Record<string, SystemConfig>; error: string | null }> {
+  const uniqueKeys = [...new Set(keys)];
+  const configs: Record<string, SystemConfig> = {};
+  const missing: string[] = [];
+
+  for (const key of uniqueKeys) {
+    const cached = getCached<SystemConfig>(`config:${key}`);
+    if (cached) {
+      configs[key] = cached;
+    } else {
+      missing.push(key);
+    }
+  }
+
+  if (missing.length === 0) {
+    return { configs, error: null };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('configuracion_sistema')
+      .select('*')
+      .in('clave', missing);
+
+    if (error) {
+      console.error('Error al obtener configuraciones:', error);
+      return { configs, error: error.message };
+    }
+
+    for (const row of data ?? []) {
+      const config = mapSystemConfig(row);
+      configs[config.key] = config;
+      setCached(`config:${config.key}`, config, CONFIG_CACHE_TTL);
+    }
+
+    return { configs, error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('Error al obtener configuraciones:', error);
+    return { configs, error: message };
+  }
+}
+
+/**
  * Obtener una configuración por clave
  */
 export async function getByKey(key: string): Promise<{ config: SystemConfig | null; error: string | null }> {
@@ -207,6 +255,7 @@ export async function deleteConfig(id: number): Promise<{ success: boolean; erro
 
 export const configService = {
   getAll,
+  getByKeys,
   getByKey,
   create,
   update,

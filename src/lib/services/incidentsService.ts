@@ -93,6 +93,100 @@ function escapeIlike(term: string): string {
   return term.replace(/[%_\\]/g, '\\$&');
 }
 
+const SEARCH_MATCH_LIMIT = 200;
+const STUDENT_SCOPE_LIMIT = 8000;
+
+interface IncidentQueryScope {
+  empty: boolean;
+  incidentId?: number;
+  studentIds?: number[];
+  faultIds?: number[];
+}
+
+/** Resuelve filtros de estudiante/búsqueda en tablas base (evita joins lentos en incidencias). */
+async function resolveIncidentQueryScope(
+  filters?: IncidentsListFilters,
+): Promise<IncidentQueryScope> {
+  const scope: IncidentQueryScope = { empty: false };
+  const search = filters?.search?.trim();
+
+  if (search) {
+    const compact = search.replace(/\s/g, '');
+    const idNum = Number.parseInt(search, 10);
+    if (!Number.isNaN(idNum) && String(idNum) === compact) {
+      scope.incidentId = idNum;
+      return scope;
+    }
+  }
+
+  let scopedStudentIds: number[] | null = null;
+
+  if (filters?.nivelEducativo || filters?.grado || filters?.seccion) {
+    let studentQuery = supabase
+      .from('estudiantes')
+      .select('id_estudiante')
+      .limit(STUDENT_SCOPE_LIMIT);
+    if (filters.nivelEducativo) {
+      studentQuery = studentQuery.eq('nivel_educativo', filters.nivelEducativo);
+    }
+    if (filters.grado) {
+      studentQuery = studentQuery.eq('grado', filters.grado);
+    }
+    if (filters.seccion) {
+      studentQuery = studentQuery.eq('seccion', filters.seccion);
+    }
+    const { data, error } = await studentQuery;
+    if (error) {
+      throw new Error(error.message);
+    }
+    scopedStudentIds = (data ?? []).map((row) => row.id_estudiante);
+    if (scopedStudentIds.length === 0) {
+      scope.empty = true;
+      return scope;
+    }
+  }
+
+  if (search) {
+    const escaped = escapeIlike(search);
+    let studentSearch = supabase
+      .from('estudiantes')
+      .select('id_estudiante')
+      .ilike('nombre_completo', `%${escaped}%`)
+      .limit(SEARCH_MATCH_LIMIT);
+    if (scopedStudentIds) {
+      studentSearch = studentSearch.in('id_estudiante', scopedStudentIds);
+    }
+
+    const faultSearch = supabase
+      .from('catalogo_faltas')
+      .select('id_falta')
+      .ilike('nombre_falta', `%${escaped}%`)
+      .limit(SEARCH_MATCH_LIMIT);
+
+    const [studentsRes, faultsRes] = await Promise.all([studentSearch, faultSearch]);
+    if (studentsRes.error) {
+      throw new Error(studentsRes.error.message);
+    }
+    if (faultsRes.error) {
+      throw new Error(faultsRes.error.message);
+    }
+
+    scope.studentIds = (studentsRes.data ?? []).map((row) => row.id_estudiante);
+    scope.faultIds = (faultsRes.data ?? []).map((row) => row.id_falta);
+
+    if (scope.studentIds.length === 0 && scope.faultIds.length === 0) {
+      scope.empty = true;
+    }
+    return scope;
+  }
+
+  if (scopedStudentIds) {
+    scope.studentIds = scopedStudentIds;
+  }
+
+  return scope;
+}
+
 async function resolveDateRange(filters?: IncidentsListFilters): Promise<{
   fechaDesde?: string;
   fechaHasta?: string;
@@ -114,7 +208,15 @@ function applyIncidentFilters(
   query: any,
   filters: IncidentsListFilters | undefined,
   dateRange: { fechaDesde?: string; fechaHasta?: string },
+  scope: IncidentQueryScope,
 ) {
+  if (scope.empty) {
+    return query.eq('id_incidencia', -1);
+  }
+
+  if (scope.incidentId != null) {
+    return query.eq('id_incidencia', scope.incidentId);
+  }
 
   if (filters?.estudianteId) {
     query = query.eq('id_estudiante', filters.estudianteId);
@@ -132,35 +234,18 @@ function applyIncidentFilters(
     query = query.lte('fecha_hora_registro', dateRange.fechaHasta);
   }
 
-  if (filters?.grado) {
-    query = query.eq('estudiantes.grado', filters.grado);
-  }
-
-  if (filters?.seccion) {
-    query = query.eq('estudiantes.seccion', filters.seccion);
-  }
-
-  if (filters?.nivelEducativo) {
-    query = query.eq('estudiantes.nivel_educativo', filters.nivelEducativo);
-  }
-
   if (filters?.nivelReincidencia !== undefined) {
     query = query.eq('nivel_reincidencia', filters.nivelReincidencia);
   }
 
-  const search = filters?.search?.trim();
-  if (search) {
-    const escaped = escapeIlike(search);
-    const idNum = Number.parseInt(search, 10);
-    if (!Number.isNaN(idNum) && String(idNum) === search.replace(/\s/g, '')) {
-      query = query.or(
-        `id_incidencia.eq.${idNum},estudiantes.nombre_completo.ilike.%${escaped}%,catalogos_faltas.nombre_falta.ilike.%${escaped}%`,
-      );
-    } else {
-      query = query.or(
-        `estudiantes.nombre_completo.ilike.%${escaped}%,catalogos_faltas.nombre_falta.ilike.%${escaped}%`,
-      );
-    }
+  if (scope.studentIds?.length && scope.faultIds?.length) {
+    query = query.or(
+      `id_estudiante.in.(${scope.studentIds.join(',')}),id_falta.in.(${scope.faultIds.join(',')})`,
+    );
+  } else if (scope.studentIds?.length) {
+    query = query.in('id_estudiante', scope.studentIds);
+  } else if (scope.faultIds?.length) {
+    query = query.in('id_falta', scope.faultIds);
   }
 
   return query;
@@ -252,6 +337,11 @@ export const incidentsService = {
   ): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
     try {
       const dateRange = await resolveDateRange(filters);
+      const scope = await resolveIncidentQueryScope(filters);
+      if (scope.empty) {
+        return { incidents: [], total: 0, error: null };
+      }
+
       const useFullSelect = Boolean(filters?.fetchAll && filters?.estudianteId);
 
       if (filters?.fetchAll) {
@@ -260,6 +350,7 @@ export const incidentsService = {
           const pageResult = await this.fetchIncidentPage(
             filters,
             dateRange,
+            scope,
             from,
             pageSize,
             useFullSelect,
@@ -289,6 +380,7 @@ export const incidentsService = {
       return this.fetchIncidentPage(
         filters,
         dateRange,
+        scope,
         usesPagePagination ? offset : undefined,
         usesPagePagination ? pageSize : filters?.limit,
         useFullSelect,
@@ -302,6 +394,7 @@ export const incidentsService = {
   async fetchIncidentPage(
     filters: IncidentsListFilters | undefined,
     dateRange: { fechaDesde?: string; fechaHasta?: string },
+    scope: IncidentQueryScope,
     offset: number | undefined,
     limit: number | undefined,
     fullSelect = false,
@@ -312,7 +405,7 @@ export const incidentsService = {
       .from('incidencias')
       .select(selectClause, { count: 'exact' });
 
-    query = applyIncidentFilters(query, filters, dateRange);
+    query = applyIncidentFilters(query, filters, dateRange, scope);
     query = query.order('fecha_hora_registro', { ascending: false });
 
     if (offset != null && limit != null) {
@@ -334,16 +427,24 @@ export const incidentsService = {
 
   /** Totales para KPIs del listado (consultas ligeras en paralelo). */
   async getListSummary(
-    filters?: Pick<IncidentsListFilters, 'nivelEducativo' | 'search' | 'fechaDesde' | 'fechaHasta'>,
+    filters?: Pick<IncidentsListFilters, 'nivelEducativo' | 'search' | 'fechaDesde' | 'fechaHasta' | 'grado' | 'seccion'>,
   ): Promise<{ summary: IncidentsListSummary; error: string | null }> {
     try {
       const dateRange = await resolveDateRange(filters);
+      const scope = await resolveIncidentQueryScope(filters);
+
+      if (scope.empty) {
+        return {
+          summary: { total: 0, activas: 0, conEvidencia: 0 },
+          error: null,
+        };
+      }
 
       const countFiltered = async (extra?: Record<string, string>) => {
         let query = supabase
           .from('incidencias')
           .select('id_incidencia', { count: 'exact', head: true });
-        query = applyIncidentFilters(query, filters, dateRange) as typeof query;
+        query = applyIncidentFilters(query, filters, dateRange, scope) as typeof query;
         if (extra?.estado) {
           query = query.eq('estado', extra.estado);
         }
