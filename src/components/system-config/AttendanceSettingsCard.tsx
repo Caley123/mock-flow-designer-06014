@@ -15,6 +15,7 @@ import {
 } from '@/config/systemSettings';
 import { configService } from '@/lib/services';
 import { toast } from 'sonner';
+import { invalidateCache } from '@/lib/utils/memoryCache';
 
 export function AttendanceSettingsCard() {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -29,9 +30,21 @@ export function AttendanceSettingsCard() {
     setLoading(true);
     const next: Record<string, string> = {};
 
+    const { config: legacy } = await configService.getByKey('hora_limite_llegada');
+    const legacyLimit = normalizeTimeValue(legacy?.value, '08:00');
+
     for (const def of SYSTEM_SETTINGS) {
       const { config } = await configService.getByKey(def.key);
-      next[def.key] = normalizeTimeValue(config?.value, def.defaultValue);
+      const hasValue = Boolean(config?.value?.trim());
+      const fallback =
+        def.key === 'hora_limite_llegada_primaria' ||
+        def.key === 'hora_limite_llegada_secundaria'
+          ? legacyLimit
+          : def.defaultValue;
+      next[def.key] = normalizeTimeValue(
+        hasValue ? config?.value : fallback,
+        def.defaultValue
+      );
     }
 
     setValues(next);
@@ -55,6 +68,10 @@ export function AttendanceSettingsCard() {
         }
       }
       toast.success('Horarios de asistencia actualizados');
+      for (const def of SYSTEM_SETTINGS) {
+        invalidateCache(`config:${def.key}`);
+      }
+      invalidateCache('config:hora_limite_llegada');
       await loadSettings();
     } catch {
       toast.error('Error al guardar horarios');

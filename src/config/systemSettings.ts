@@ -3,7 +3,10 @@
  * Solo estas claves tienen efecto en la aplicación.
  */
 export const SYSTEM_SETTING_KEYS = {
+  /** @deprecated Usar primaria/secundaria; se mantiene como respaldo en BD */
   arrivalLimit: 'hora_limite_llegada',
+  arrivalLimitPrimary: 'hora_limite_llegada_primaria',
+  arrivalLimitSecondary: 'hora_limite_llegada_secundaria',
   departureLimit: 'hora_limite_salida',
   schoolClose: 'hora_cierre_colegio',
 } as const;
@@ -23,10 +26,19 @@ export interface SystemSettingDefinition {
 
 export const SYSTEM_SETTINGS: SystemSettingDefinition[] = [
   {
-    key: SYSTEM_SETTING_KEYS.arrivalLimit,
-    label: 'Hora límite de llegada',
+    key: SYSTEM_SETTING_KEYS.arrivalLimitPrimary,
+    label: 'Hora límite de llegada — Primaria',
     description:
-      'A partir de esta hora el registro de asistencia se marca como «Tarde» en el escáner del tutor.',
+      'A partir de esta hora el registro de asistencia de estudiantes de Primaria se marca como «Tarde» en el escáner del tutor.',
+    defaultValue: '08:00',
+    inputType: 'time',
+    usedIn: 'Control de llegadas · Escáner del tutor',
+  },
+  {
+    key: SYSTEM_SETTING_KEYS.arrivalLimitSecondary,
+    label: 'Hora límite de llegada — Secundaria',
+    description:
+      'A partir de esta hora el registro de asistencia de estudiantes de Secundaria se marca como «Tarde» en el escáner del tutor.',
     defaultValue: '08:00',
     inputType: 'time',
     usedIn: 'Control de llegadas · Escáner del tutor',

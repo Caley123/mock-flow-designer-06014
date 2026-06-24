@@ -1,7 +1,7 @@
 /** Metadatos SEO centralizados — asiscole.com / I.E. San Ramón */
 export const SITE_URL = 'https://asiscole.com';
 
-export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`;
+export const OG_IMAGE_URL = `${SITE_URL}/og-asiscole.png`;
 
 export const SITE_NAME = 'SIE Asiscole';
 
@@ -36,6 +36,13 @@ export const PUBLIC_ROUTE_META: Record<string, PageMeta> = {
       'Consulte la asistencia diaria de su hijo o hija en la I.E. San Ramón ingresando el DNI del estudiante.',
     canonical: `${SITE_URL}/portal-padres`,
   },
+};
+
+export const ARRIVAL_ROUTE_META: PageMeta = {
+  title: 'Consulta de asistencia | I.E. San Ramón — Asiscole',
+  description:
+    'Registro de llegada del estudiante. Consulte la asistencia diaria en el Sistema de Incidencias Escolares de la I.E. San Ramón.',
+  canonical: `${SITE_URL}/portal-padres`,
 };
 
 export const DEFAULT_PAGE_META: PageMeta = {

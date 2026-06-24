@@ -4,8 +4,12 @@ import { configService } from './configService';
 import { studentsService } from './studentsService';
 import { getLimaNow, getLimaTodayDate, getLimaMonthBounds, getMonthBounds } from '@/lib/utils/limaDateTime';
 import { getCached, setCached } from '@/lib/utils/memoryCache';
+import {
+  arrivalLimitConfigKey,
+  compareArrivalStatus,
+  type ArrivalLimitsByLevel,
+} from '@/lib/utils/arrivalLimit';
 
-const ARRIVAL_LIMIT_CACHE_KEY = 'config:hora_limite_llegada';
 const ARRIVAL_LIMIT_CACHE_TTL = 15 * 60 * 1000;
 
 /**
@@ -59,35 +63,49 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
 }
 
 /**
- * Obtiene la hora límite de llegada desde configuracion_sistema
- * Devuelve un string en formato HH:MM (24h). Valor por defecto: '08:00'
+ * Hora límite de llegada según nivel (Primaria / Secundaria).
+ * Si no hay clave por nivel, usa hora_limite_llegada global como respaldo.
  */
-async function getArrivalLimitTime(): Promise<string> {
-  const cached = getCached<string>(ARRIVAL_LIMIT_CACHE_KEY);
+async function getArrivalLimitTime(level?: string): Promise<string> {
+  const configKey = arrivalLimitConfigKey(level);
+  const cacheKey = `config:${configKey}`;
+  const cached = getCached<string>(cacheKey);
   if (cached) return cached;
 
-  const { config } = await configService.getByKey('hora_limite_llegada');
-  const raw = config?.value?.trim() || '08:00';
-  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  const { config } = await configService.getByKey(configKey);
+  let raw = config?.value?.trim();
+  if (!raw && configKey !== 'hora_limite_llegada') {
+    const { config: legacy } = await configService.getByKey('hora_limite_llegada');
+    raw = legacy?.value?.trim();
+  }
+  raw = raw || '08:00';
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
   if (!match) {
-    setCached(ARRIVAL_LIMIT_CACHE_KEY, '08:00', ARRIVAL_LIMIT_CACHE_TTL);
+    setCached(cacheKey, '08:00', ARRIVAL_LIMIT_CACHE_TTL);
     return '08:00';
   }
   const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
   const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
   const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  setCached(ARRIVAL_LIMIT_CACHE_KEY, normalized, ARRIVAL_LIMIT_CACHE_TTL);
+  setCached(cacheKey, normalized, ARRIVAL_LIMIT_CACHE_TTL);
   return normalized;
 }
 
-/** Precarga la hora límite (llamar al abrir el escáner del tutor) */
+/** Precarga límites de llegada por nivel. */
 export async function prefetchArrivalConfig(): Promise<void> {
-  await getArrivalLimitTime();
+  await Promise.all([getArrivalLimitTime('Primaria'), getArrivalLimitTime('Secundaria')]);
 }
 
-/** Hora límite de llegada (HH:MM) desde configuracion_sistema.hora_limite_llegada */
-export async function fetchArrivalLimitTime(): Promise<string> {
-  return getArrivalLimitTime();
+export async function fetchArrivalLimitTime(level?: string): Promise<string> {
+  return getArrivalLimitTime(level);
+}
+
+export async function fetchArrivalLimits(): Promise<ArrivalLimitsByLevel> {
+  const [primaria, secundaria] = await Promise.all([
+    getArrivalLimitTime('Primaria'),
+    getArrivalLimitTime('Secundaria'),
+  ]);
+  return { primaria, secundaria };
 }
 
 function getNowHHMM(): string {
@@ -206,8 +224,13 @@ async function createArrivalRecordInner(
     if (options?.status) {
       insertData.estado = options.status;
     } else {
-      const limitHHMM = await getArrivalLimitTime();
-      insertData.estado = formattedTime <= limitHHMM ? 'A tiempo' : 'Tarde';
+      const { data: estRow } = await supabase
+        .from('estudiantes')
+        .select('nivel_educativo')
+        .eq('id_estudiante', studentId)
+        .maybeSingle();
+      const limitHHMM = await getArrivalLimitTime(estRow?.nivel_educativo);
+      insertData.estado = compareArrivalStatus(formattedTime, limitHHMM);
     }
 
     const { data, error } = await supabase
@@ -1012,6 +1035,7 @@ export const arrivalService = {
   getDepartureAlerts,
   prefetchArrivalConfig,
   fetchArrivalLimitTime,
+  fetchArrivalLimits,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
 };

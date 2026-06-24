@@ -5,6 +5,7 @@ import {
   NOINDEX_PREFIXES,
   OG_IMAGE_URL,
   PUBLIC_ROUTE_META,
+  ARRIVAL_ROUTE_META,
 } from '@/config/siteSeo';
 
 function upsertMeta(name: string, content: string, attr: 'name' | 'property' = 'name') {
@@ -45,9 +46,11 @@ export function usePageMeta() {
 
     const meta =
       PUBLIC_ROUTE_META[pathname] ??
-      (pathname === '/portal-padres'
-        ? PUBLIC_ROUTE_META['/portal-padres']
-        : DEFAULT_PAGE_META);
+      (isArrivalRoute
+        ? { ...ARRIVAL_ROUTE_META, canonical: `${window.location.origin}${pathname}` }
+        : pathname === '/portal-padres'
+          ? PUBLIC_ROUTE_META['/portal-padres']
+          : DEFAULT_PAGE_META);
 
     document.title = meta.title;
     upsertMeta('description', meta.description);
@@ -61,8 +64,14 @@ export function usePageMeta() {
     upsertMeta('og:title', meta.title, 'property');
     upsertMeta('og:description', meta.description, 'property');
     upsertMeta('og:url', pageUrl, 'property');
+    upsertMeta('og:site_name', 'Asiscole', 'property');
+    upsertMeta('og:type', 'website', 'property');
     upsertMeta('og:image', OG_IMAGE_URL, 'property');
-    upsertMeta('og:image:alt', 'SIE Asiscole — I.E. San Ramón', 'property');
+    upsertMeta('og:image:secure_url', OG_IMAGE_URL, 'property');
+    upsertMeta('og:image:alt', 'SIE Asiscole — Sistema de Incidencias Escolares, I.E. San Ramón', 'property');
+    upsertMeta('twitter:card', 'summary_large_image');
+    upsertMeta('twitter:title', meta.title);
+    upsertMeta('twitter:description', meta.description);
     upsertMeta('twitter:image', OG_IMAGE_URL);
   }, [pathname]);
 }

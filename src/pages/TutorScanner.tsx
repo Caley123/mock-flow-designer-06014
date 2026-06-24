@@ -53,6 +53,11 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { getLimaNow } from '@/lib/utils/limaDateTime';
+import {
+  compareArrivalStatus,
+  resolveArrivalLimitForLevel,
+  type ArrivalLimitsByLevel,
+} from '@/lib/utils/arrivalLimit';
 import { configService } from '@/lib/services';
 import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
@@ -79,7 +84,10 @@ export const TutorScanner = () => {
   const [registering, setRegistering] = useState(false);
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [arrivalRecord, setArrivalRecord] = useState<ArrivalRecord | null>(null);
-  const [arrivalLimit, setArrivalLimit] = useState<string>('08:00');
+  const [arrivalLimits, setArrivalLimits] = useState<ArrivalLimitsByLevel>({
+    primaria: '08:00',
+    secundaria: '08:00',
+  });
   const [schoolCloseTime, setSchoolCloseTime] = useState<string>('18:00');
   const [nowHHMM, setNowHHMM] = useState<string>('');
   const [sessionCount, setSessionCount] = useState<{ total: number; onTime: number; late: number }>({
@@ -236,8 +244,8 @@ export const TutorScanner = () => {
 
   const loadArrivalLimit = async () => {
     try {
-      const limit = await arrivalService.fetchArrivalLimitTime();
-      setArrivalLimit(normalizeTimeValue(limit, '08:00'));
+      const limits = await arrivalService.fetchArrivalLimits();
+      setArrivalLimits(limits);
 
       // Hora de cierre: desde cuándo mostrar "Fuera de jornada"
       const { config: closeCfg } = await configService.getByKey(SYSTEM_SETTING_KEYS.schoolClose);
@@ -277,12 +285,15 @@ export const TutorScanner = () => {
     }
   };
 
-  const computeArrivalSnapshot = useCallback(() => {
-    const { date, time } = getLimaNow();
-    const status: ArrivalRecord['status'] =
-      time <= arrivalLimit ? 'A tiempo' : 'Tarde';
-    return { date, time, status };
-  }, [arrivalLimit]);
+  const computeArrivalSnapshot = useCallback(
+    (studentLevel?: string) => {
+      const { date, time } = getLimaNow();
+      const limit = resolveArrivalLimitForLevel(arrivalLimits, studentLevel);
+      const status = compareArrivalStatus(time, limit);
+      return { date, time, status, limit };
+    },
+    [arrivalLimits]
+  );
 
   const applyScanSuccess = useCallback(
     (
@@ -524,11 +535,11 @@ export const TutorScanner = () => {
         return;
       }
 
-      const { date, time, status } = computeArrivalSnapshot();
+      const { date, time, status } = computeArrivalSnapshot(foundStudent.level);
       const arrivalOpts: CreateArrivalOptions = {
         date,
         arrivalTime: time,
-        // estado: lo calcula el servidor con hora_limite_llegada (misma fuente que la UI)
+        // estado: lo calcula el servidor según nivel y hora_limite_llegada_*
       };
 
       if (foundStudent.barcode?.trim()) {
@@ -773,10 +784,14 @@ export const TutorScanner = () => {
     arrivalRecord?.arrivalTime?.length && arrivalRecord.arrivalTime.length >= 5
       ? arrivalRecord.arrivalTime.slice(0, 5)
       : arrivalRecord?.arrivalTime ?? '—:—';
+  const limitsLabel = `Prim ${arrivalLimits.primaria} · Sec ${arrivalLimits.secundaria}`;
+  const activeArrivalLimit = student
+    ? resolveArrivalLimitForLevel(arrivalLimits, student.level)
+    : arrivalLimits.secundaria;
   const limitTone = useMemo(() => {
     if (!nowHHMM) return 'secondary' as const;
-    return nowHHMM <= arrivalLimit ? ('success' as const) : ('warning' as const);
-  }, [nowHHMM, arrivalLimit]);
+    return nowHHMM <= activeArrivalLimit ? ('success' as const) : ('warning' as const);
+  }, [nowHHMM, activeArrivalLimit]);
 
   return (
     <div className="tutor-page">
@@ -840,7 +855,7 @@ export const TutorScanner = () => {
             </div>
             <div className="tutor-mobile-bar__limit">
               <span className="tutor-mobile-bar__limit-lbl">Límite</span>
-              <span className="tutor-mobile-bar__limit-val">{arrivalLimit}</span>
+              <span className="tutor-mobile-bar__limit-val">{limitsLabel}</span>
             </div>
           </div>
         </div>
@@ -861,7 +876,7 @@ export const TutorScanner = () => {
                         Registro de llegada
                       </p>
                       <Badge variant={limitTone} className="text-[10px]">
-                        Límite {arrivalLimit}
+                        Límite {limitsLabel}
                       </Badge>
                     </div>
                     <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
@@ -1156,8 +1171,12 @@ export const TutorScanner = () => {
                   <p className="tutor-meta__v">{nowHHMM || '—:—'}</p>
                 </div>
                 <div className="tutor-meta__item">
-                  <p className="tutor-meta__k">Límite entrada</p>
-                  <p className="tutor-meta__v">{arrivalLimit}</p>
+                  <p className="tutor-meta__k">Límite Primaria</p>
+                  <p className="tutor-meta__v">{arrivalLimits.primaria}</p>
+                </div>
+                <div className="tutor-meta__item">
+                  <p className="tutor-meta__k">Límite Secundaria</p>
+                  <p className="tutor-meta__v">{arrivalLimits.secundaria}</p>
                 </div>
               </div>
               <div className="tutor-kpis">
