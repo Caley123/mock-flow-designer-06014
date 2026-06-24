@@ -107,6 +107,19 @@ export const IncidentsList = () => {
   const totalRecords = pageData?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalRecords / PAGE_SIZE));
 
+  // Después de 12 s de carga ininterrumpida sin datos, mostramos un mensaje de
+  // "tardando más de lo esperado" para que el usuario sepa que el servidor está
+  // inicializando (cold-start de Supabase) en lugar de ver un spinner mudo.
+  const [loadingSlow, setLoadingSlow] = useState(false);
+  useEffect(() => {
+    if (!isLoading || incidents.length > 0) {
+      setLoadingSlow(false);
+      return;
+    }
+    const id = setTimeout(() => setLoadingSlow(true), 12_000);
+    return () => clearTimeout(id);
+  }, [isLoading, incidents.length]);
+
   useEffect(() => {
     if (isError) {
       toast.error('Error al cargar incidencias');
@@ -346,9 +359,16 @@ export const IncidentsList = () => {
           />
           <div className="p-4 pt-0 sm:p-5 sm:pt-0">
             {tableLoading && incidents.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Cargando incidencias…
+                {loadingSlow ? (
+                  <div className="text-center space-y-1">
+                    <p className="font-medium text-foreground">El servidor está inicializando…</p>
+                    <p className="text-xs">Esto puede tardar hasta 30 s en la primera carga del día.</p>
+                  </div>
+                ) : (
+                  <span>Cargando incidencias…</span>
+                )}
               </div>
             ) : isError && incidents.length === 0 ? (
               <StaffEmptyState

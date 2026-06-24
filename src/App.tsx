@@ -9,6 +9,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/ui/loading-screen";
 import { SuccessFlashOverlay } from "./components/feedback/SuccessFlashOverlay";
 import { authService } from "./lib/services";
+import { supabase } from "./lib/supabaseClient";
 import { useSessionMonitor } from "./hooks/useSessionMonitor";
 import { PageMetaManager } from "./components/seo/PageMetaManager";
 import { SiteAnalytics } from "./components/seo/SiteAnalytics";
@@ -41,9 +42,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 3,
-      // 1 s → 2 s → 4 s entre reintentos; máximo 10 s para no bloquear demasiado.
-      // Esto cubre el cold-start de Supabase: el primer intento puede fallar por
-      // timeout (15 s), pero el segundo ya encuentra la conexión "caliente".
+      // 1 s → 2 s → 4 s entre reintentos (máx 10 s).
+      // Cubre el cold-start de Supabase: el primer intento puede fallar por
+      // timeout (10 s), pero el segundo ya encuentra la conexión "caliente".
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
@@ -217,6 +218,17 @@ const AppWithSessionMonitor = () => {
     const isLogin = pathname === '/login' || pathname.startsWith('/login/');
     document.documentElement.classList.toggle('route-login', isLogin);
   }, [pathname]);
+
+  // Warmup preventivo de Supabase: cuando el usuario está autenticado, lanzamos
+  // un SELECT mínimo (1 fila, sin JOINs) que fuerza a Postgres a abrir el pool de
+  // conexiones. Así, cuando el usuario navegue a páginas con queries pesados
+  // (Lista de Incidencias, Registrar Incidencia, etc.) la conexión ya está "caliente"
+  // y no se cuelga esperando el cold-start del servidor.
+  useEffect(() => {
+    const user = authService.getCurrentUser();
+    if (!user) return;
+    void supabase.from('incidencias').select('id_incidencia').limit(1);
+  }, []);
 
   return (
     <>

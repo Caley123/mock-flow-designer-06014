@@ -13,43 +13,48 @@ if (!import.meta.env.VITE_SUPABASE_URL && import.meta.env.PROD) {
 }
 
 /**
- * Timeout por petición: si una petición a Supabase se queda colgada más de este
- * tiempo (red lenta, cold-start de Supabase), se cancela para que React Query
- * pueda reintentar. El reintento suele resolver en < 1 s porque la conexión
- * ya está "caliente".
+ * Timeout universal por petición: si una petición a Supabase se queda colgada
+ * (red lenta, cold-start de Postgres), se cancela para que React Query pueda
+ * reintentar. El reintento suele resolver en < 1 s porque la conexión ya está
+ * "caliente".
  *
- * NOTA: AbortSignal.timeout se comprueba en tiempo de ejecución para mantener
- * compatibilidad con Safari < 15.4 / Chrome < 103 / Firefox < 100.
- * En browsers sin soporte simplemente no se aplica el timeout; React Query
- * sigue manejando errores y reintentos con normalidad.
+ * Usa AbortController + setTimeout en lugar de AbortSignal.timeout para garantizar
+ * compatibilidad con TODOS los browsers (incluyendo iOS Safari < 16).
  */
-const REQUEST_TIMEOUT_MS = 15_000;
-const ABORT_TIMEOUT_SUPPORTED = typeof AbortSignal?.timeout === 'function';
+const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
- * Devuelve una AbortSignal combinada (primera en disparar gana).
- * Compatible con browsers sin AbortSignal.any (iOS < 17.4).
+ * Wrapper de fetch con timeout garantizado.
+ * Crea un AbortController con un timer; si el timer dispara, aborta el fetch.
+ * Limpia el timer si el fetch termina antes (éxito o error).
  */
-function mergeSignals(signals: AbortSignal[]): AbortSignal {
-  if (typeof AbortSignal.any === 'function') {
-    return AbortSignal.any(signals);
-  }
+function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
-  for (const sig of signals) {
-    if (sig.aborted) {
-      ctrl.abort(sig.reason);
-      return ctrl.signal;
+  const timer = setTimeout(
+    () => ctrl.abort(new DOMException('Request timed out', 'TimeoutError')),
+    REQUEST_TIMEOUT_MS,
+  );
+
+  // Combinar con cualquier signal existente (e.g. señal de cancelación de React Query)
+  let signal: AbortSignal = ctrl.signal;
+  if (init?.signal) {
+    const external = init.signal as AbortSignal;
+    if (external.aborted) {
+      clearTimeout(timer);
+      ctrl.abort(external.reason);
+    } else {
+      external.addEventListener('abort', () => ctrl.abort(external.reason), { once: true });
     }
-    sig.addEventListener('abort', () => ctrl.abort(sig.reason), { once: true });
   }
-  return ctrl.signal;
+
+  return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer));
 }
 
 /**
  * Cliente Supabase. Envía x-sie-token en cada petición cuando hay sesión activa
  * para que las políticas RLS identifiquen rol y usuario.
- * Incluye timeout de REQUEST_TIMEOUT_MS (si el browser lo soporta) para evitar
- * peticiones colgadas indefinidamente.
+ * Todas las peticiones tienen un timeout de REQUEST_TIMEOUT_MS para evitar
+ * que se queden colgadas indefinidamente (cold-start de Supabase/Postgres).
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
@@ -59,18 +64,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       if (apiToken) {
         headers.set('x-sie-token', apiToken);
       }
-
-      if (!ABORT_TIMEOUT_SUPPORTED) {
-        // Browser antiguo: sin timeout, comportamiento original
-        return fetch(input, { ...init, headers });
-      }
-
-      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-      const signal = init?.signal
-        ? mergeSignals([init.signal, timeoutSignal])
-        : timeoutSignal;
-
-      return fetch(input, { ...init, headers, signal });
+      return fetchWithTimeout(input, { ...init, headers });
     },
   },
 });
