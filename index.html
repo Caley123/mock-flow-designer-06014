@@ -43,44 +43,7 @@
     />
     <meta name="twitter:image" content="https://asiscole.com/og-asiscole.png" />
 
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "WebApplication",
-            "name": "SIE Asiscole",
-            "alternateName": "Sistema de Incidencias Escolares",
-            "url": "https://asiscole.com/",
-            "applicationCategory": "EducationalApplication",
-            "operatingSystem": "Web",
-            "inLanguage": "es-PE",
-            "description": "Plataforma de incidencias, asistencia escolar y reportes para la I.E. San Ramón.",
-            "provider": {
-              "@type": "EducationalOrganization",
-              "name": "Institución Educativa San Ramón",
-              "url": "https://asiscole.com/"
-            }
-          },
-          {
-            "@type": "EducationalOrganization",
-            "@id": "https://asiscole.com/#organization",
-            "name": "Institución Educativa San Ramón",
-            "url": "https://asiscole.com/",
-            "sameAs": ["https://asiscole.com/"]
-          },
-          {
-            "@type": "WebSite",
-            "@id": "https://asiscole.com/#website",
-            "url": "https://asiscole.com/",
-            "name": "SIE Asiscole",
-            "description": "Sistema de incidencias y asistencia escolar",
-            "publisher": { "@id": "https://asiscole.com/#organization" },
-            "inLanguage": "es-PE"
-          }
-        ]
-      }
-    </script>
+    <script type="application/ld+json" src="/schema-org.json"></script>
 
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -90,14 +53,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script>
-      (function () {
-        var p = location.pathname;
-        if (p === '/login' || p.indexOf('/login') === 0) {
-          document.documentElement.classList.add('route-login');
-        }
-      })();
-    </script>
+    <script src="/route-login.js" defer></script>
     <style>
       html.route-login,
       html.route-login body {

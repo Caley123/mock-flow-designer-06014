@@ -7,23 +7,7 @@ import { fetchAllPages } from '@/lib/utils/supabasePagination';
 
 const INSERT_BATCH_SIZE = 200;
 
-const PARENT_MEETING_LIST_SELECT = `
-  id_cita,
-  id_estudiante,
-  id_usuario_creador,
-  motivo,
-  fecha,
-  hora,
-  estado,
-  asistencia,
-  llegada_tarde,
-  hora_llegada_real,
-  notas,
-  tipo_cita,
-  cantidad_estudiantes,
-  grupo_id,
-  fecha_creacion,
-  fecha_actualizacion,
+const PARENT_MEETING_RELATIONS = `
   estudiante:estudiantes!citas_padres_id_estudiante_fkey (
     id_estudiante,
     nombre_completo,
@@ -37,6 +21,66 @@ const PARENT_MEETING_LIST_SELECT = `
     nombre_completo
   )
 `;
+
+const PARENT_MEETING_BASE_COLUMNS = [
+  'id_cita',
+  'id_estudiante',
+  'id_usuario_creador',
+  'motivo',
+  'fecha',
+  'hora',
+  'estado',
+  'asistencia',
+  'notas',
+  'fecha_creacion',
+  'fecha_actualizacion',
+] as const;
+
+const PARENT_MEETING_LATE_COLUMNS = ['llegada_tarde', 'hora_llegada_real'] as const;
+
+/** null = sin probar; true/false según si existen en la BD (migración PATCH_CITAS_LLEGADA_TARDE). */
+let lateColumnsSupported: boolean | null = null;
+
+function buildParentMeetingListSelect(includeLate: boolean): string {
+  const cols = [
+    ...PARENT_MEETING_BASE_COLUMNS,
+    ...(includeLate ? PARENT_MEETING_LATE_COLUMNS : []),
+  ];
+  return `${cols.join(',\n  ')},\n  ${PARENT_MEETING_RELATIONS.trim()}`;
+}
+
+function isMissingColumnError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    (msg.includes('column') && (msg.includes('does not exist') || msg.includes('no existe')))
+  );
+}
+
+async function updateCitaRow(
+  id: number,
+  data: Record<string, unknown>,
+): Promise<{ error: string | null }> {
+  const hasLateFields = 'llegada_tarde' in data || 'hora_llegada_real' in data;
+
+  const run = async (payload: Record<string, unknown>) => {
+    const { error } = await supabase.from('citas_padres').update(payload).eq('id_cita', id);
+    return error;
+  };
+
+  let error = await run(data);
+  if (error && hasLateFields && isMissingColumnError(error)) {
+    lateColumnsSupported = false;
+    const { llegada_tarde: _lt, hora_llegada_real: _hl, ...rest } = data;
+    error = await run(rest);
+  } else if (!error && hasLateFields) {
+    lateColumnsSupported = true;
+  }
+
+  return { error: error?.message ?? null };
+}
 
 /**
  * Servicio para gestionar citas con padres
@@ -225,11 +269,11 @@ export const parentMeetingsService = {
     offset?: number;
   }): Promise<{ meetings: ParentMeeting[]; total: number; error: string | null }> {
     try {
-      const buildQuery = () => {
+      const buildQuery = (select: string) => {
         let query = supabase
           .from('citas_padres')
           .select(
-            PARENT_MEETING_LIST_SELECT,
+            select,
             filters?.limit !== undefined || filters?.offset !== undefined
               ? { count: 'exact' }
               : undefined,
@@ -252,27 +296,47 @@ export const parentMeetingsService = {
         return query;
       };
 
-      if (filters?.limit !== undefined || filters?.offset !== undefined) {
-        const offset = filters.offset ?? 0;
-        const limit = filters.limit ?? 10;
-        const { data, error, count } = await buildQuery().range(offset, offset + limit - 1);
-        if (error) {
-          return { meetings: [], total: 0, error: error.message };
-        }
-        const meetings = (data || []).map((item: any) => mapDBToParentMeeting(item));
-        return { meetings, total: count ?? meetings.length, error: null };
+      const tryWithLate = lateColumnsSupported !== false;
+      let select = buildParentMeetingListSelect(tryWithLate);
+
+      const runPaged = async () => {
+        const offset = filters?.offset ?? 0;
+        const limit = filters?.limit ?? 10;
+        return buildQuery(select).range(offset, offset + limit - 1);
+      };
+
+      const runAll = async () =>
+        fetchAllPages((from, to) => buildQuery(select).range(from, to));
+
+      const isPaged = filters?.limit !== undefined || filters?.offset !== undefined;
+      let result = isPaged ? await runPaged() : await runAll();
+
+      if (
+        result.error &&
+        tryWithLate &&
+        isMissingColumnError(
+          typeof result.error === 'string' ? { message: result.error } : result.error,
+        )
+      ) {
+        lateColumnsSupported = false;
+        select = buildParentMeetingListSelect(false);
+        result = isPaged ? await runPaged() : await runAll();
+      } else if (!result.error && tryWithLate) {
+        lateColumnsSupported = true;
       }
 
-      const { data, error } = await fetchAllPages((from, to) =>
-        buildQuery().range(from, to)
-      );
-
-      if (error) {
-        return { meetings: [], total: 0, error };
+      if (result.error) {
+        const message =
+          typeof result.error === 'string' ? result.error : (result.error as { message: string }).message;
+        return { meetings: [], total: 0, error: message };
       }
 
-      const meetings = data.map((item: any) => mapDBToParentMeeting(item));
-      return { meetings, total: meetings.length, error: null };
+      const data = isPaged ? (result as { data: any[]; count: number | null }).data : result.data;
+      const meetings = (data || []).map((item: any) => mapDBToParentMeeting(item));
+      const total = isPaged
+        ? ((result as { count: number | null }).count ?? meetings.length)
+        : meetings.length;
+      return { meetings, total, error: null };
     } catch (error: any) {
       console.error('Error en getAll:', error);
       return { meetings: [], total: 0, error: error.message || 'Error al obtener citas' };
@@ -405,13 +469,10 @@ export const parentMeetingsService = {
         fecha_actualizacion: new Date().toISOString(),
       };
 
-      const { error } = await supabase
-        .from('citas_padres')
-        .update(updateData)
-        .eq('id_cita', meeting.id_cita);
+      const { error } = await updateCitaRow(meeting.id_cita, updateData);
 
       if (error) {
-        return { success: false, meetingId: null, error: error.message };
+        return { success: false, meetingId: null, error };
       }
 
       return { success: true, meetingId: meeting.id_cita, error: null };
@@ -450,13 +511,10 @@ export const parentMeetingsService = {
         updateData.notas = notas;
       }
 
-      const { error } = await supabase
-        .from('citas_padres')
-        .update(updateData)
-        .eq('id_cita', id);
+      const { error } = await updateCitaRow(id, updateData);
 
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error };
       }
 
       return { success: true, error: null };
