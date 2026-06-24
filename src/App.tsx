@@ -1,9 +1,9 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/ui/loading-screen";
@@ -205,6 +205,19 @@ const AppContent = () => {
 
 const AppWithSessionMonitor = () => {
   useSessionMonitor();
+
+  // route-login.js agrega la clase 'route-login' al <html> en el momento
+  // de la carga inicial cuando la URL es /login (para mostrar fondo oscuro
+  // antes de que React hidrate). Con SPA, esa clase NUNCA se borra sola
+  // al navegar — lo que deja body { color: #e2e8f0 } (texto casi blanco)
+  // aplicado sobre fondos blancos de las demás páginas, haciendo el texto
+  // prácticamente invisible. Este efecto sincroniza la clase con la ruta actual.
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const isLogin = pathname === '/login' || pathname.startsWith('/login/');
+    document.documentElement.classList.toggle('route-login', isLogin);
+  }, [pathname]);
+
   return (
     <>
       <PageMetaManager />
