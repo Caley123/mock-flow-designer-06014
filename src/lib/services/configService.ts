@@ -3,6 +3,7 @@ import type { ConfiguracionSistemaDB, SystemConfig } from '@/types';
 import type { SystemSettingKey } from '@/config/systemSettings';
 import { coerceTimeConfigValue } from '@/config/systemSettings';
 import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
+import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 
 const CONFIG_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
 
@@ -70,6 +71,7 @@ export async function getByKeys(
   }
 
   try {
+    await ensureSupabaseReady();
     const { data, error } = await supabase
       .from('configuracion_sistema')
       .select('*')

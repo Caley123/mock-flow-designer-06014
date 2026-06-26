@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Info } from 'lucide-react';
+import { Save, Info, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,7 +29,7 @@ const THRESHOLD_FIELDS = [
 type ThresholdForm = ReincidenceSettings['thresholds'];
 
 export function ReincidenceSettingsCard() {
-  const { data: loadedSettings, isLoading, isError } = useReincidenceSettingsQuery();
+  const { data: loadedSettings, isLoading, isError, refetch } = useReincidenceSettingsQuery();
   const invalidateSystemConfig = useInvalidateSystemConfig();
   const [saving, setSaving] = useState(false);
   const [windowDays, setWindowDays] = useState('60');
@@ -96,7 +96,17 @@ export function ReincidenceSettingsCard() {
         description="Suma los puntos de las faltas activas del catálogo dentro de la ventana de días y asigna el nivel de comportamiento (0–5) del estudiante."
       />
       <StaffDataPanelBody className="space-y-6">
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm font-medium text-foreground">No se pudo cargar la configuración de reincidencia</p>
+            <p className="text-xs text-muted-foreground">Verifica la conexión e intenta de nuevo.</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              Reintentar
+            </Button>
+          </div>
+        ) : isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando reglas de reincidencia…</p>
         ) : (
           <>

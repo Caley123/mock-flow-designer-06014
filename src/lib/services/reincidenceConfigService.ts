@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import type { ConfiguracionReincidenciaDB, ReincidenceSettings } from '@/types';
 import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
+import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 
 const REINCIDENCE_CACHE_KEY = 'reincidence:settings';
 const REINCIDENCE_CACHE_TTL = 15 * 60 * 1000;
@@ -50,6 +51,7 @@ export async function getActive(): Promise<{
   }
 
   try {
+    await ensureSupabaseReady();
     const { data, error } = await supabase
       .from('configuracion_reincidencia')
       .select('*')

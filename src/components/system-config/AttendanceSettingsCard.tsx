@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Save, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,7 +23,7 @@ import {
 } from '@/hooks/queries/useSystemConfigQuery';
 
 export function AttendanceSettingsCard() {
-  const { data: loadedValues, isLoading, isError } = useAttendanceSettingsQuery();
+  const { data: loadedValues, isLoading, isError, refetch } = useAttendanceSettingsQuery();
   const invalidateSystemConfig = useInvalidateSystemConfig();
   const [values, setValues] = useState<AttendanceSettingsValues | null>(null);
   const [saving, setSaving] = useState(false);
@@ -79,7 +79,17 @@ export function AttendanceSettingsCard() {
         description="Reglas de puntualidad para el control de llegadas y alertas de salida sin registrar."
       />
       <StaffDataPanelBody className="space-y-5">
-        {isLoading || !values ? (
+        {isError ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm font-medium text-foreground">No se pudieron cargar los horarios</p>
+            <p className="text-xs text-muted-foreground">Verifica la conexión e intenta de nuevo.</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              Reintentar
+            </Button>
+          </div>
+        ) : isLoading || !values ? (
           <p className="text-sm text-muted-foreground">Cargando horarios…</p>
         ) : (
           <>

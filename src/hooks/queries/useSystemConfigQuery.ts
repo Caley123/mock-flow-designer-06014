@@ -15,7 +15,7 @@ export type AttendanceSettingsValues = Record<SystemSettingKey, string>;
 
 export function useAttendanceSettingsQuery() {
   return useQuery({
-    queryKey: queryKeys.systemConfig.attendance,
+    queryKey: queryKeys.systemConfig.attendance(),
     queryFn: async (): Promise<AttendanceSettingsValues> => {
       const keys = [
         ...SYSTEM_SETTINGS.map((s) => s.key),
@@ -51,7 +51,7 @@ export function useAttendanceSettingsQuery() {
 
 export function useReincidenceSettingsQuery() {
   return useQuery({
-    queryKey: queryKeys.systemConfig.reincidence,
+    queryKey: queryKeys.systemConfig.reincidence(),
     queryFn: async () => {
       const { settings, error } = await reincidenceConfigService.ensureDefault();
       if (error) throw new Error(error);
