@@ -53,6 +53,11 @@ sed -i 's/\r$//' "${WPPCONNECT_ROOT}/docker-compose.yml"
 
 log "Construyendo e iniciando contenedor (puede tardar varios minutos)..."
 cd "$WPPCONNECT_ROOT"
+# Verificar que la config personalizada llegó al repo antes del build
+if ! grep -qF "${WPPCONNECT_SECRET_KEY}" "${REPO_DIR}/src/config.ts"; then
+  log "ERROR: src/config.ts no tiene el secretKey esperado; abortando build"
+  exit 1
+fi
 docker compose build --pull
 docker compose up -d
 
@@ -65,7 +70,7 @@ for i in $(seq 1 90); do
 done
 
 log "Generando token de sesión..."
-SECRET_FROM_CONFIG=$(grep "secretKey:" "${WPPCONNECT_ROOT}/config.ts" | head -1 | sed "s/.*'\([^']*\)'.*/\1/")
+SECRET_FROM_CONFIG=$(grep -E "^\s*secretKey:" "${WPPCONNECT_ROOT}/config.ts" | sed "s/.*'\([^']*\)'.*/\1/")
 TOKEN_JSON=$(curl -sf -X POST "http://127.0.0.1:21465/api/${SESSION_NAME}/${SECRET_FROM_CONFIG}/generate-token" || true)
 BEARER=$(echo "$TOKEN_JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 

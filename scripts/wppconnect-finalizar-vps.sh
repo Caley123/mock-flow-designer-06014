@@ -7,7 +7,7 @@ ENV_FILE="/opt/sie/.env.wppconnect"
 BUILD_ENV="/opt/sie/.env.build"
 SESSION="sie-chip-01"
 
-SECRET=$(grep "secretKey:" "${WPPCONNECT_ROOT}/config.ts" | head -1 | sed "s/.*'\([^']*\)'.*/\1/")
+SECRET=$(grep -E "^\s*secretKey:" "${WPPCONNECT_ROOT}/config.ts" | sed "s/.*'\([^']*\)'.*/\1/")
 TOKEN_JSON=$(curl -sf -X POST "http://127.0.0.1:21465/api/${SESSION}/${SECRET}/generate-token")
 BEARER=$(echo "$TOKEN_JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 
