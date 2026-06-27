@@ -1,7 +1,8 @@
+import type { ServerOptions } from './types/ServerOptions';
+
 /**
- * WPPConnect Server — configuración producción (VPS asiscole.com)
- * Copiado a /opt/sie/wppconnect/config.ts por instalar-wppconnect-vps.sh
- * El secretKey se sustituye en el install (no commitear el valor real).
+ * WPPConnect Server — producción VPS asiscole.com
+ * secretKey se sustituye en instalar-wppconnect-vps.sh
  */
 export default {
   secretKey: 'WPPCONNECT_SECRET_PLACEHOLDER',
@@ -26,7 +27,8 @@ export default {
     onPollResponse: false,
     onRevokedMessage: false,
     onLabelUpdated: false,
-    ignore: [],
+    onSelfMessage: false,
+    ignore: ['status@broadcast'],
   },
   websocket: {
     autoDownload: false,
@@ -46,12 +48,9 @@ export default {
     logger: ['console', 'file'],
   },
   createOptions: {
-    // CRÍTICO: no cerrar sesión por timeout al escanear QR o sincronizar
     autoClose: 0,
     deviceSyncTimeout: 0,
     disableWelcome: true,
-    headless: true,
-    useChrome: true,
     browserArgs: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -68,6 +67,7 @@ export default {
       '--no-first-run',
       '--disable-features=LeakyPeeker',
     ],
+    linkPreviewApiServers: null,
   },
   mapper: {
     enable: false,
@@ -89,9 +89,11 @@ export default {
     redisPrefix: 'sie',
   },
   aws_s3: {
-    region: 'sa-east-1',
-    access_key_id: '',
-    secret_key: '',
-    defaultBucketName: '',
+    region: 'sa-east-1' as const,
+    access_key_id: null,
+    secret_key: null,
+    defaultBucketName: null,
+    endpoint: null,
+    forcePathStyle: null,
   },
-};
+} as unknown as ServerOptions;

@@ -45,8 +45,8 @@ cp "${APP_DIR}/scripts/wppconnect/config.ts" "${WPPCONNECT_ROOT}/config.ts"
 sed -i "s/WPPCONNECT_SECRET_PLACEHOLDER/${WPPCONNECT_SECRET_KEY}/g" "${WPPCONNECT_ROOT}/config.ts"
 sed -i 's/\r$//' "${WPPCONNECT_ROOT}/config.ts"
 
-# La config se compila en dist/ durante el build — copiar al repo antes de docker build
-cp "${WPPCONNECT_ROOT}/config.ts" "${REPO_DIR}/config.ts"
+# La config vive en src/config.ts y se compila en dist/ durante el build
+cp "${WPPCONNECT_ROOT}/config.ts" "${REPO_DIR}/src/config.ts"
 
 cp "${APP_DIR}/scripts/wppconnect/docker-compose.yml" "${WPPCONNECT_ROOT}/docker-compose.yml"
 sed -i 's/\r$//' "${WPPCONNECT_ROOT}/docker-compose.yml"
