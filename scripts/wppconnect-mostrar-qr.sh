@@ -15,6 +15,7 @@ set +u
 source "$ENV_FILE"
 set -u
 TOKEN="${WPPCONNECT_BEARER_TOKEN:-}"
+SESSION="${WPPCONNECT_SESSION:-sie-chip-01}"
 API="http://127.0.0.1:21465/api"
 
 if [[ -z "$TOKEN" ]]; then
