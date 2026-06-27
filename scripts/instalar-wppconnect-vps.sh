@@ -77,15 +77,13 @@ BEARER=$(echo "$TOKEN_JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 if [[ -z "$BEARER" ]]; then
   log "WARN: no se pudo generar token automáticamente. Ejecute scripts/wppconnect-mostrar-qr.sh"
 else
-  {
-    grep -v '^WPPCONNECT_' "$ENV_FILE" 2>/dev/null || true
-    echo "WPPCONNECT_SECRET_KEY=${WPPCONNECT_SECRET_KEY}"
-    echo "WPPCONNECT_SESSION=${SESSION_NAME}"
-    echo "WPPCONNECT_BEARER_TOKEN=${BEARER}"
-    echo "WPPCONNECT_INTERNAL_API=http://127.0.0.1:21465/api"
-    echo "WPPCONNECT_WEBHOOK_PORT=3099"
-  } > "${ENV_FILE}.tmp"
-  mv "${ENV_FILE}.tmp" "$ENV_FILE"
+  cat > "$ENV_FILE" <<EOF
+WPPCONNECT_SECRET_KEY=${WPPCONNECT_SECRET_KEY}
+WPPCONNECT_SESSION=${SESSION_NAME}
+WPPCONNECT_BEARER_TOKEN='${BEARER}'
+WPPCONNECT_INTERNAL_API=http://127.0.0.1:21465/api
+WPPCONNECT_WEBHOOK_PORT=3099
+EOF
   chmod 600 "$ENV_FILE"
   log "Token guardado en $ENV_FILE"
 fi
@@ -122,7 +120,7 @@ if [[ -f "$BUILD_ENV" ]]; then
     echo "VITE_WPPCONNECT_API_URL=/wpp-api"
     echo "VITE_WPPCONNECT_SESSION=${SESSION_NAME}"
     if [[ -n "$BEARER" ]]; then
-      echo "VITE_WPPCONNECT_TOKEN=${BEARER}"
+      echo "VITE_WPPCONNECT_TOKEN='${BEARER}'"
     fi
     echo "VITE_OPENWA_ENABLED=false"
   } > "${BUILD_ENV}.tmp"

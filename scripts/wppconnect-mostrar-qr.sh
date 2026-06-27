@@ -11,9 +11,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # shellcheck disable=SC1090
+set +u
 source "$ENV_FILE"
-
-SESSION="${WPPCONNECT_SESSION:-sie-chip-01}"
+set -u
 TOKEN="${WPPCONNECT_BEARER_TOKEN:-}"
 API="http://127.0.0.1:21465/api"
 
@@ -21,7 +21,7 @@ if [[ -z "$TOKEN" ]]; then
   echo "Generando token..."
   JSON=$(curl -sf -X POST "${API}/${SESSION}/${WPPCONNECT_SECRET_KEY}/generate-token")
   TOKEN=$(echo "$JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-  echo "WPPCONNECT_BEARER_TOKEN=${TOKEN}" >> "$ENV_FILE"
+  echo "WPPCONNECT_BEARER_TOKEN='${TOKEN}'" >> "$ENV_FILE"
 fi
 
 echo "Iniciando sesión ${SESSION}..."
