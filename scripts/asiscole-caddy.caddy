@@ -15,8 +15,8 @@ asiscole.com, www.asiscole.com {
 		-Server
 	}
 
-	# CSP estricta (SPA + proxies /api y /openwa-dashboard)
-	@sie_app not path /api/* /openwa-dashboard*
+	# CSP estricta (SPA + proxy WPPConnect /wpp-api)
+	@sie_app not path /wpp-api*
 	# Sin require-trusted-types-for: tablets con WebView antiguo quedan en blanco si lo exige el CSP
 	header @sie_app Content-Security-Policy "default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; media-src 'self' blob: data:; connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests"
 
@@ -24,8 +24,7 @@ asiscole.com, www.asiscole.com {
 	# Antes solo / e /index.html tenían no-cache; /incidents se cacheaba con etag.
 	@app_shell {
 		not path /assets/*
-		not path /api/*
-		not path /openwa-dashboard*
+		not path /wpp-api*
 		not path /whatsapp-preview.jpg
 		not path *.ico *.svg *.png *.jpg *.jpeg *.webp
 	}
@@ -43,19 +42,10 @@ asiscole.com, www.asiscole.com {
 		Cross-Origin-Resource-Policy "cross-origin"
 	}
 
-	handle /api/* {
-		reverse_proxy 127.0.0.1:2785
-	}
-
-	# WPPConnect Server (WhatsApp estable, sesiones en disco)
+	# WPPConnect Server (WhatsApp)
 	handle /wpp-api* {
 		uri replace /wpp-api /api
 		reverse_proxy 127.0.0.1:21465
-	}
-
-	# Panel OpenWA (QR WhatsApp) — NO usar /dashboard (reservado al SIE)
-	handle /openwa-dashboard* {
-		reverse_proxy 127.0.0.1:2886
 	}
 
 	handle /assets/* {

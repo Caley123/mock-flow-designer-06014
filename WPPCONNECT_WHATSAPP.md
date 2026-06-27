@@ -2,7 +2,7 @@
 
 **WPPConnect** reemplaza a OpenWA en producción cuando necesitas sesiones que **no se caen** al apagar el celular o perder internet temporalmente. Los tokens quedan en disco (`tokens/` + `userDataDir/`) y el servidor los restaura al reiniciar.
 
-OpenWA sigue disponible en el VPS (`:2785`) como respaldo, pero el frontend usa WPPConnect cuando `VITE_WPPCONNECT_ENABLED=true`.
+OpenWA ya no se usa en el VPS. WhatsApp va solo por **WPPConnect** (`VITE_WPPCONNECT_ENABLED=true`).
 
 ## Arquitectura
 
@@ -11,7 +11,6 @@ OpenWA sigue disponible en el VPS (`:2785`) como respaldo, pero el frontend usa 
 | WPPConnect API (Docker) | `127.0.0.1:21465` |
 | Proxy público (Caddy) | `https://asiscole.com/wpp-api/...` |
 | Webhook sendSeen (host) | `127.0.0.1:3099/wpp-webhook` |
-| OpenWA legacy | `127.0.0.1:2785` → `/api` |
 
 ## Instalación en el VPS (una vez)
 
