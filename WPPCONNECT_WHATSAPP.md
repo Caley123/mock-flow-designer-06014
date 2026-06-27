@@ -9,7 +9,8 @@ OpenWA ya no se usa en el VPS. WhatsApp va solo por **WPPConnect** (`VITE_WPPCON
 | Componente | Puerto / ruta |
 |------------|----------------|
 | WPPConnect API (Docker) | `127.0.0.1:21465` |
-| Proxy público (Caddy) | `https://asiscole.com/wpp-api/...` |
+| Proxy público (Caddy) | `https://asiscole.com/wpp-api/...` (rutas concretas) |
+| Documentación Swagger | `https://asiscole.com/wpp-api-docs/` |
 | Webhook sendSeen (host) | `127.0.0.1:3099/wpp-webhook` |
 
 ## Instalación en el VPS (una vez)

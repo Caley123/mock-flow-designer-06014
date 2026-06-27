@@ -43,6 +43,11 @@ asiscole.com, www.asiscole.com {
 	}
 
 	# WPPConnect Server (WhatsApp)
+	@wpp_api_root path /wpp-api /wpp-api/
+	handle @wpp_api_root {
+		redir /wpp-api-docs/ permanent
+	}
+
 	handle /wpp-api* {
 		uri replace /wpp-api /api
 		reverse_proxy 127.0.0.1:21465
