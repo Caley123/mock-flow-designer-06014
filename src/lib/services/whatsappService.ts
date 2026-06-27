@@ -1,11 +1,24 @@
 import type { ArrivalRecord, Student } from '@/types';
-import { toWhatsAppChatId } from '@/lib/utils/phoneUtils';
+import { toWhatsAppChatId, toWhatsAppPhone } from '@/lib/utils/phoneUtils';
 
-/** OpenWA — https://github.com/rmyndharis/OpenWA */
-const WHATSAPP_ENABLED =
-  import.meta.env.VITE_OPENWA_ENABLED === 'true' ||
-  import.meta.env.VITE_WHATSAPP_ENABLED === 'true' ||
-  import.meta.env.VITE_WAHA_ENABLED === 'true';
+/** WPPConnect Server — sesiones persistentes en VPS */
+const WPPCONNECT_ENABLED = import.meta.env.VITE_WPPCONNECT_ENABLED === 'true';
+
+const WPPCONNECT_API_URL = (
+  import.meta.env.VITE_WPPCONNECT_API_URL || '/wpp-api'
+).replace(/\/$/, '');
+
+const WPPCONNECT_SESSION = import.meta.env.VITE_WPPCONNECT_SESSION || 'sie-chip-01';
+const WPPCONNECT_TOKEN = import.meta.env.VITE_WPPCONNECT_TOKEN || '';
+
+/** OpenWA — legacy */
+const OPENWA_ENABLED =
+  !WPPCONNECT_ENABLED &&
+  (import.meta.env.VITE_OPENWA_ENABLED === 'true' ||
+    import.meta.env.VITE_WHATSAPP_ENABLED === 'true' ||
+    import.meta.env.VITE_WAHA_ENABLED === 'true');
+
+const WHATSAPP_ENABLED = WPPCONNECT_ENABLED || OPENWA_ENABLED;
 
 const OPENWA_API_URL = (
   import.meta.env.VITE_OPENWA_API_URL ||
@@ -19,6 +32,14 @@ const OPENWA_API_KEY = import.meta.env.VITE_OPENWA_API_KEY || '';
 /** Evita reenvíos duplicados del mismo aviso en escaneos repetidos. */
 const recentNotifyKeys = new Map<string, number>();
 const NOTIFY_DEDUP_MS = 2 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomBetween(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 function shouldSkipDuplicateNotify(studentId: number, date: string): boolean {
   const key = `${studentId}:${date.slice(0, 10)}`;
@@ -40,7 +61,6 @@ function getParentPortalLink(): string {
   return base ? `${base}/portal-padres` : '/portal-padres';
 }
 
-/** Enlace directo a la asistencia del estudiante (DNI/código de barras). */
 function getStudentAttendanceLink(student: Student, record: ArrivalRecord): string | null {
   const base = getAppBaseUrl();
   if (!base) return null;
@@ -52,15 +72,9 @@ function getStudentAttendanceLink(student: Student, record: ArrivalRecord): stri
 
 function formatStudentAcademicLines(student: Student): string[] {
   const lines: string[] = [];
-  if (student.level) {
-    lines.push(`*Nivel:* ${student.level}`);
-  }
-  if (student.grade) {
-    lines.push(`*Grado:* ${student.grade}`);
-  }
-  if (student.section) {
-    lines.push(`*Sección:* ${student.section}`);
-  }
+  if (student.level) lines.push(`*Nivel:* ${student.level}`);
+  if (student.grade) lines.push(`*Grado:* ${student.grade}`);
+  if (student.section) lines.push(`*Sección:* ${student.section}`);
   return lines;
 }
 
@@ -84,9 +98,7 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     `*Hora:* ${hora}`,
     `*Estado:* ${record.status || 'Registrado'}`,
     '',
-    attendanceLink
-      ? `📋 *Ver asistencia de hoy:*\n${attendanceLink}`
-      : '',
+    attendanceLink ? `📋 *Ver asistencia de hoy:*\n${attendanceLink}` : '',
     portalLink ? `👨‍👩‍👧 *Portal de padres:*\n${portalLink}` : '',
     '',
     '_Notificación automática del sistema de asistencia escolar._',
@@ -97,124 +109,130 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     .trim();
 }
 
-function openwaHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (OPENWA_API_KEY) {
-    headers['X-API-Key'] = OPENWA_API_KEY;
-  }
-  return headers;
-}
-
 function looksLikeHtmlResponse(raw: string): boolean {
   const t = raw.trim().toLowerCase();
   return t.startsWith('<!doctype') || t.startsWith('<html') || t.includes('<title>sie asiscole');
 }
 
-function friendlyOpenwaError(detail: string, status?: number): string {
+function friendlyWaError(detail: string, status?: number, provider = 'WhatsApp'): string {
   const lower = detail.toLowerCase();
   if (looksLikeHtmlResponse(detail)) {
-    return 'OpenWA no responde en la ruta configurada. En asiscole.com use VITE_OPENWA_API_URL=/api (no /sc-proxy).';
+    return `${provider} no responde en la ruta configurada. Revise el proxy en Caddy (/wpp-api o /api).`;
+  }
+  if (status === 401 || status === 403 || lower.includes('unauthorized')) {
+    return `Token de ${provider} inválido. Regenere el token en el VPS.`;
   }
   if (
-    status === 401 ||
-    status === 403 ||
-    lower.includes('unauthorized') ||
-    lower.includes('api key')
-  ) {
-    return 'API Key de OpenWA inválida. Revísela en el dashboard OpenWA y en la configuración del servidor.';
-  }
-  if (
-    status === 404 ||
     lower.includes('session not found') ||
-    lower.includes('invalid session') ||
-    (lower.includes('session') && lower.includes('not found'))
-  ) {
-    return 'Sesión de WhatsApp no encontrada o desconectada. Mantenga el celular vinculado encendido y con internet; si hace falta, escanee el QR de nuevo en /openwa-dashboard.';
-  }
-  if (
-    lower.includes('not logged in') ||
     lower.includes('disconnected') ||
     lower.includes('not connected') ||
-    lower.includes('session closed') ||
-    lower.includes('phone not connected')
+    lower.includes('not logged in')
   ) {
-    return 'WhatsApp desconectado: el celular vinculado debe estar encendido y con internet. Reinicie la sesión en el dashboard OpenWA si persiste.';
+    return 'WhatsApp desconectado. Escanee el QR de nuevo (scripts/wppconnect-mostrar-qr.sh en el VPS).';
   }
-  if (
-    lower.includes('cert') ||
-    lower.includes('ssl') ||
-    lower.includes('authority_invalid') ||
-    lower.includes('failed to fetch')
-  ) {
-    return 'No se pudo conectar con OpenWA. En producción use VITE_OPENWA_API_URL=/sc-proxy (proxy Cloudflare).';
+  if (lower.includes('failed to fetch') || status === 502 || status === 503) {
+    return `${provider} no está activo en el servidor.`;
   }
-  if (
-    status === 500 ||
-    status === 502 ||
-    status === 503 ||
-    lower.includes('econnrefused') ||
-    lower.includes('proxy error') ||
-    lower.includes('internal server error')
-  ) {
-    return 'OpenWA no está activo. Sin Docker: clone OpenWA, ejecute npm install y npm run dev (API :2785). Ver OPENWA_WHATSAPP.md o scripts/iniciar-openwa.ps1';
-  }
-  if (detail.length > 220) {
-    return 'Error de OpenWA al enviar el mensaje';
-  }
-  return detail || 'Error de OpenWA al enviar el mensaje';
+  if (detail.length > 220) return `Error de ${provider} al enviar el mensaje`;
+  return detail || `Error de ${provider} al enviar el mensaje`;
 }
 
-async function sendText(chatId: string, text: string): Promise<{ ok: boolean; error: string | null }> {
-  if (!WHATSAPP_ENABLED) {
-    return { ok: false, error: 'WhatsApp desactivado (VITE_OPENWA_ENABLED)' };
+function wppconnectHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${WPPCONNECT_TOKEN}`,
+  };
+}
+
+async function wppconnectPost(
+  route: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; error: string | null }> {
+  const url = `${WPPCONNECT_API_URL}/${encodeURIComponent(WPPCONNECT_SESSION)}${route}`;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: wppconnectHeaders(),
+      body: JSON.stringify(body),
+    });
+    const raw = await response.text().catch(() => response.statusText);
+    if (!response.ok) {
+      return { ok: false, error: friendlyWaError(raw, response.status, 'WPPConnect') };
+    }
+    if (looksLikeHtmlResponse(raw)) {
+      return { ok: false, error: friendlyWaError(raw, response.status, 'WPPConnect') };
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo conectar con WPPConnect';
+    return { ok: false, error: friendlyWaError(message, undefined, 'WPPConnect') };
+  }
+}
+
+async function sendViaWppConnect(phone: string, text: string): Promise<{ ok: boolean; error: string | null }> {
+  if (!WPPCONNECT_TOKEN.trim()) {
+    return { ok: false, error: 'Falta VITE_WPPCONNECT_TOKEN (genérelo en el VPS)' };
   }
 
+  // Simular escritura humana antes del mensaje
+  await wppconnectPost('/typing', { phone, isGroup: false, value: true });
+  await sleep(randomBetween(2000, 3000));
+
+  const sent = await wppconnectPost('/send-message', { phone, message: text, isGroup: false });
+
+  await wppconnectPost('/typing', { phone, isGroup: false, value: false }).catch(() => {});
+
+  return sent;
+}
+
+function openwaHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (OPENWA_API_KEY) headers['X-API-Key'] = OPENWA_API_KEY;
+  return headers;
+}
+
+async function sendViaOpenwa(chatId: string, text: string): Promise<{ ok: boolean; error: string | null }> {
   if (!OPENWA_SESSION_ID.trim()) {
-    return {
-      ok: false,
-      error: 'Falta VITE_OPENWA_SESSION_ID (cree una sesión en el dashboard OpenWA)',
-    };
+    return { ok: false, error: 'Falta VITE_OPENWA_SESSION_ID' };
   }
-
   if (!OPENWA_API_KEY.trim()) {
-    return {
-      ok: false,
-      error: 'Falta VITE_OPENWA_API_KEY (cópiela desde el dashboard OpenWA)',
-    };
+    return { ok: false, error: 'Falta VITE_OPENWA_API_KEY' };
   }
 
   try {
     const url = `${OPENWA_API_URL}/sessions/${encodeURIComponent(OPENWA_SESSION_ID)}/messages/send-text`;
-
     const response = await fetch(url, {
       method: 'POST',
       headers: openwaHeaders(),
       body: JSON.stringify({ chatId, text }),
     });
-
     const raw = await response.text().catch(() => response.statusText);
     if (!response.ok) {
-      return { ok: false, error: friendlyOpenwaError(raw, response.status) };
+      return { ok: false, error: friendlyWaError(raw, response.status, 'OpenWA') };
     }
     if (looksLikeHtmlResponse(raw)) {
-      return { ok: false, error: friendlyOpenwaError(raw, response.status) };
+      return { ok: false, error: friendlyWaError(raw, response.status, 'OpenWA') };
     }
-
     return { ok: true, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo conectar con OpenWA';
-    return { ok: false, error: friendlyOpenwaError(message) };
+    return { ok: false, error: friendlyWaError(message, undefined, 'OpenWA') };
   }
 }
 
 /**
  * Envía WhatsApp al apoderado tras registrar llegada.
- * No lanza excepción: el escaneo no debe fallar si OpenWA no responde.
+ * No lanza excepción: el escaneo no debe fallar si el proveedor no responde.
  */
 export async function notifyParentArrival(
   student: Student,
-  record: ArrivalRecord
+  record: ArrivalRecord,
 ): Promise<{ ok: boolean; error: string | null; chatId?: string; skipped?: boolean }> {
+  if (!WHATSAPP_ENABLED) {
+    return { ok: false, error: 'WhatsApp desactivado' };
+  }
+
   const phone = student.contactPhone?.trim() || student.emergencyPhone?.trim() || '';
   if (!phone) {
     return { ok: false, error: 'El estudiante no tiene teléfono de contacto' };
@@ -230,16 +248,21 @@ export async function notifyParentArrival(
   }
 
   const chatId = toWhatsAppChatId(phone);
-  if (!chatId) {
+  const wppPhone = toWhatsAppPhone(phone);
+  if (!chatId || !wppPhone) {
     return { ok: false, error: 'Teléfono de contacto no válido para WhatsApp' };
   }
 
   const text = buildArrivalMessage(student, record);
-  const result = await sendText(chatId, text);
+  const result = WPPCONNECT_ENABLED
+    ? await sendViaWppConnect(wppPhone, text)
+    : await sendViaOpenwa(chatId, text);
+
   return { ...result, chatId };
 }
 
 export const whatsappService = {
   isEnabled: () => WHATSAPP_ENABLED,
+  provider: () => (WPPCONNECT_ENABLED ? 'wppconnect' : OPENWA_ENABLED ? 'openwa' : 'none'),
   notifyParentArrival,
 };

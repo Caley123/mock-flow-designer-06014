@@ -22,3 +22,10 @@ export function toWhatsAppChatId(phone: string): string | null {
   }
   return null;
 }
+
+/** Teléfono E.164 sin sufijo (@c.us) — formato WPPConnect send-message */
+export function toWhatsAppPhone(phone: string): string | null {
+  const chatId = toWhatsAppChatId(phone);
+  if (!chatId) return null;
+  return chatId.replace(/@c\.us$/, '');
+}

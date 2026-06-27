@@ -47,6 +47,12 @@ asiscole.com, www.asiscole.com {
 		reverse_proxy 127.0.0.1:2785
 	}
 
+	# WPPConnect Server (WhatsApp estable, sesiones en disco)
+	handle /wpp-api* {
+		uri replace /wpp-api /api
+		reverse_proxy 127.0.0.1:21465
+	}
+
 	# Panel OpenWA (QR WhatsApp) — NO usar /dashboard (reservado al SIE)
 	handle /openwa-dashboard* {
 		reverse_proxy 127.0.0.1:2886

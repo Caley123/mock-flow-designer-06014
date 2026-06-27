@@ -1,0 +1,97 @@
+/**
+ * WPPConnect Server — configuración producción (VPS asiscole.com)
+ * Copiado a /opt/sie/wppconnect/config.ts por instalar-wppconnect-vps.sh
+ * El secretKey se sustituye en el install (no commitear el valor real).
+ */
+export default {
+  secretKey: 'WPPCONNECT_SECRET_PLACEHOLDER',
+  host: 'http://127.0.0.1',
+  port: '21465',
+  deviceName: 'Asiscole SIE',
+  poweredBy: 'I.E. San Ramon',
+  startAllSession: true,
+  tokenStoreType: 'file',
+  maxListeners: 30,
+  customUserDataDir: './userDataDir/',
+  webhook: {
+    url: 'http://host.docker.internal:3099/wpp-webhook',
+    autoDownload: false,
+    uploadS3: false,
+    readMessage: true,
+    allUnreadOnStart: false,
+    listenAcks: true,
+    onPresenceChanged: false,
+    onParticipantsChanged: false,
+    onReactionMessage: false,
+    onPollResponse: false,
+    onRevokedMessage: false,
+    onLabelUpdated: false,
+    ignore: [],
+  },
+  websocket: {
+    autoDownload: false,
+    uploadS3: false,
+  },
+  chatwoot: {
+    sendQrCode: false,
+    sendStatus: false,
+  },
+  archive: {
+    enable: false,
+    waitTime: 10,
+    daysToArchive: 45,
+  },
+  log: {
+    level: 'info',
+    logger: ['console', 'file'],
+  },
+  createOptions: {
+    // CRÍTICO: no cerrar sesión por timeout al escanear QR o sincronizar
+    autoClose: 0,
+    deviceSyncTimeout: 0,
+    disableWelcome: true,
+    headless: true,
+    useChrome: true,
+    browserArgs: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-web-security',
+      '--aggressive-cache-discard',
+      '--disable-application-cache',
+      '--disable-background-networking',
+      '--disable-extensions',
+      '--disable-sync',
+      '--disable-translate',
+      '--hide-scrollbars',
+      '--mute-audio',
+      '--no-first-run',
+      '--disable-features=LeakyPeeker',
+    ],
+  },
+  mapper: {
+    enable: false,
+    prefix: 'sie-',
+  },
+  db: {
+    mongodbDatabase: 'tokens',
+    mongodbCollection: '',
+    mongodbUser: '',
+    mongodbPassword: '',
+    mongodbHost: '',
+    mongoIsRemote: true,
+    mongoURLRemote: '',
+    mongodbPort: 27017,
+    redisHost: 'localhost',
+    redisPort: 6379,
+    redisPassword: '',
+    redisDb: 0,
+    redisPrefix: 'sie',
+  },
+  aws_s3: {
+    region: 'sa-east-1',
+    access_key_id: '',
+    secret_key: '',
+    defaultBucketName: '',
+  },
+};
