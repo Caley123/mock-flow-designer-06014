@@ -8,7 +8,6 @@ services:
     build:
       context: ./wppconnect-server
     volumes:
-      - ./config.ts:/usr/src/wpp-server/config.ts:ro
       - wppconnect_tokens:/usr/src/wpp-server/tokens
       - wppconnect_userdata:/usr/src/wpp-server/userDataDir
     ports:

@@ -45,6 +45,9 @@ cp "${APP_DIR}/scripts/wppconnect/config.ts" "${WPPCONNECT_ROOT}/config.ts"
 sed -i "s/WPPCONNECT_SECRET_PLACEHOLDER/${WPPCONNECT_SECRET_KEY}/g" "${WPPCONNECT_ROOT}/config.ts"
 sed -i 's/\r$//' "${WPPCONNECT_ROOT}/config.ts"
 
+# La config se compila en dist/ durante el build — copiar al repo antes de docker build
+cp "${WPPCONNECT_ROOT}/config.ts" "${REPO_DIR}/config.ts"
+
 cp "${APP_DIR}/scripts/wppconnect/docker-compose.yml" "${WPPCONNECT_ROOT}/docker-compose.yml"
 sed -i 's/\r$//' "${WPPCONNECT_ROOT}/docker-compose.yml"
 
@@ -62,7 +65,8 @@ for i in $(seq 1 90); do
 done
 
 log "Generando token de sesión..."
-TOKEN_JSON=$(curl -sf -X POST "http://127.0.0.1:21465/api/${SESSION_NAME}/${WPPCONNECT_SECRET_KEY}/generate-token" || true)
+SECRET_FROM_CONFIG=$(grep "secretKey:" "${WPPCONNECT_ROOT}/config.ts" | head -1 | sed "s/.*'\([^']*\)'.*/\1/")
+TOKEN_JSON=$(curl -sf -X POST "http://127.0.0.1:21465/api/${SESSION_NAME}/${SECRET_FROM_CONFIG}/generate-token" || true)
 BEARER=$(echo "$TOKEN_JSON" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 
 if [[ -z "$BEARER" ]]; then
