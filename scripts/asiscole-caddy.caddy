@@ -16,7 +16,7 @@ asiscole.com, www.asiscole.com {
 	}
 
 	# CSP estricta (SPA + proxy WPPConnect /wpp-api)
-	@sie_app not path /wpp-api*
+	@sie_app not path /wpp-api* /api/*
 	# Sin require-trusted-types-for: tablets con WebView antiguo quedan en blanco si lo exige el CSP
 	header @sie_app Content-Security-Policy "default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; media-src 'self' blob: data:; connect-src 'self' https://spdugaykkcgpcfslcpac.supabase.co wss://spdugaykkcgpcfslcpac.supabase.co https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests"
 
@@ -25,6 +25,7 @@ asiscole.com, www.asiscole.com {
 	@app_shell {
 		not path /assets/*
 		not path /wpp-api*
+		not path /api/*
 		not path /whatsapp-preview.jpg
 		not path *.ico *.svg *.png *.jpg *.jpeg *.webp
 	}
@@ -43,6 +44,11 @@ asiscole.com, www.asiscole.com {
 	}
 
 	# WPPConnect Server (WhatsApp)
+	# Swagger (/wpp-api-docs) llama rutas /api/... — deben llegar a WPPConnect, no al SPA.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:21465
+	}
+
 	@wpp_api_root path /wpp-api /wpp-api/
 	handle @wpp_api_root {
 		redir /wpp-api-docs/ permanent
