@@ -97,6 +97,29 @@ systemctl enable sie-wpp-webhook
 systemctl restart sie-wpp-webhook
 log "Webhook systemd: sie-wpp-webhook"
 
+# Cola multi-chip (rotación + anti-baneo)
+NOTIFY_UNIT="/etc/systemd/system/sie-wpp-notify-queue.service"
+cp "${APP_DIR}/scripts/wppconnect/sie-wpp-notify-queue.service" "$NOTIFY_UNIT"
+sed -i 's/\r$//' "$NOTIFY_UNIT"
+systemctl daemon-reload
+systemctl enable sie-wpp-notify-queue
+systemctl restart sie-wpp-notify-queue
+log "Cola notify systemd: sie-wpp-notify-queue (puerto 3100)"
+
+# Ampliar .env.wppconnect para rotación
+if ! grep -q '^WPPCONNECT_SESSIONS=' "$ENV_FILE" 2>/dev/null; then
+  NOTIFY_SECRET="$(openssl rand -hex 16)"
+  cat >> "$ENV_FILE" <<EOF
+WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07
+WPPCONNECT_NOTIFY_PORT=3100
+WPPCONNECT_NOTIFY_SECRET=${NOTIFY_SECRET}
+WPPCONNECT_JITTER_MIN_MS=4000
+WPPCONNECT_JITTER_MAX_MS=9000
+WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250
+EOF
+  log "Añadidas variables de rotación a $ENV_FILE"
+fi
+
 # Caddy: copiar asiscole-caddy si cambió
 CADDY_SRC="${APP_DIR}/scripts/asiscole-caddy.caddy"
 CADDY_FILE="/etc/caddy/Caddyfile"
@@ -119,6 +142,12 @@ if [[ -f "$BUILD_ENV" ]]; then
     echo "VITE_WPPCONNECT_ENABLED=true"
     echo "VITE_WPPCONNECT_API_URL=/wpp-api"
     echo "VITE_WPPCONNECT_SESSION=${SESSION_NAME}"
+    echo "VITE_WPPCONNECT_ROTATION=true"
+    echo "VITE_WPPCONNECT_NOTIFY_URL=/wpp-notify"
+    if grep -q '^WPPCONNECT_NOTIFY_SECRET=' "$ENV_FILE"; then
+      NS=$(grep '^WPPCONNECT_NOTIFY_SECRET=' "$ENV_FILE" | cut -d= -f2)
+      echo "VITE_WPPCONNECT_NOTIFY_KEY=${NS}"
+    fi
     if [[ -n "$BEARER" ]]; then
       echo "VITE_WPPCONNECT_TOKEN='${BEARER}'"
     fi

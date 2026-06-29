@@ -10,6 +10,27 @@ const WPPCONNECT_API_URL = (
 
 const WPPCONNECT_SESSION = import.meta.env.VITE_WPPCONNECT_SESSION || 'sie-chip-01';
 const WPPCONNECT_TOKEN = import.meta.env.VITE_WPPCONNECT_TOKEN || '';
+const WPPCONNECT_ROTATION = import.meta.env.VITE_WPPCONNECT_ROTATION === 'true';
+const WPPCONNECT_NOTIFY_URL = (
+  import.meta.env.VITE_WPPCONNECT_NOTIFY_URL || '/wpp-notify'
+).replace(/\/$/, '');
+const WPPCONNECT_NOTIFY_KEY = import.meta.env.VITE_WPPCONNECT_NOTIFY_KEY || '';
+
+const GREETING_VARIANTS = [
+  'Hola,',
+  'Buen día,',
+  'Buenos días,',
+  'Estimado apoderado,',
+  'Estimada familia,',
+  'Saludos,',
+  'Cordial saludo,',
+] as const;
+
+const CLOSING_VARIANTS = [
+  '_Notificación automática del sistema de asistencia escolar._',
+  '_Mensaje automático del SIE — I.E. San Ramón._',
+  '_Sistema de asistencia escolar — I.E. San Ramón._',
+] as const;
 
 /** OpenWA — legacy */
 const OPENWA_ENABLED =
@@ -78,6 +99,17 @@ function formatStudentAcademicLines(student: Student): string[] {
   return lines;
 }
 
+function formatHoraWithSeconds(arrivalTime: string | undefined): string {
+  const t = (arrivalTime || '').trim();
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t.slice(0, 8);
+  if (/^\d{2}:\d{2}$/.test(t)) {
+    const sec = String(new Date().getSeconds()).padStart(2, '0');
+    return `${t}:${sec}`;
+  }
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+}
+
 function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
   const datePart = record.date?.slice(0, 10) || '';
   let fecha = datePart;
@@ -85,11 +117,15 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     const [y, m, d] = datePart.split('-');
     fecha = `${d}/${m}/${y}`;
   }
-  const hora = (record.arrivalTime || '').slice(0, 5) || '—:—';
+  const hora = formatHoraWithSeconds(record.arrivalTime);
+  const greeting = GREETING_VARIANTS[randomBetween(0, GREETING_VARIANTS.length - 1)];
+  const closing = CLOSING_VARIANTS[randomBetween(0, CLOSING_VARIANTS.length - 1)];
   const attendanceLink = getStudentAttendanceLink(student, record);
   const portalLink = getParentPortalLink();
 
   return [
+    greeting,
+    '',
     '🏫 *Registro de llegada — I.E. San Ramón*',
     '',
     `*Estudiante:* ${student.fullName}`,
@@ -101,7 +137,7 @@ function buildArrivalMessage(student: Student, record: ArrivalRecord): string {
     attendanceLink ? `📋 *Ver asistencia de hoy:*\n${attendanceLink}` : '',
     portalLink ? `👨‍👩‍👧 *Portal de padres:*\n${portalLink}` : '',
     '',
-    '_Notificación automática del sistema de asistencia escolar._',
+    closing,
   ]
     .filter((l) => l !== null && l !== undefined && l !== '')
     .join('\n')
@@ -167,6 +203,61 @@ async function wppconnectPost(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo conectar con WPPConnect';
     return { ok: false, error: friendlyWaError(message, undefined, 'WPPConnect') };
+  }
+}
+
+async function sendViaNotifyQueue(
+  phone: string,
+  student: Student,
+  record: ArrivalRecord,
+): Promise<{ ok: boolean; error: string | null; session?: string }> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (WPPCONNECT_NOTIFY_KEY) headers['X-SIE-Notify-Key'] = WPPCONNECT_NOTIFY_KEY;
+
+    const response = await fetch(`${WPPCONNECT_NOTIFY_URL}/enqueue`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        phone,
+        student: {
+          id: student.id,
+          fullName: student.fullName,
+          level: student.level,
+          grade: student.grade,
+          section: student.section,
+          barcode: student.barcode,
+        },
+        record: {
+          date: record.date,
+          arrivalTime: record.arrivalTime,
+          status: record.status,
+          id: record.id,
+        },
+        appUrl: getAppBaseUrl(),
+      }),
+    });
+
+    const raw = await response.text().catch(() => response.statusText);
+    if (!response.ok && response.status !== 202) {
+      return { ok: false, error: friendlyWaError(raw, response.status, 'Cola WhatsApp') };
+    }
+    if (looksLikeHtmlResponse(raw)) {
+      return { ok: false, error: friendlyWaError(raw, response.status, 'Cola WhatsApp') };
+    }
+
+    let session: string | undefined;
+    try {
+      const json = JSON.parse(raw) as { session?: string };
+      session = json.session;
+    } catch {
+      /* ignore */
+    }
+
+    return { ok: true, error: null, session };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo encolar el mensaje';
+    return { ok: false, error: friendlyWaError(message, undefined, 'Cola WhatsApp') };
   }
 }
 
@@ -253,16 +344,25 @@ export async function notifyParentArrival(
     return { ok: false, error: 'Teléfono de contacto no válido para WhatsApp' };
   }
 
-  const text = buildArrivalMessage(student, record);
-  const result = WPPCONNECT_ENABLED
-    ? await sendViaWppConnect(wppPhone, text)
-    : await sendViaOpenwa(chatId, text);
+  const result =
+    WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
+      ? await sendViaNotifyQueue(wppPhone, student, record)
+      : WPPCONNECT_ENABLED
+        ? await sendViaWppConnect(wppPhone, buildArrivalMessage(student, record))
+        : await sendViaOpenwa(chatId, buildArrivalMessage(student, record));
 
   return { ...result, chatId };
 }
 
 export const whatsappService = {
   isEnabled: () => WHATSAPP_ENABLED,
-  provider: () => (WPPCONNECT_ENABLED ? 'wppconnect' : OPENWA_ENABLED ? 'openwa' : 'none'),
+  provider: () =>
+    WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
+      ? 'wppconnect-queue'
+      : WPPCONNECT_ENABLED
+        ? 'wppconnect'
+        : OPENWA_ENABLED
+          ? 'openwa'
+          : 'none',
   notifyParentArrival,
 };

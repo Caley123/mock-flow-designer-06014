@@ -1,0 +1,15 @@
+[Unit]
+Description=SIE WPPConnect notify queue (rotación multi-chip)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/sie/.env.wppconnect
+Environment=WPPCONNECT_NOTIFY_PORT=3100
+ExecStart=/usr/bin/node /opt/sie/app/scripts/wppconnect/notify-queue.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

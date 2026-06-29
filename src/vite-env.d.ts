@@ -12,6 +12,9 @@ interface ImportMetaEnv {
   readonly VITE_WPPCONNECT_API_URL?: string;
   readonly VITE_WPPCONNECT_SESSION?: string;
   readonly VITE_WPPCONNECT_TOKEN?: string;
+  readonly VITE_WPPCONNECT_ROTATION?: string;
+  readonly VITE_WPPCONNECT_NOTIFY_URL?: string;
+  readonly VITE_WPPCONNECT_NOTIFY_KEY?: string;
   readonly VITE_GA_MEASUREMENT_ID?: string;
   readonly VITE_BUILD_ID?: string;
 }

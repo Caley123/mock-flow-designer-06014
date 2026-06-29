@@ -74,9 +74,53 @@ VITE_APP_URL=https://asiscole.com
 
 El webhook en el VPS marca **sendSeen** cuando un padre responde.
 
-## Varias sesiones (7 chips)
+## Varias sesiones (7 chips) — rotación activa
 
-Repita el flujo con nombres `sie-chip-02` … `sie-chip-07` y rote en un worker de cola (futuro). Por ahora el SIE usa una sesión (`VITE_WPPCONNECT_SESSION`).
+El SIE encola cada aviso en **`sie-wpp-notify-queue`** (puerto `3100`, ruta pública `/wpp-notify`).
+
+| Política | Comportamiento |
+|----------|----------------|
+| **Round-robin** | Escaneo 1 → chip-01, 2 → chip-02, … 8 → chip-01 |
+| **Failover** | Si un chip está desconectado o falla el envío, prueba el siguiente |
+| **Jitter** | 4–9 s aleatorios entre mensajes **por cola de chip** |
+| **Spintax** | Saludo y cierre aleatorios; hora con **segundos** |
+| **Typing** | Simula “escribiendo…” 2–4 s antes de cada mensaje |
+| **Tope horario** | Máx. **250** msg/hora por chip (hora calendario **Perú/Lima**, reinicia a las :00) |
+
+Capacidad teórica con 7 chips conectados: **~1.750 msg/h** (7 × 250). El contador se reinicia al inicio de cada hora en **America/Lima** (UTC−5, sin horario de verano).
+
+Variables en `/opt/sie/.env.wppconnect`:
+
+```env
+WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,...,sie-chip-07
+WPPCONNECT_NOTIFY_SECRET=...
+WPPCONNECT_JITTER_MIN_MS=4000
+WPPCONNECT_JITTER_MAX_MS=9000
+WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250
+```
+
+Build del frontend (`.env.build`):
+
+```env
+VITE_WPPCONNECT_ROTATION=true
+VITE_WPPCONNECT_NOTIFY_URL=/wpp-notify
+VITE_WPPCONNECT_NOTIFY_KEY=<mismo que WPPCONNECT_NOTIFY_SECRET>
+```
+
+Activar en VPS tras `git pull`:
+
+```bash
+bash /opt/sie/app/scripts/activar-rotacion-wpp-vps.sh
+systemctl status sie-wpp-notify-queue
+curl -s http://127.0.0.1:3100/status | jq
+/opt/sie/deploy.sh
+```
+
+Estado de colas: `GET https://asiscole.com/wpp-notify/status` (solo localhost en producción; usar SSH + curl).
+
+## Varias sesiones (legacy — una sola sesión)
+
+Si `VITE_WPPCONNECT_ROTATION=false`, el SIE usa una sesión (`VITE_WPPCONNECT_SESSION`).
 
 ## Comandos útiles
 
