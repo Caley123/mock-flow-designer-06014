@@ -47,6 +47,7 @@ asiscole.com, www.asiscole.com {
 	# WPPConnect Server (WhatsApp)
 	# Swagger (/wpp-api-docs) llama rutas /api/... — deben llegar a WPPConnect, no al SPA.
 	handle /wpp-notify* {
+		uri strip_prefix /wpp-notify
 		reverse_proxy 127.0.0.1:3100
 	}
 

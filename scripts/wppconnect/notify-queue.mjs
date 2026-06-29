@@ -215,12 +215,23 @@ function checkAuth(req) {
   return req.headers['x-sie-notify-key'] === NOTIFY_SECRET;
 }
 
+/** Acepta /enqueue o /wpp-notify/enqueue (por si Caddy no recorta el prefijo). */
+function requestPath(req) {
+  const path = (req.url || '/').split('?')[0];
+  if (path === '/wpp-notify' || path.startsWith('/wpp-notify/')) {
+    return path.slice('/wpp-notify'.length) || '/';
+  }
+  return path;
+}
+
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
+  const path = requestPath(req);
+
+  if (req.method === 'GET' && path === '/health') {
     return jsonResponse(res, 200, { ok: true, sessions: SESSIONS.length });
   }
 
-  if (req.method === 'GET' && req.url === '/status') {
+  if (req.method === 'GET' && path === '/status') {
     const status = {
       config: {
         maxPerChipPerHour: MAX_PER_HOUR,
@@ -244,7 +255,7 @@ const server = http.createServer((req, res) => {
     return jsonResponse(res, 200, status);
   }
 
-  if (req.method === 'POST' && req.url === '/enqueue') {
+  if (req.method === 'POST' && path === '/enqueue') {
     if (!checkAuth(req)) {
       return jsonResponse(res, 401, { error: 'Unauthorized' });
     }
