@@ -239,6 +239,9 @@ async function sendViaNotifyQueue(
     });
 
     const raw = await response.text().catch(() => response.statusText);
+    if (response.status === 503) {
+      return { ok: false, error: 'Ningún chip WhatsApp disponible. Revise conexión en el VPS.' };
+    }
     if (!response.ok && response.status !== 202) {
       return { ok: false, error: friendlyWaError(raw, response.status, 'Cola WhatsApp') };
     }

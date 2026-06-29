@@ -113,10 +113,7 @@ async function pickSession() {
     }
   }
 
-  const fallback = SESSIONS[start];
-  state.index = (start + 1) % SESSIONS.length;
-  saveRoundRobinState(state);
-  return fallback;
+  return null;
 }
 
 async function failoverSessions(excludeSession) {
@@ -126,7 +123,7 @@ async function failoverSessions(excludeSession) {
     if (!canSendOnSession(session)) continue;
     if (await wpp.isConnected(session)) connected.push(session);
   }
-  return connected;
+  return connected.length ? connected : SESSIONS.filter((s) => s !== excludeSession);
 }
 
 async function deliver(job, session) {
@@ -184,6 +181,13 @@ async function handleEnqueue(body) {
 
   const message = buildArrivalMessage(student, record || {}, appUrl || APP_URL);
   const assignedSession = await pickSession();
+
+  if (!assignedSession) {
+    return {
+      status: 503,
+      json: { error: 'Ningún chip WhatsApp conectado', queued: false },
+    };
+  }
 
   const job = {
     phone: String(phone).replace(/\D/g, ''),

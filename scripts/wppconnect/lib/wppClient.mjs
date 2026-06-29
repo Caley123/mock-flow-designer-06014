@@ -34,7 +34,7 @@ export function createWppClient(options = {}) {
   async function getToken(session) {
     const cached = tokenCache.get(session);
     if (cached && cached.expires > Date.now()) return cached.token;
-    const res = await fetch(`${apiBase}/${session}/${secretKey}/generate-token`);
+    const res = await fetch(`${apiBase}/${session}/${secretKey}/generate-token`, { method: 'POST' });
     const json = await res.json().catch(() => ({}));
     const token = json.token || '';
     if (!token) throw new Error(`No token for ${session}`);
