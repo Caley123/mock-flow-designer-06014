@@ -1189,13 +1189,15 @@ export const TutorScanner = () => {
                   </Button>
 
                   <div className="tutor-identity tutor-identity--sheet">
-                    <StudentPhoto
-                      src={student.profilePhoto}
-                      name={student.fullName}
-                      priority="auto"
-                      className="tutor-identity__photo"
-                      imageClassName="object-cover object-center"
-                    />
+                    <div className="tutor-identity__photo-frame">
+                      <StudentPhoto
+                        src={student.profilePhoto}
+                        name={student.fullName}
+                        priority="auto"
+                        className="h-full w-full rounded-2xl"
+                        imageClassName="object-cover object-[center_20%]"
+                      />
+                    </div>
                     <div className="tutor-identity__meta">
                       <Badge
                         variant={arrivalOnTime ? 'success' : 'warning'}
