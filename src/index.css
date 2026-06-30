@@ -3009,10 +3009,8 @@
     padding-right: env(safe-area-inset-right, 0px);
   }
 
-  @media (max-width: 1023px) {
-    .tutor-page--profile-open {
-      overflow: hidden;
-    }
+  .tutor-page--touch.tutor-page--profile-open {
+    overflow: hidden;
   }
 
   .tutor-header {
@@ -3260,7 +3258,9 @@
     right: 0;
     top: max(0.5rem, env(safe-area-inset-top, 0px));
     bottom: 0;
-    max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top, 0px)));
+    max-height: calc(
+      var(--tutor-vv-height, 100dvh) - max(0.5rem, env(safe-area-inset-top, 0px))
+    );
     overflow: hidden;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
@@ -3282,8 +3282,8 @@
   }
 
   .tutor-page--touch .tutor-identity__photo-frame {
-    width: clamp(11rem, 46vw, 17.5rem);
-    height: clamp(11rem, 46vw, 17.5rem);
+    width: min(94vw, 32rem);
+    height: min(94vw, min(58vh, 32rem));
     flex-shrink: 0;
     margin-inline: auto;
     overflow: hidden;
@@ -3333,28 +3333,42 @@
     .tutor-page--touch .tutor-student-card {
       @apply rounded-none;
       top: 0;
-      max-height: 100dvh;
+      max-height: var(--tutor-vv-height, 100dvh);
     }
 
     .tutor-page--touch .tutor-student-card__hero-sticky {
-      @apply px-5 py-3 pt-9;
+      @apply px-4 py-2 pt-9;
     }
 
-  .tutor-page--touch .tutor-identity--sheet {
-      @apply flex-col items-center gap-2 text-center;
+    .tutor-page--touch .tutor-identity--sheet {
+      @apply flex-col items-stretch gap-2 border-0 pb-0 text-center;
     }
 
+    /* Foto protagonista: ancho completo, ~60% de la altura visible */
     .tutor-page--touch .tutor-identity__photo-frame {
-      width: clamp(13rem, min(58vh, 42vw), 26rem);
-      height: clamp(13rem, min(58vh, 42vw), 26rem);
+      width: 100%;
+      max-width: 100%;
+      height: clamp(14rem, min(62vh, 78vw), 40rem);
+      aspect-ratio: auto;
+      margin-inline: 0;
+      border-radius: 1rem;
     }
 
     .tutor-page--touch .tutor-identity__meta {
-      @apply min-w-0 w-full items-center text-center;
+      @apply min-w-0 w-full flex-row flex-wrap items-center justify-center gap-x-3 gap-y-0.5 px-1;
+    }
+
+    .tutor-page--touch .tutor-identity--sheet .tutor-student-card__status {
+      @apply mt-0 shrink-0;
     }
 
     .tutor-page--touch .tutor-identity--sheet .tutor-identity__name {
-      @apply mt-0 text-lg sm:text-xl;
+      @apply mt-0 w-full text-base leading-snug sm:text-lg;
+    }
+
+    .tutor-page--touch .tutor-identity--sheet .tutor-identity__grade,
+    .tutor-page--touch .tutor-identity--sheet .tutor-identity__dni {
+      @apply mt-0 text-sm;
     }
 
     .tutor-page--touch .tutor-quick-report__grid {

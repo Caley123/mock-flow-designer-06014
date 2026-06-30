@@ -13,11 +13,18 @@ export function isLegacyWebView(): boolean {
   return false;
 }
 
-/** Tablet Android (UA sin "Mobile"). */
+/** Tablet Android (UA sin "Mobile" o pantalla grande con Mobile en UA). */
 export function isAndroidTablet(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
-  return /Android/i.test(ua) && !/Mobile/i.test(ua);
+  if (!/Android/i.test(ua)) return false;
+  if (!/Mobile/i.test(ua)) return true;
+  if (typeof screen !== 'undefined') {
+    const minDim = Math.min(screen.width, screen.height);
+    const maxDim = Math.max(screen.width, screen.height);
+    if (minDim >= 600 && maxDim >= 900) return true;
+  }
+  return false;
 }
 
 /** iPad o tablet Android por user-agent. */
@@ -42,6 +49,19 @@ export function prefersTouchBarcodeInput(): boolean {
     window.matchMedia('(max-width: 1023px)').matches ||
     window.matchMedia('(pointer: coarse)').matches
   );
+}
+
+/**
+ * Tablet/móvil del colegio: panel estudiante a pantalla completa y foto protagonista.
+ * Incluye tablets en horizontal (>1024px) que Chrome sigue marcando como "Mobile".
+ */
+export function isTutorTouchLayout(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (prefersTouchBarcodeInput()) return true;
+  if (window.matchMedia('(hover: none)').matches && navigator.maxTouchPoints > 0) {
+    return true;
+  }
+  return false;
 }
 
 /**

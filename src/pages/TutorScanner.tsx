@@ -63,7 +63,8 @@ import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 import { useTutorViewport } from '@/hooks/useTutorViewport';
-import { isTabletUserAgent, prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
+import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
+import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { cn } from '@/lib/utils';
 
 export const TutorScanner = () => {
@@ -116,10 +117,7 @@ export const TutorScanner = () => {
 
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
-  const touchTablet = useMemo(
-    () => prefersTouchBarcodeInput() || isTabletUserAgent(),
-    [],
-  );
+  const touchTablet = useTutorTouchLayout();
 
   useTutorViewport(showStudentProfile && touchTablet);
 
