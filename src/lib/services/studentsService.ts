@@ -6,6 +6,7 @@ import {
   foldSearchText,
   isDniLikeQuery,
   normalizeSearchQuery,
+  orderSearchTokensBySelectivity,
   sortStudentsForSearch,
   studentMatchesSearchTokens,
   tokenizeSearchQuery,
@@ -194,7 +195,7 @@ export const studentsService = {
 
   /**
    * Búsqueda del escáner tutor: nombre + DNI/carnet en una sola consulta.
-   * Busca por frase completa y por cada palabra; filtra y ordena en cliente.
+   * Prioriza la frase completa; si hay varios apellidos, busca por el más selectivo.
    */
   async searchForTutorScanner(
     query: string,
@@ -209,28 +210,43 @@ export const studentsService = {
     const matchTokens = tokens.length > 0 ? tokens : [trimmed];
     const isDniLike = isDniLikeQuery(trimmed);
 
-    const queriesToRun = new Set<string>([trimmed, ...tokens]);
-    const foldedFull = foldSearchText(trimmed);
-    if (foldedFull.length >= 2 && foldedFull !== trimmed.toLowerCase()) {
-      queriesToRun.add(foldedFull);
-    }
-    for (const tok of tokens) {
-      const folded = foldSearchText(tok);
-      if (folded.length >= 2 && folded !== tok.toLowerCase()) {
-        queriesToRun.add(folded);
-      }
-    }
-
     let nameError: string | null = null;
-    const nameSearches = await Promise.all(
-      [...queriesToRun].map((q) => this.searchByName(q, limit)),
-    );
-
     const merged = new Map<number, Student>();
-    for (const result of nameSearches) {
+
+    const absorb = (result: { students: Student[]; error: string | null }) => {
       if (result.error) nameError = result.error;
       for (const student of result.students) {
         merged.set(student.id, student);
+      }
+    };
+
+    absorb(await this.searchByName(trimmed, limit));
+
+    const foldedFull = foldSearchText(trimmed);
+    if (foldedFull.length >= 2 && foldedFull !== trimmed.toLowerCase()) {
+      absorb(await this.searchByName(foldedFull, limit));
+    }
+
+    if (tokens.length > 1) {
+      const reversed = [...tokens].reverse().join(' ');
+      if (reversed !== trimmed) {
+        absorb(await this.searchByName(reversed, limit));
+      }
+
+      for (const token of orderSearchTokensBySelectivity(tokens)) {
+        const tokenResult = await this.searchByName(token, limit);
+        if (tokenResult.error) nameError = tokenResult.error;
+        for (const student of tokenResult.students) {
+          if (studentMatchesSearchTokens(student, matchTokens)) {
+            merged.set(student.id, student);
+          }
+        }
+        if (merged.size >= limit) break;
+      }
+    } else if (tokens.length === 1) {
+      const folded = foldSearchText(tokens[0]);
+      if (folded.length >= 2 && folded !== tokens[0].toLowerCase()) {
+        absorb(await this.searchByName(folded, limit));
       }
     }
 

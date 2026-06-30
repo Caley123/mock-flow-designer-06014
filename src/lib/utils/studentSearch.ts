@@ -1,7 +1,7 @@
 import type { Student } from '@/types';
 
 /** Máximo de estudiantes en el desplegable del escáner tutor. */
-export const TUTOR_NAME_SEARCH_LIMIT = 40;
+export const TUTOR_NAME_SEARCH_LIMIT = 50;
 
 /** Quita acentos y pasa a minúsculas para comparar en cliente. */
 export function foldSearchText(value: string): string {
@@ -42,6 +42,13 @@ export function studentMatchesSearchTokens(student: Student, tokens: string[]): 
   const barcodeFolded = foldSearchText(student.barcode);
   const barcodeDigits = student.barcode.replace(/\D/g, '');
 
+  if (tokens.length >= 2) {
+    const phrasePattern = tokens.map((token) => foldSearchText(token)).join('.*');
+    if (phrasePattern && new RegExp(phrasePattern, 'i').test(nameFolded)) {
+      return true;
+    }
+  }
+
   return tokens.every((token) => {
     const folded = foldSearchText(token);
     if (folded && (nameFolded.includes(folded) || barcodeFolded.includes(folded))) {
@@ -50,6 +57,11 @@ export function studentMatchesSearchTokens(student: Student, tokens: string[]): 
     const tokenDigits = token.replace(/\D/g, '');
     return tokenDigits.length >= 2 && barcodeDigits.includes(tokenDigits);
   });
+}
+
+/** Tokens ordenados del más selectivo (largo) al más común. */
+export function orderSearchTokensBySelectivity(tokens: string[]): string[] {
+  return [...tokens].sort((a, b) => b.length - a.length || a.localeCompare(b, 'es'));
 }
 
 /** Mayor puntaje = mejor coincidencia (apellido, prefijo de palabra, etc.). */
