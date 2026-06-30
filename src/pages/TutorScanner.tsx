@@ -66,6 +66,7 @@ import { useTutorViewport } from '@/hooks/useTutorViewport';
 import { isDniLikeQuery, TUTOR_NAME_SEARCH_LIMIT } from '@/lib/utils/studentSearch';
 import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
+import { useHardwareBarcodeCapture } from '@/hooks/useHardwareBarcodeCapture';
 import { cn } from '@/lib/utils';
 
 export const TutorScanner = () => {
@@ -150,6 +151,9 @@ export const TutorScanner = () => {
       if (!input) return;
 
       input.focus({ preventScroll: true });
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        input.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
       if (input.value.length > 0) {
         input.select();
       }
@@ -660,11 +664,17 @@ export const TutorScanner = () => {
       // y servidor) aunque no toque la pantalla, evitando cierres a los 15 min.
       sessionService.touchActivity();
       authService.renewSessionThrottled();
+      setBarcode('');
       const scanSeq = ++latestProfileScanRef.current;
       void processScanCode(rawInput, scanSeq);
     },
     [processScanCode]
   );
+
+  useHardwareBarcodeCapture({
+    enabled: !showIncidentDialog,
+    onScan: startScan,
+  });
 
   const handleNameSearchSelect = async (selected: Student) => {
     setNameSearch('');
@@ -1042,12 +1052,16 @@ export const TutorScanner = () => {
                       <span>Limpiar</span>
                       <span className="mx-1 hidden sm:inline">·</span>
                       <span className="hidden sm:inline">
+                        Siguiente carnet sin cerrar perfil
+                      </span>
+                      <span className="mx-1 hidden sm:inline">·</span>
+                      <span className="hidden sm:inline">
                         Perfil se oculta a los 45 s sin actividad
                       </span>
                     </div>
                   </div>
 
-                  <div className="relative space-y-2">
+                  <div className="relative space-y-2" data-tutor-name-search>
                     <Label htmlFor="name-search-input" className="text-sm font-medium text-foreground">
                       Buscar por nombre o DNI
                     </Label>
@@ -1174,8 +1188,7 @@ export const TutorScanner = () => {
                 <div
                   ref={studentCardRef}
                   className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
-                  role="dialog"
-                  aria-modal="true"
+                  role="region"
                   aria-label={`Registro de ${student.fullName}`}
                 >
                 <div className="tutor-student-card__banner" aria-hidden />
@@ -1435,7 +1448,7 @@ export const TutorScanner = () => {
           }
         }}
       >
-        <DialogContent className="tutor-dialog sm:max-w-md rounded-[28px] max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="tutor-dialog sm:max-w-md rounded-[28px] max-h-[90dvh] overflow-y-auto" data-tutor-incident-dialog>
           <DialogHeader>
             <DialogTitle>Registrar incidencia</DialogTitle>
             <DialogDescription>
