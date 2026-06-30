@@ -796,14 +796,34 @@ export async function createDepartureRecord(
   registeredBy?: number,
   tipoSalida: 'Normal' | 'Autorizada' = 'Normal'
 ): Promise<{ success: boolean; error: string | null }> {
+  const { successCount, error } = await createBulkDepartureRecords(
+    [registroId],
+    registeredBy,
+    tipoSalida,
+  );
+  return { success: successCount > 0 && !error, error };
+}
+
+/**
+ * Registrar salida de varios estudiantes a la vez (misma hora y tipo)
+ */
+export async function createBulkDepartureRecords(
+  registroIds: number[],
+  registeredBy?: number,
+  tipoSalida: 'Normal' | 'Autorizada' = 'Normal',
+): Promise<{ successCount: number; skipped: number; error: string | null }> {
+  const uniqueIds = [...new Set(registroIds)].filter((id) => id > 0);
+  if (uniqueIds.length === 0) {
+    return { successCount: 0, skipped: 0, error: null };
+  }
+
   try {
-    // Obtener la hora actual en la zona horaria de Lima
     const now = new Date();
     const hours = now.toLocaleString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', hour12: false });
     const minutes = now.toLocaleString('es-PE', { timeZone: 'America/Lima', minute: '2-digit' });
     const formattedTime = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       hora_salida: formattedTime,
       fecha_salida: new Date().toISOString(),
       tipo_salida: tipoSalida,
@@ -813,19 +833,27 @@ export async function createDepartureRecord(
       updateData.registrado_salida_por = registeredBy;
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('registros_llegada')
       .update(updateData)
-      .eq('id_registro', registroId);
+      .in('id_registro', uniqueIds)
+      .is('hora_salida', null)
+      .select('id_registro');
 
     if (error) {
-      return { success: false, error: error.message };
+      return { successCount: 0, skipped: uniqueIds.length, error: error.message };
     }
 
-    return { success: true, error: null };
-  } catch (error: any) {
-    console.error('Error en createDepartureRecord:', error);
-    return { success: false, error: error.message || 'Error al registrar salida' };
+    const successCount = data?.length ?? 0;
+    return {
+      successCount,
+      skipped: uniqueIds.length - successCount,
+      error: null,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error al registrar salidas';
+    console.error('Error en createBulkDepartureRecords:', error);
+    return { successCount: 0, skipped: uniqueIds.length, error: message };
   }
 }
 
@@ -1131,6 +1159,7 @@ export const arrivalService = {
   getWeeklyAttendanceTrend,
   getTodayStats,
   createDepartureRecord,
+  createBulkDepartureRecords,
   getStudentsWithoutDeparture,
   getDepartureAlerts,
   prefetchArrivalConfig,

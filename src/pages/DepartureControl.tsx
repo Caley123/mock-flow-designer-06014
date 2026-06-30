@@ -19,6 +19,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
   Clock,
   Search,
   Users,
@@ -27,6 +42,8 @@ import {
   LogOut,
   AlertTriangle,
   Barcode,
+  ChevronDown,
+  GraduationCap,
 } from 'lucide-react';
 import {
   StaffKpiStat,
@@ -40,6 +57,7 @@ import { arrivalService, authService, studentsService } from '@/lib/services';
 import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
+import { cn } from '@/lib/utils';
 
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -58,19 +76,87 @@ function getTodayDate() {
 type DepartureFilter = 'pending' | 'done' | 'all';
 type DepartureType = 'Normal' | 'Autorizada';
 
+interface DepartureGroup {
+  key: string;
+  level: EducationalLevel;
+  grade: string;
+  section: string;
+  label: string;
+  total: number;
+  pending: number;
+  done: number;
+  pendingRecordIds: number[];
+}
+
+interface BulkConfirmTarget {
+  label: string;
+  recordIds: number[];
+  tipo: DepartureType;
+}
+
+function buildDepartureGroups(records: ArrivalRecord[]): DepartureGroup[] {
+  const map = new Map<string, DepartureGroup>();
+
+  for (const record of records) {
+    const level = record.student?.level;
+    const grade = record.student?.grade;
+    const section = record.student?.section;
+    if (!level || !grade || !section) continue;
+
+    const key = `${level}|${grade}|${section}`;
+    const existing = map.get(key) ?? {
+      key,
+      level,
+      grade,
+      section,
+      label: `${level} ${grade} '${section}'`,
+      total: 0,
+      pending: 0,
+      done: 0,
+      pendingRecordIds: [],
+    };
+
+    existing.total += 1;
+    if (record.departureTime) {
+      existing.done += 1;
+    } else {
+      existing.pending += 1;
+      existing.pendingRecordIds.push(record.id);
+    }
+
+    map.set(key, existing);
+  }
+
+  const levelOrder: Record<EducationalLevel, number> = { Primaria: 0, Secundaria: 1 };
+  const gradeOrder = (g: string) => GRADES.indexOf(g);
+
+  return [...map.values()].sort((a, b) => {
+    const levelDiff = (levelOrder[a.level] ?? 9) - (levelOrder[b.level] ?? 9);
+    if (levelDiff !== 0) return levelDiff;
+    const gradeDiff = gradeOrder(a.grade) - gradeOrder(b.grade);
+    if (gradeDiff !== 0) return gradeDiff;
+    return a.section.localeCompare(b.section);
+  });
+}
+
 export const DepartureControl = () => {
   const [records, setRecords] = useState<ArrivalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [departureFilter, setDepartureFilter] = useState<DepartureFilter>('pending');
   const [departureType, setDepartureType] = useState<DepartureType>('Normal');
+  const [bulkLevel, setBulkLevel] = useState<'all' | EducationalLevel>('all');
+  const [bulkGrade, setBulkGrade] = useState<'all' | string>('all');
+  const [bulkSection, setBulkSection] = useState<'all' | string>('all');
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
-  const [registeringId, setRegisteringId] = useState<number | null>(null);
+  const [confirmBulk, setConfirmBulk] = useState<BulkConfirmTarget | null>(null);
+  const [individualOpen, setIndividualOpen] = useState(false);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,44 +196,91 @@ export const DepartureControl = () => {
     };
   }, [loadArrivals]);
 
-  const handleRegisterDeparture = async (
-    recordId: number,
-    tipo: DepartureType = departureType,
-  ) => {
-    if (!isMountedRef.current) return;
+  const departureGroups = useMemo(() => buildDepartureGroups(records), [records]);
 
+  const groupsWithPending = useMemo(
+    () => departureGroups.filter((g) => g.pending > 0),
+    [departureGroups],
+  );
+
+  const bulkPendingIds = useMemo(() => {
+    return departureGroups
+      .filter((g) => {
+        if (bulkLevel !== 'all' && g.level !== bulkLevel) return false;
+        if (bulkGrade !== 'all' && g.grade !== bulkGrade) return false;
+        if (bulkSection !== 'all' && g.section !== bulkSection) return false;
+        return g.pending > 0;
+      })
+      .flatMap((g) => g.pendingRecordIds);
+  }, [departureGroups, bulkLevel, bulkGrade, bulkSection]);
+
+  const bulkSelectionLabel = useMemo(() => {
+    if (bulkLevel === 'all' && bulkGrade === 'all' && bulkSection === 'all') {
+      return 'todas las aulas con pendientes';
+    }
+    const parts: string[] = [];
+    if (bulkLevel !== 'all') parts.push(bulkLevel);
+    if (bulkGrade !== 'all') parts.push(bulkGrade);
+    if (bulkSection !== 'all') parts.push(`'${bulkSection}'`);
+    if (bulkGrade !== 'all' && bulkSection === 'all') {
+      return `${parts.join(' ')} (todas las secciones)`;
+    }
+    return parts.join(' ');
+  }, [bulkLevel, bulkGrade, bulkSection]);
+
+  const executeBulkDeparture = async (target: BulkConfirmTarget) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser) {
       toast.error('Debe estar autenticado para registrar salidas');
       return;
     }
 
-    setRegisteringId(recordId);
-    const { error } = await arrivalService.createDepartureRecord(
-      recordId,
+    setBulkSubmitting(true);
+    const { successCount, skipped, error } = await arrivalService.createBulkDepartureRecords(
+      target.recordIds,
       currentUser.id,
-      tipo,
+      target.tipo,
     );
 
     if (!isMountedRef.current) return;
-    setRegisteringId(null);
+    setBulkSubmitting(false);
+    setConfirmBulk(null);
 
     if (error) {
       toast.error(error);
       return;
     }
 
-    staffNotify.success('Salida registrada', 'El estudiante quedó marcado como retirado');
+    if (successCount === 0) {
+      toast.info('No había salidas pendientes en la selección');
+      return;
+    }
+
+    const skippedNote = skipped > 0 ? ` · ${skipped} ya tenían salida` : '';
+    staffNotify.success(
+      'Salidas registradas',
+      `${successCount} estudiante${successCount === 1 ? '' : 's'} — ${target.label}${skippedNote}`,
+    );
     void loadArrivals();
-    barcodeInputRef.current?.focus();
   };
 
-  const findRecordForStudent = (studentId: number) =>
-    records.find((r) => r.student?.id === studentId);
+  const requestBulkDeparture = (label: string, recordIds: number[], tipo: DepartureType = departureType) => {
+    if (recordIds.length === 0) {
+      toast.info('No hay estudiantes pendientes de salida en esta selección');
+      return;
+    }
+    setConfirmBulk({ label, recordIds, tipo });
+  };
 
   const handleBarcodeSubmit = async () => {
     const code = barcodeInput.trim();
     if (!code) return;
+
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Debe estar autenticado para registrar salidas');
+      return;
+    }
 
     setScanning(true);
     try {
@@ -160,7 +293,7 @@ export const DepartureControl = () => {
         return;
       }
 
-      const record = findRecordForStudent(student.id);
+      const record = records.find((r) => r.student?.id === student.id);
       if (!record) {
         toast.error('El estudiante no tiene llegada registrada en la fecha seleccionada');
         return;
@@ -172,8 +305,21 @@ export const DepartureControl = () => {
         return;
       }
 
-      await handleRegisterDeparture(record.id);
+      const { successCount, error: bulkError } = await arrivalService.createBulkDepartureRecords(
+        [record.id],
+        currentUser.id,
+        departureType,
+      );
+
+      if (bulkError || successCount === 0) {
+        toast.error(bulkError || 'No se pudo registrar la salida');
+        return;
+      }
+
+      staffNotify.success('Salida registrada', student.fullName);
       setBarcodeInput('');
+      void loadArrivals();
+      barcodeInputRef.current?.focus();
     } finally {
       if (isMountedRef.current) {
         setScanning(false);
@@ -202,8 +348,8 @@ export const DepartureControl = () => {
   const stats = useMemo(() => {
     const pending = records.filter((r) => !r.departureTime).length;
     const done = records.filter((r) => r.departureTime).length;
-    return { total: records.length, pending, done };
-  }, [records]);
+    return { total: records.length, pending, done, groups: departureGroups.length };
+  }, [records, departureGroups.length]);
 
   const dateLabel =
     selectedDate === getTodayDate()
@@ -214,21 +360,34 @@ export const DepartureControl = () => {
           year: 'numeric',
         })}`;
 
+  const syncFiltersFromBulk = () => {
+    if (bulkLevel !== 'all') setLevelFilter(bulkLevel);
+    if (bulkGrade !== 'all') setGradeFilter(bulkGrade);
+    if (bulkSection !== 'all') setSectionFilter(bulkSection);
+    setDepartureFilter('pending');
+  };
+
   return (
     <div className="app-page app-page-shell">
       <PageHeader
         icon={LogOut}
         eyebrow="Asistencia"
         title="Registro de Salidas"
-        description={`Marque la salida de estudiantes que ya registraron su llegada ${dateLabel}`}
+        description={`Reporte de salida por grado y sección ${dateLabel}. Marque el retiro de aulas completas o de estudiantes individuales.`}
         accent="warning"
       />
 
-      <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
+      <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
+        <StaffKpiStat
+          label="Aulas con llegada"
+          value={stats.groups}
+          icon={GraduationCap}
+          tone="primary"
+        />
         <StaffKpiStat
           label="Pendientes de salida"
           value={stats.pending}
-          hint={stats.pending > 0 ? 'Requieren registro' : 'Todo al día'}
+          hint={stats.pending > 0 ? 'Por registrar' : 'Todo al día'}
           hintIcon={stats.pending > 0 ? AlertTriangle : CheckCircle}
           icon={AlertTriangle}
           tone="warning"
@@ -249,40 +408,75 @@ export const DepartureControl = () => {
           label="Total con llegada"
           value={stats.total}
           icon={Users}
-          tone="primary"
+          tone="accent"
         />
       </div>
 
       <StaffDataPanel>
         <StaffDataPanelHeader
-          title="Escaneo rápido"
-          description="Escanee el carnet o escriba el DNI y presione Enter"
+          title="Salida por grado y sección"
+          description="Seleccione nivel, grado y sección para registrar la salida de un aula o grado completo"
         />
-        <div className="space-y-3 p-4 pt-0 sm:p-5 sm:pt-0">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="relative min-w-0 flex-1 space-y-2">
-              <Label htmlFor="departure-barcode">Carnet / DNI</Label>
-              <div className="relative">
-                <Barcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  ref={barcodeInputRef}
-                  id="departure-barcode"
-                  placeholder="Escanee o escriba el DNI del estudiante..."
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void handleBarcodeSubmit();
-                    }
-                  }}
-                  className="pl-10"
-                  autoComplete="off"
-                  disabled={scanning || registeringId !== null}
-                />
-              </div>
+        <div className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                max={getTodayDate()}
+              />
             </div>
-            <div className="space-y-2 sm:w-44">
+            <div className="space-y-2">
+              <Label>Nivel</Label>
+              <Select
+                value={bulkLevel}
+                onValueChange={(v) => setBulkLevel(v as 'all' | EducationalLevel)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Nivel" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="Primaria">Primaria</SelectItem>
+                  <SelectItem value="Secundaria">Secundaria</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Grado</Label>
+              <Select value={bulkGrade} onValueChange={setBulkGrade}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Grado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {GRADES.map((grade) => (
+                    <SelectItem key={grade} value={grade}>
+                      {grade}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sección</Label>
+              <Select value={bulkSection} onValueChange={setBulkSection}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sección" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas (grado completo)</SelectItem>
+                  {SECTIONS.map((section) => (
+                    <SelectItem key={section} value={section}>
+                      {section}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Tipo de salida</Label>
               <Select
                 value={departureType}
@@ -297,34 +491,192 @@ export const DepartureControl = () => {
                 </SelectContent>
               </Select>
             </div>
-            <Button
-              onClick={() => void handleBarcodeSubmit()}
-              disabled={!barcodeInput.trim() || scanning || registeringId !== null}
-              className="gap-2 sm:mb-0"
-            >
-              {scanning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <LogOut className="h-4 w-4" />
-              )}
-              Registrar salida
-            </Button>
           </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
+            <div className="text-sm">
+              <span className="font-medium text-foreground">{bulkPendingIds.length}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                pendiente{bulkPendingIds.length === 1 ? '' : 's'} en{' '}
+                <span className="font-medium text-foreground">{bulkSelectionLabel}</span>
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={syncFiltersFromBulk}
+                disabled={bulkLevel === 'all' && bulkGrade === 'all' && bulkSection === 'all'}
+              >
+                Ver en detalle
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={bulkPendingIds.length === 0 || bulkSubmitting}
+                onClick={() =>
+                  requestBulkDeparture(bulkSelectionLabel, bulkPendingIds, departureType)
+                }
+              >
+                {bulkSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+                Registrar salida seleccionada
+              </Button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Cargando aulas...
+            </div>
+          ) : departureGroups.length === 0 ? (
+            <StaffEmptyState
+              icon={Users}
+              title="Sin llegadas registradas"
+              description="No hay estudiantes con ingreso en la fecha seleccionada"
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {departureGroups.map((group) => (
+                <div
+                  key={group.key}
+                  className={cn(
+                    'flex flex-col gap-3 rounded-xl border p-4 transition-colors',
+                    group.pending > 0
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-border/60 bg-card',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-foreground">{group.label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {group.total} con llegada · {group.done} con salida
+                      </p>
+                    </div>
+                    {group.pending === 0 ? (
+                      <Badge className="shrink-0 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                        Completo
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="shrink-0 border-amber-500/40 text-amber-700">
+                        {group.pending} pendiente{group.pending === 1 ? '' : 's'}
+                      </Badge>
+                    )}
+                  </div>
+                  {group.pending > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full gap-2"
+                      disabled={bulkSubmitting}
+                      onClick={() =>
+                        requestBulkDeparture(group.label, group.pendingRecordIds, departureType)
+                      }
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Registrar salida del aula
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {groupsWithPending.length > 1 && (
+            <div className="flex justify-end border-t border-border/60 pt-3">
+              <Button
+                variant="secondary"
+                className="gap-2"
+                disabled={stats.pending === 0 || bulkSubmitting}
+                onClick={() =>
+                  requestBulkDeparture(
+                    'todas las aulas con pendientes',
+                    groupsWithPending.flatMap((g) => g.pendingRecordIds),
+                    departureType,
+                  )
+                }
+              >
+                <Users className="h-4 w-4" />
+                Registrar todas las aulas pendientes ({stats.pending})
+              </Button>
+            </div>
+          )}
         </div>
       </StaffDataPanel>
 
-      <StaffToolbar title="Filtros" description="Fecha, estudiante, nivel y estado de salida">
+      <Collapsible open={individualOpen} onOpenChange={setIndividualOpen}>
+        <StaffDataPanel>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-4 py-4 text-left sm:px-5"
+            >
+              <div>
+                <p className="text-sm font-semibold text-foreground">Registro individual</p>
+                <p className="text-xs text-muted-foreground">
+                  Escanee un carnet o busque por nombre en el detalle
+                </p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'h-5 w-5 shrink-0 text-muted-foreground transition-transform',
+                  individualOpen && 'rotate-180',
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="space-y-3 border-t border-border/60 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="relative min-w-0 flex-1 space-y-2">
+                  <Label htmlFor="departure-barcode">Carnet / DNI</Label>
+                  <div className="relative">
+                    <Barcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      ref={barcodeInputRef}
+                      id="departure-barcode"
+                      placeholder="Escanee o escriba el DNI..."
+                      value={barcodeInput}
+                      onChange={(e) => setBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void handleBarcodeSubmit();
+                        }
+                      }}
+                      className="pl-10"
+                      autoComplete="off"
+                      disabled={scanning || bulkSubmitting}
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={() => void handleBarcodeSubmit()}
+                  disabled={!barcodeInput.trim() || scanning || bulkSubmitting}
+                  className="gap-2"
+                >
+                  {scanning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogOut className="h-4 w-4" />
+                  )}
+                  Registrar uno
+                </Button>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </StaffDataPanel>
+      </Collapsible>
+
+      <StaffToolbar title="Detalle por estudiante" description="Consulte el listado filtrado del día">
         <div className="col-span-full grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label>Fecha</Label>
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              max={getTodayDate()}
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+          <div className="space-y-2 sm:col-span-2 lg:col-span-4">
             <Label>Buscar estudiante</Label>
             <div className="relative min-w-0">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -337,7 +689,7 @@ export const DepartureControl = () => {
             </div>
           </div>
         </div>
-        <div className="col-span-full grid gap-3 grid-cols-2 lg:grid-cols-5">
+        <div className="col-span-full grid gap-3 grid-cols-2 lg:grid-cols-4">
           <div className="space-y-2">
             <Label>Estado salida</Label>
             <Select
@@ -407,8 +759,8 @@ export const DepartureControl = () => {
 
       <StaffDataPanel>
         <StaffDataPanelHeader
-          title="Estudiantes del día"
-          description={`${filteredRecords.length} visibles · ${departureFilter === 'pending' ? 'solo pendientes' : departureFilter === 'done' ? 'con salida' : 'todos'}`}
+          title="Listado del día"
+          description={`${filteredRecords.length} visibles`}
           action={
             <Button onClick={() => void loadArrivals()} variant="outline" size="sm" disabled={loading}>
               Actualizar
@@ -424,15 +776,11 @@ export const DepartureControl = () => {
           ) : filteredRecords.length === 0 ? (
             <StaffEmptyState
               icon={Users}
-              title={
-                departureFilter === 'pending'
-                  ? 'Sin salidas pendientes'
-                  : 'Sin registros'
-              }
+              title={departureFilter === 'pending' ? 'Sin salidas pendientes' : 'Sin registros'}
               description={
                 departureFilter === 'pending'
-                  ? 'Todos los estudiantes con llegada ya tienen salida registrada'
-                  : 'No hay registros para la fecha o filtros seleccionados'
+                  ? 'Todos los estudiantes visibles ya tienen salida registrada'
+                  : 'No hay registros para los filtros seleccionados'
               }
             />
           ) : (
@@ -444,8 +792,7 @@ export const DepartureControl = () => {
                     <TableHead>Nivel / Grado</TableHead>
                     <TableHead>Hora llegada</TableHead>
                     <TableHead>Hora salida</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
+                    <TableHead>Estado llegada</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -496,36 +843,6 @@ export const DepartureControl = () => {
                           {record.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        {!record.departureTime ? (
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={registeringId === record.id}
-                              onClick={() => void handleRegisterDeparture(record.id, 'Normal')}
-                              className="gap-1"
-                            >
-                              {registeringId === record.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <LogOut className="h-4 w-4" />
-                              )}
-                              Normal
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={registeringId === record.id}
-                              onClick={() => void handleRegisterDeparture(record.id, 'Autorizada')}
-                            >
-                              Autorizada
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Completado</span>
-                        )}
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -534,6 +851,43 @@ export const DepartureControl = () => {
           )}
         </div>
       </StaffDataPanel>
+
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(open) => !open && setConfirmBulk(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar salida masiva</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmBulk && (
+                <>
+                  Se registrará la salida <strong>{confirmBulk.tipo.toLowerCase()}</strong> de{' '}
+                  <strong>{confirmBulk.recordIds.length}</strong> estudiante
+                  {confirmBulk.recordIds.length === 1 ? '' : 's'} en{' '}
+                  <strong>{confirmBulk.label}</strong>, con la hora actual.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkSubmitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkSubmitting}
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmBulk) void executeBulkDeparture(confirmBulk);
+              }}
+            >
+              {bulkSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                'Confirmar salida'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
