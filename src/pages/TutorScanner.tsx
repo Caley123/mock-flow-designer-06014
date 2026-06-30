@@ -110,7 +110,9 @@ export const TutorScanner = () => {
   const [quickFaultId, setQuickFaultId] = useState<number | null>(null);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const hardwareScanInputRef = useRef<HTMLInputElement>(null);
   const studentCardRef = useRef<HTMLDivElement>(null);
+  const showStudentProfileRef = useRef(false);
   const barcodeIndexRef = useRef<Map<string, Student>>(new Map());
   const latestProfileScanRef = useRef(0);
   const activeLookupsRef = useRef(0);
@@ -127,6 +129,10 @@ export const TutorScanner = () => {
     : nameSearchResults.length > 0;
 
   useTutorViewport(showStudentProfile && touchTablet);
+
+  useEffect(() => {
+    showStudentProfileRef.current = showStudentProfile;
+  }, [showStudentProfile]);
 
   useEffect(() => {
     if (!showStudentProfile) return;
@@ -148,22 +154,26 @@ export const TutorScanner = () => {
       ) {
         return;
       }
-      if (active instanceof HTMLTextAreaElement || active?.closest('[role="dialog"]')) {
+      if (active instanceof HTMLTextAreaElement || active?.closest('[data-tutor-incident-dialog]')) {
         return;
       }
 
-      const input = barcodeInputRef.current;
+      const useHardwareSink =
+        touchBarcode && showStudentProfileRef.current && !showIncidentDialog;
+      const input = useHardwareSink
+        ? hardwareScanInputRef.current
+        : barcodeInputRef.current;
       if (!input) return;
 
       input.focus({ preventScroll: true });
-      if (window.matchMedia('(max-width: 1023px)').matches) {
+      if (!useHardwareSink && window.matchMedia('(max-width: 1023px)').matches) {
         input.scrollIntoView({ block: 'start', behavior: 'smooth' });
       }
       if (input.value.length > 0) {
         input.select();
       }
     });
-  }, []);
+  }, [touchBarcode, showIncidentDialog]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -916,6 +926,26 @@ export const TutorScanner = () => {
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {scanAnnouncement}
       </div>
+      {/* Receptor oculto del lector Bluetooth: mantiene foco con el perfil abierto en tablet/móvil */}
+      <input
+        ref={hardwareScanInputRef}
+        id="tutor-hardware-scan-sink"
+        type="text"
+        inputMode="none"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        autoComplete="off"
+        aria-hidden
+        tabIndex={-1}
+        className="tutor-hardware-scan-sink"
+        onChange={(e) => {
+          const raw = e.target.value;
+          e.target.value = '';
+          const code = raw.replace(/\r?\n/g, '').trim();
+          if (code.length >= 4) startScan(code);
+        }}
+      />
       <header className="tutor-header">
         <div className="tutor-header__inner">
           <div className="tutor-header__brand">
@@ -1042,7 +1072,6 @@ export const TutorScanner = () => {
                       onKeyDown={handleBarcodeKeyDown}
                       autoComplete="off"
                       autoFocus={!touchBarcode}
-                      readOnly={touchBarcode && showStudentProfile && !showIncidentDialog}
                       placeholder="Escanee el carnet…"
                       aria-describedby="barcode-scan-hint"
                       className="tutor-scan-input"

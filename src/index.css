@@ -3333,6 +3333,32 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* En tablet/móvil el backdrop solo oscurece; no bloquea el lector ni el formulario */
+  .tutor-page--touch .tutor-student-backdrop {
+    pointer-events: none;
+  }
+
+  @media (max-width: 1023px) {
+    .tutor-student-backdrop {
+      pointer-events: none;
+    }
+  }
+
+  .tutor-hardware-scan-sink {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
   /* Panel estudiante en tablet/móvil (también horizontal >1024px) */
   .tutor-page--touch .tutor-student-card {
     @apply fixed z-50 flex flex-col rounded-t-[1.75rem] rounded-b-none border-x-0 border-b-0;
