@@ -229,13 +229,22 @@
     @apply grid grid-cols-1 items-start gap-4 xl:grid-cols-2;
   }
 
-  /* Dashboard: columnas no se estiran (evita hueco bajo el gráfico) */
-  .app-analytics-grid {
-    @apply grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_minmax(260px,300px)];
+  /* Dashboard: grilla unificada de gráficos (2+1 arriba, ancho completo abajo) */
+  .app-analytics-grid,
+  .app-dashboard-charts {
+    @apply grid grid-cols-1 items-stretch gap-4 xl:grid-cols-3;
+  }
+
+  .app-chart-wrap {
+    @apply h-[300px] w-full min-w-0 overflow-hidden;
   }
 
   .app-chart-surface {
-    @apply border-t border-primary/15 bg-gradient-to-b from-primary/10 via-card to-card px-2 pb-2 pt-1 sm:px-3;
+    @apply border-t border-primary/15 bg-gradient-to-b from-primary/10 via-card to-card px-3 pb-3 pt-2 sm:px-4;
+  }
+
+  .app-chart-surface--success {
+    @apply border-t-emerald-500/15 from-emerald-500/10;
   }
 
   .app-stat-ring {

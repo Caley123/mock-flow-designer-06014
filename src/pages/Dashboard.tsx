@@ -161,6 +161,17 @@ export const Dashboard = () => {
     return ((current - previous) / previous) * 100;
   };
 
+  const formatGrowthBadge = (current: number, previous: number) => {
+    if (previous === 0 && current === 0) return null;
+    const pct = calculatePercentageChange(current, previous);
+    if (Math.abs(pct) > 999) {
+      return `${pct > 0 ? '+' : ''}>999%`;
+    }
+    return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  };
+
+  const CHART_MARGIN = { top: 12, right: 12, left: 4, bottom: 4 };
+
   const maxTrend = Math.max(1, ...monthlyTrend.map((d) => d.incidents));
   const yAxisMax = Math.max(4, Math.ceil(maxTrend * 1.15));
 
@@ -169,13 +180,13 @@ export const Dashboard = () => {
 
   const todayAttendance =
     weeklyAttendance.length > 0 ? weeklyAttendance[weeklyAttendance.length - 1] : null;
-  const attendanceGrowth =
+  const attendanceGrowthBadge =
     weeklyAttendance.length >= 2
-      ? calculatePercentageChange(
+      ? formatGrowthBadge(
           weeklyAttendance[weeklyAttendance.length - 1].total,
-          weeklyAttendance[weeklyAttendance.length - 2].total
+          weeklyAttendance[weeklyAttendance.length - 2].total,
         )
-      : 0;
+      : null;
 
   // Calcular tasa de resolución
   const resolutionRate = stats.totalIncidents > 0 
@@ -266,15 +277,15 @@ export const Dashboard = () => {
         />
       </div>
 
-      <div className="app-analytics-grid">
-        <StaffDataPanel>
+      <div className="app-dashboard-charts">
+        <StaffDataPanel className="min-w-0 xl:col-span-2">
           <StaffDataPanelHeader
             compact
             accent="primary"
             title="Tendencia de incidencias"
             description="Últimos 5 meses"
             action={
-              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary shadow-sm">
+              <span className="inline-flex shrink-0 items-center rounded-md border border-primary/25 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary shadow-sm">
                 <ArrowUpRight className="mr-1 h-3 w-3" />
                 {growthPercentage > 0 ? '+' : ''}
                 {growthPercentage.toFixed(1)}%
@@ -282,8 +293,9 @@ export const Dashboard = () => {
             }
           />
           <StaffDataPanelBody compact className="app-chart-surface !p-0">
-            <ResponsiveContainer width="100%" height={320}>
-              <ComposedChart data={monthlyTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <div className="app-chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={monthlyTrend} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                 <XAxis
                   dataKey="month"
@@ -331,10 +343,11 @@ export const Dashboard = () => {
                 />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
           </StaffDataPanelBody>
         </StaffDataPanel>
 
-        <StaffDataPanel>
+        <StaffDataPanel className="min-w-0 xl:col-span-1">
           <StaffDataPanelHeader
             compact
             accent="info"
@@ -432,49 +445,51 @@ export const Dashboard = () => {
             </div>
           </StaffDataPanelBody>
         </StaffDataPanel>
-      </div>
 
-      <StaffDataPanel>
-        <StaffDataPanelHeader
-          compact
-          accent="success"
-          title="Asistencia semanal"
-          description="Llegadas registradas · últimos 5 días hábiles"
-          action={
-            <div className="flex items-center gap-2">
-              {todayAttendance && (
-                <span className="hidden text-[11px] text-muted-foreground sm:inline">
-                  Hoy: {todayAttendance.onTime} a tiempo · {todayAttendance.late} tarde
-                </span>
-              )}
-              {weeklyAttendance.length >= 2 && (
-                <span className="inline-flex items-center rounded-md border border-emerald-500/25 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm dark:text-emerald-400">
-                  <ArrowUpRight className="mr-1 h-3 w-3" />
-                  {attendanceGrowth > 0 ? '+' : ''}
-                  {attendanceGrowth.toFixed(1)}%
-                </span>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => navigate('/arrival-control')}
-              >
-                Ver control
-              </Button>
-            </div>
-          }
-        />
-        <StaffDataPanelBody compact className="app-chart-surface !border-t-emerald-500/15 !from-emerald-500/10 !p-0">
-          {weeklyAttendance.length === 0 ? (
-            <StaffEmptyState
-              icon={Clock}
-              title="Sin registros de asistencia"
-              description="Aún no hay llegadas en los últimos días hábiles."
-            />
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={weeklyAttendance} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <StaffDataPanel className="col-span-full min-w-0">
+          <StaffDataPanelHeader
+            compact
+            accent="success"
+            title="Asistencia semanal"
+            description="Llegadas registradas · últimos 5 días hábiles"
+            action={
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+                {todayAttendance && (
+                  <span className="text-[11px] text-muted-foreground">
+                    Hoy: {todayAttendance.onTime} a tiempo · {todayAttendance.late} tarde
+                  </span>
+                )}
+                {attendanceGrowthBadge && (
+                  <span className="inline-flex shrink-0 items-center rounded-md border border-emerald-500/25 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm dark:text-emerald-400">
+                    <ArrowUpRight className="mr-1 h-3 w-3" />
+                    {attendanceGrowthBadge}
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 text-xs"
+                  onClick={() => navigate('/arrival-control')}
+                >
+                  Ver control
+                </Button>
+              </div>
+            }
+          />
+          <StaffDataPanelBody
+            compact
+            className="app-chart-surface app-chart-surface--success !p-0"
+          >
+            {weeklyAttendance.length === 0 ? (
+              <StaffEmptyState
+                icon={Clock}
+                title="Sin registros de asistencia"
+                description="Aún no hay llegadas en los últimos días hábiles."
+              />
+            ) : (
+              <div className="app-chart-wrap">
+                <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={weeklyAttendance} margin={{ ...CHART_MARGIN, top: 28 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                 <XAxis
                   dataKey="day"
@@ -555,9 +570,11 @@ export const Dashboard = () => {
                 />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
           )}
         </StaffDataPanelBody>
       </StaffDataPanel>
+      </div>
 
       <div className="app-section-grid-2">
         <StaffDataPanel className="h-full">
