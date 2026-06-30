@@ -183,74 +183,77 @@ export const ArrivalControl = () => {
       </div>
 
       <StaffToolbar title="Filtros del día" description="Fecha, estudiante, nivel, grado, sección y estado">
-        <div className="space-y-2">
-          <Label>Fecha</Label>
-          <Input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            max={getTodayDate()}
-          />
-        </div>
-        <div className="space-y-2 sm:col-span-2 lg:col-span-3">
-          <Label>Buscar estudiante</Label>
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="col-span-full grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2">
+            <Label>Fecha</Label>
             <Input
-              placeholder="Nombre completo del estudiante..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="min-w-[12rem] pl-10"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              max={getTodayDate()}
             />
           </div>
+          <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+            <Label>Buscar estudiante</Label>
+            <div className="relative min-w-0">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Nombre completo del estudiante..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="min-w-[12rem] pl-10"
+              />
+            </div>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label>Nivel</Label>
-          <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Nivel educativo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Primaria">Primaria</SelectItem>
-              <SelectItem value="Secundaria">Secundaria</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Grado</Label>
-          <Select value={gradeFilter} onValueChange={(value) => setGradeFilter(value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {GRADES.map((grade) => (
-                <SelectItem key={grade} value={grade}>
-                  {grade}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Sección</Label>
-          <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {SECTIONS.map((section) => (
-                <SelectItem key={section} value={section}>
-                  {section}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Estado</Label>
+        <div className="col-span-full grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2">
+            <Label>Nivel</Label>
+            <Select value={levelFilter} onValueChange={(value) => setLevelFilter(value as 'all' | EducationalLevel)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Nivel educativo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="Primaria">Primaria</SelectItem>
+                <SelectItem value="Secundaria">Secundaria</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Grado</Label>
+            <Select value={gradeFilter} onValueChange={(value) => setGradeFilter(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {GRADES.map((grade) => (
+                  <SelectItem key={grade} value={grade}>
+                    {grade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Sección</Label>
+            <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {SECTIONS.map((section) => (
+                  <SelectItem key={section} value={section}>
+                    {section}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Estado</Label>
           <Select value={statusFilter} onValueChange={(value: 'all' | 'A tiempo' | 'Tarde') => setStatusFilter(value)}>
             <SelectTrigger>
               <SelectValue placeholder="Estado" />
@@ -261,6 +264,7 @@ export const ArrivalControl = () => {
               <SelectItem value="Tarde">Tarde</SelectItem>
             </SelectContent>
           </Select>
+        </div>
         </div>
       </StaffToolbar>
 
