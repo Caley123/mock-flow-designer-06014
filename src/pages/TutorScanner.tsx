@@ -105,6 +105,7 @@ export const TutorScanner = () => {
   const [quickFaultId, setQuickFaultId] = useState<number | null>(null);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const studentCardRef = useRef<HTMLDivElement>(null);
   const barcodeIndexRef = useRef<Map<string, Student>>(new Map());
   const latestProfileScanRef = useRef(0);
   const activeLookupsRef = useRef(0);
@@ -117,6 +118,15 @@ export const TutorScanner = () => {
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
 
   useTutorViewport(showStudentProfile && touchBarcode);
+
+  useEffect(() => {
+    if (!showStudentProfile) return;
+    const card = studentCardRef.current;
+    if (!card) return;
+    card.scrollTop = 0;
+    const scroll = card.querySelector<HTMLElement>('.tutor-student-card__scroll');
+    scroll?.scrollTo(0, 0);
+  }, [showStudentProfile, student?.id]);
 
   const focusBarcodeInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1159,13 +1169,14 @@ export const TutorScanner = () => {
                   onClick={closeStudentProfile}
                 />
                 <div
+                  ref={studentCardRef}
                   className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
                   role="dialog"
                   aria-modal="true"
                   aria-label={`Registro de ${student.fullName}`}
                 >
                 <div className="tutor-student-card__banner" aria-hidden />
-                <div className="tutor-student-card__body">
+                <div className="tutor-student-card__hero-sticky">
                   <Button
                     type="button"
                     variant="ghost"
@@ -1177,27 +1188,31 @@ export const TutorScanner = () => {
                     <span className="sr-only">Cerrar</span>
                   </Button>
 
-                  <div className="tutor-identity">
+                  <div className="tutor-identity tutor-identity--sheet">
                     <StudentPhoto
                       src={student.profilePhoto}
                       name={student.fullName}
                       priority="auto"
-                      className="tutor-identity__photo h-56 w-56 sm:h-64 sm:w-64 md:h-72 md:w-72"
+                      className="tutor-identity__photo"
                       imageClassName="object-cover object-center"
                     />
-                    <Badge
-                      variant={arrivalOnTime ? 'success' : 'warning'}
-                      className="tutor-student-card__status mt-3"
-                    >
-                      {arrivalRecord?.status ?? 'Registrado'} · {displayArrivalTime}
-                    </Badge>
-                    <h3 className="tutor-identity__name">{student.fullName}</h3>
-                    <p className="tutor-identity__grade">
-                      {student.level} · {student.grade} &apos;{student.section}&apos;
-                    </p>
-                    <p className="tutor-identity__dni font-mono">{student.barcode || '—'}</p>
+                    <div className="tutor-identity__meta">
+                      <Badge
+                        variant={arrivalOnTime ? 'success' : 'warning'}
+                        className="tutor-student-card__status"
+                      >
+                        {arrivalRecord?.status ?? 'Registrado'} · {displayArrivalTime}
+                      </Badge>
+                      <h3 className="tutor-identity__name">{student.fullName}</h3>
+                      <p className="tutor-identity__grade">
+                        {student.level} · {student.grade} &apos;{student.section}&apos;
+                      </p>
+                      <p className="tutor-identity__dni font-mono">{student.barcode || '—'}</p>
+                    </div>
                   </div>
+                </div>
 
+                <div className="tutor-student-card__scroll">
                   {/* Horario del salón */}
                   {studentSchedule && (
                     <div
