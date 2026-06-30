@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { buildArrivalMessage } from './lib/arrivalMessage.mjs';
 import { createWppClient, loadEnvFileSync } from './lib/wppClient.mjs';
+import { maxSendsForSession, parseChipLimits, parseSessionList } from './lib/chipLimits.mjs';
 
 const ENV_FILE = process.env.WPPCONNECT_ENV_FILE || '/opt/sie/.env.wppconnect';
 loadEnvFileSync(ENV_FILE);
@@ -15,22 +16,23 @@ loadEnvFileSync(ENV_FILE);
 const PORT = Number(process.env.WPPCONNECT_NOTIFY_PORT || 3100);
 const NOTIFY_SECRET = process.env.WPPCONNECT_NOTIFY_SECRET || '';
 const STATE_FILE = process.env.WPPCONNECT_ROUND_ROBIN_STATE || '/opt/sie/.wpp-round-robin-state.json';
-const JITTER_MIN = Number(process.env.WPPCONNECT_JITTER_MIN_MS || 4000);
-const JITTER_MAX = Number(process.env.WPPCONNECT_JITTER_MAX_MS || 9000);
+const JITTER_MIN = Number(process.env.WPPCONNECT_JITTER_MIN_MS || 8000);
+const JITTER_MAX = Number(process.env.WPPCONNECT_JITTER_MAX_MS || 15000);
 /** Tope por chip por hora calendario en Lima (se reinicia cada :00 hora Perú). */
 const MAX_PER_HOUR = Number(process.env.WPPCONNECT_MAX_PER_HOUR_PER_CHIP || 250);
+const CHIP_HOURLY_LIMITS = parseChipLimits(process.env.WPPCONNECT_CHIP_HOURLY_LIMITS || 'sie-chip-04=2');
+const TYPING_MIN = Number(process.env.WPPCONNECT_TYPING_MIN_MS || 10_000);
+const TYPING_MAX = Number(process.env.WPPCONNECT_TYPING_MAX_MS || 12_000);
 const RATE_TIMEZONE = process.env.WPPCONNECT_RATE_TIMEZONE || 'America/Lima';
 const APP_URL = process.env.VITE_APP_URL || 'https://asiscole.com';
 
-const SESSIONS = (
-  process.env.WPPCONNECT_SESSIONS ||
-  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07'
-)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+/** Chip 04 al final: solo si los demás están al tope (máx. 2/hora). */
+const SESSIONS = parseSessionList(
+  process.env.WPPCONNECT_SESSIONS,
+  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04',
+);
 
-const wpp = createWppClient();
+const wpp = createWppClient({ typingMinMs: TYPING_MIN, typingMaxMs: TYPING_MAX });
 const queues = new Map();
 const processing = new Map();
 const hourlyCounts = new Map();
@@ -81,10 +83,14 @@ function hourKey() {
   return `${get('year')}-${get('month')}-${get('day')}T${hour}`;
 }
 
+function sessionHourlyCap(session) {
+  return maxSendsForSession(session, CHIP_HOURLY_LIMITS, MAX_PER_HOUR);
+}
+
 function canSendOnSession(session) {
   const key = `${session}:${hourKey()}`;
   const count = hourlyCounts.get(key) || 0;
-  return count < MAX_PER_HOUR;
+  return count < sessionHourlyCap(session);
 }
 
 function recordSend(session) {
@@ -127,7 +133,8 @@ async function failoverSessions(excludeSession) {
 }
 
 async function deliver(job, session) {
-  await wpp.sendMessage(session, job.phone, job.message);
+  const typingMs = wpp.typingDelayMs();
+  await wpp.sendMessage(session, job.phone, job.message, { typingMs });
   recordSend(session);
   return session;
 }
@@ -141,7 +148,9 @@ async function processQueue(session) {
     let usedSession = job.assignedSession || session;
     try {
       usedSession = await deliver(job, usedSession);
-      console.log(`[notify-queue] OK ${usedSession} -> ${job.phone} estudiante=${job.studentId}`);
+      console.log(
+        `[notify-queue] OK ${usedSession} -> ${job.phone} estudiante=${job.studentId}`,
+      );
     } catch (err) {
       console.error(`[notify-queue] fallo ${usedSession}:`, err.message);
       const alternates = await failoverSessions(usedSession);
@@ -239,19 +248,24 @@ const server = http.createServer((req, res) => {
     const status = {
       config: {
         maxPerChipPerHour: MAX_PER_HOUR,
+        chipHourlyLimits: Object.fromEntries(CHIP_HOURLY_LIMITS),
+        typingMs: [TYPING_MIN, TYPING_MAX],
         rateWindow: 'calendar-hour',
         rateTimezone: RATE_TIMEZONE,
         limaHourKey: hourKey(),
         jitterMs: [JITTER_MIN, JITTER_MAX],
         sessions: SESSIONS.length,
+        sessionOrder: SESSIONS,
       },
     };
     for (const s of SESSIONS) {
       const key = `${s}:${hourKey()}`;
+      const cap = sessionHourlyCap(s);
       status[s] = {
         queueLength: queues.get(s)?.length || 0,
         sentThisHour: hourlyCounts.get(key) || 0,
-        maxPerHour: MAX_PER_HOUR,
+        maxPerHour: cap,
+        atLimit: (hourlyCounts.get(key) || 0) >= cap,
       };
     }
     status.roundRobin = loadRoundRobinState();
@@ -286,8 +300,12 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
+  const limitsSummary =
+    CHIP_HOURLY_LIMITS.size > 0
+      ? ` | límites: ${[...CHIP_HOURLY_LIMITS.entries()].map(([s, n]) => `${s}=${n}`).join(', ')}`
+      : '';
   console.log(
-    `[notify-queue] ${SESSIONS.length} chips | max ${MAX_PER_HOUR}/chip/hora Lima (${RATE_TIMEZONE}) | jitter ${JITTER_MIN}-${JITTER_MAX}ms | :${PORT}`,
+    `[notify-queue] ${SESSIONS.length} chips | default max ${MAX_PER_HOUR}/chip/hora Lima (${RATE_TIMEZONE})${limitsSummary} | typing ${TYPING_MIN}-${TYPING_MAX}ms | jitter ${JITTER_MIN}-${JITTER_MAX}ms | :${PORT}`,
   );
-  console.log(`[notify-queue] sesiones: ${SESSIONS.join(', ')}`);
+  console.log(`[notify-queue] orden: ${SESSIONS.join(', ')}`);
 });

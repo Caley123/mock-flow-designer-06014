@@ -14,22 +14,36 @@ systemctl enable sie-wpp-notify-queue
 if ! grep -q '^WPPCONNECT_SESSIONS=' "$ENV_FILE" 2>/dev/null; then
   NOTIFY_SECRET="$(openssl rand -hex 16)"
   cat >> "$ENV_FILE" <<EOF
-WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07
+WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04
 WPPCONNECT_NOTIFY_PORT=3100
 WPPCONNECT_NOTIFY_SECRET=${NOTIFY_SECRET}
-WPPCONNECT_JITTER_MIN_MS=4000
-WPPCONNECT_JITTER_MAX_MS=9000
+WPPCONNECT_TYPING_MIN_MS=10000
+WPPCONNECT_TYPING_MAX_MS=12000
+WPPCONNECT_JITTER_MIN_MS=8000
+WPPCONNECT_JITTER_MAX_MS=15000
 WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250
+WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2
 EOF
 fi
 
 # Actualizar límites si ya existía el archivo (instalación previa)
-if grep -q '^WPPCONNECT_MAX_PER_HOUR_PER_CHIP=' "$ENV_FILE" 2>/dev/null; then
-  sed -i 's/^WPPCONNECT_MAX_PER_HOUR_PER_CHIP=.*/WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250/' "$ENV_FILE"
-fi
-if grep -q '^WPPCONNECT_SESSIONS=' "$ENV_FILE" 2>/dev/null; then
-  sed -i 's/^WPPCONNECT_SESSIONS=.*/WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07/' "$ENV_FILE"
-fi
+for kv in \
+  'WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04' \
+  'WPPCONNECT_TYPING_MIN_MS=10000' \
+  'WPPCONNECT_TYPING_MAX_MS=12000' \
+  'WPPCONNECT_JITTER_MIN_MS=8000' \
+  'WPPCONNECT_JITTER_MAX_MS=15000' \
+  'WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250' \
+  'WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2'
+do
+  key="${kv%%=*}"
+  val="${kv#*=}"
+  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+  else
+    echo "${key}=${val}" >> "$ENV_FILE"
+  fi
+done
 
 NOTIFY_SECRET=$(grep '^WPPCONNECT_NOTIFY_SECRET=' "$ENV_FILE" | cut -d= -f2)
 

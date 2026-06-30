@@ -4,25 +4,30 @@
  * Uso manual o vía systemd timer (sie-wpp-warmup.timer).
  */
 import { createWppClient, loadEnvFileSync } from './lib/wppClient.mjs';
+import { maxSendsForSession, parseChipLimits, parseSessionList } from './lib/chipLimits.mjs';
 import { pickWarmupMessage, getBankStats } from './lib/messageVariety.mjs';
 
 const ENV_FILE = process.env.WPPCONNECT_ENV_FILE || '/opt/sie/.env.wppconnect';
 loadEnvFileSync(ENV_FILE);
 
-const SESSIONS = (
-  process.env.WPPCONNECT_WARMUP_CHIPS ||
-  process.env.WPPCONNECT_SESSIONS ||
-  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07'
-)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const SESSIONS = parseSessionList(
+  process.env.WPPCONNECT_WARMUP_CHIPS || process.env.WPPCONNECT_SESSIONS,
+  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04',
+);
+const WARMUP_SEND_LIMITS = parseChipLimits(
+  process.env.WPPCONNECT_WARMUP_SEND_LIMITS || process.env.WPPCONNECT_CHIP_HOURLY_LIMITS || 'sie-chip-04=2',
+);
+const WARMUP_DEFAULT_SEND_CAP = Number(process.env.WPPCONNECT_WARMUP_MAX_SENDS_PER_CHIP || 999);
+const WARMUP_EXCLUDE_SENDERS = parseSessionList(
+  process.env.WPPCONNECT_WARMUP_EXCLUDE_SENDERS,
+  '',
+);
 
 const ROUNDS = Number(process.env.WPPCONNECT_WARMUP_ROUNDS || 3);
 const PAUSE_MIN = Number(process.env.WPPCONNECT_WARMUP_PAUSE_MIN_MS || 15_000);
 const PAUSE_MAX = Number(process.env.WPPCONNECT_WARMUP_PAUSE_MAX_MS || 35_000);
 const TYPING_MIN = Number(process.env.WPPCONNECT_TYPING_MIN_MS || 10_000);
-const TYPING_MAX = Number(process.env.WPPCONNECT_TYPING_MAX_MS || 18_000);
+const TYPING_MAX = Number(process.env.WPPCONNECT_TYPING_MAX_MS || 12_000);
 
 const wpp = createWppClient({ typingMinMs: TYPING_MIN, typingMaxMs: TYPING_MAX });
 
@@ -81,18 +86,40 @@ async function main() {
 
   let sent = 0;
   let failed = 0;
+  const sendsByChip = new Map();
+
+  function warmupSendCap(session) {
+    return maxSendsForSession(session, WARMUP_SEND_LIMITS, WARMUP_DEFAULT_SEND_CAP);
+  }
+
+  function canWarmupSend(session) {
+    if (WARMUP_EXCLUDE_SENDERS.includes(session)) return false;
+    const cap = warmupSendCap(session);
+    return (sendsByChip.get(session) || 0) < cap;
+  }
+
+  function recordWarmupSend(session) {
+    sendsByChip.set(session, (sendsByChip.get(session) || 0) + 1);
+  }
 
   for (let round = 1; round <= ROUNDS; round++) {
     log(`--- Ronda ${round}/${ROUNDS} ---`);
     for (let i = 0; i < chips.length; i++) {
       const from = chips[i];
       const to = chips[(i + 1) % chips.length];
+
+      if (!canWarmupSend(from.session)) {
+        log(`SKIP envío ${from.session} — tope de calentamiento (${sendsByChip.get(from.session) || 0}/${warmupSendCap(from.session)})`);
+        continue;
+      }
+
       const message = pickWarmupMessage();
       const typingMs = wpp.typingDelayMs();
 
       try {
         log(`${from.session} → ${to.phone} (escribiendo ${(typingMs / 1000).toFixed(1)}s)`);
         await wpp.sendMessage(from.session, to.phone, message, { typingMs });
+        recordWarmupSend(from.session);
         log(`  OK: ${message.slice(0, 72)}${message.length > 72 ? '…' : ''}`);
         sent++;
       } catch (err) {

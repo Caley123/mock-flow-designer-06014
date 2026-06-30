@@ -110,12 +110,15 @@ log "Cola notify systemd: sie-wpp-notify-queue (puerto 3100)"
 if ! grep -q '^WPPCONNECT_SESSIONS=' "$ENV_FILE" 2>/dev/null; then
   NOTIFY_SECRET="$(openssl rand -hex 16)"
   cat >> "$ENV_FILE" <<EOF
-WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-04,sie-chip-05,sie-chip-06,sie-chip-07
+WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04
 WPPCONNECT_NOTIFY_PORT=3100
 WPPCONNECT_NOTIFY_SECRET=${NOTIFY_SECRET}
-WPPCONNECT_JITTER_MIN_MS=4000
-WPPCONNECT_JITTER_MAX_MS=9000
+WPPCONNECT_TYPING_MIN_MS=10000
+WPPCONNECT_TYPING_MAX_MS=12000
+WPPCONNECT_JITTER_MIN_MS=8000
+WPPCONNECT_JITTER_MAX_MS=15000
 WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250
+WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2
 EOF
   log "Añadidas variables de rotación a $ENV_FILE"
 fi

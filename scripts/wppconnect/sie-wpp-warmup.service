@@ -8,7 +8,7 @@ Type=oneshot
 WorkingDirectory=/opt/sie/app
 EnvironmentFile=/opt/sie/.env.wppconnect
 Environment=WPPCONNECT_TYPING_MIN_MS=10000
-Environment=WPPCONNECT_TYPING_MAX_MS=18000
+Environment=WPPCONNECT_TYPING_MAX_MS=12000
 Environment=WPPCONNECT_WARMUP_ROUNDS=3
 Environment=WPPCONNECT_WARMUP_PAUSE_MIN_MS=15000
 Environment=WPPCONNECT_WARMUP_PAUSE_MAX_MS=35000

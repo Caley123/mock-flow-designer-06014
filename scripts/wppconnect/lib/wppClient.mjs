@@ -101,7 +101,7 @@ export function createWppClient(options = {}) {
 
   function typingDelayMs() {
     const min = Number(process.env.WPPCONNECT_TYPING_MIN_MS || options.typingMinMs || 10_000);
-    const max = Number(process.env.WPPCONNECT_TYPING_MAX_MS || options.typingMaxMs || 18_000);
+    const max = Number(process.env.WPPCONNECT_TYPING_MAX_MS || options.typingMaxMs || 12_000);
     const lo = Math.min(min, max);
     const hi = Math.max(min, max);
     return lo + Math.floor(Math.random() * (hi - lo + 1));

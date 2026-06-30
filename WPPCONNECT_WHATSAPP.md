@@ -80,23 +80,26 @@ El SIE encola cada aviso en **`sie-wpp-notify-queue`** (puerto `3100`, ruta púb
 
 | Política | Comportamiento |
 |----------|----------------|
-| **Round-robin** | Escaneo 1 → chip-01, 2 → chip-02, … 8 → chip-01 |
+| **Round-robin** | Escaneo 1 → chip-01, 2 → chip-02, … chip-04 al final (solo si los demás están al tope) |
 | **Failover** | Si un chip está desconectado o falla el envío, prueba el siguiente |
-| **Jitter** | 4–9 s aleatorios entre mensajes **por cola de chip** |
+| **Jitter** | 8–15 s aleatorios entre mensajes **por cola de chip** |
 | **Spintax** | Saludo y cierre aleatorios; hora con **segundos** |
-| **Typing** | Simula “escribiendo…” 2–4 s antes de cada mensaje |
-| **Tope horario** | Máx. **250** msg/hora por chip (hora calendario **Perú/Lima**, reinicia a las :00) |
+| **Typing** | Simula “escribiendo…” **10–12 s** antes de cada mensaje |
+| **Tope horario** | Máx. **250** msg/hora por chip (chip-04: **máx. 2**/hora) |
 
-Capacidad teórica con 7 chips conectados: **~1.750 msg/h** (7 × 250). El contador se reinicia al inicio de cada hora en **America/Lima** (UTC−5, sin horario de verano).
+Capacidad teórica con 7 chips conectados: **~1.748 msg/h** (6×250 + 2). El contador se reinicia al inicio de cada hora en **America/Lima** (UTC−5, sin horario de verano).
 
 Variables en `/opt/sie/.env.wppconnect`:
 
 ```env
-WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,...,sie-chip-07
+WPPCONNECT_SESSIONS=sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04
 WPPCONNECT_NOTIFY_SECRET=...
-WPPCONNECT_JITTER_MIN_MS=4000
-WPPCONNECT_JITTER_MAX_MS=9000
+WPPCONNECT_TYPING_MIN_MS=10000
+WPPCONNECT_TYPING_MAX_MS=12000
+WPPCONNECT_JITTER_MIN_MS=8000
+WPPCONNECT_JITTER_MAX_MS=15000
 WPPCONNECT_MAX_PER_HOUR_PER_CHIP=250
+WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2
 ```
 
 Build del frontend (`.env.build`):

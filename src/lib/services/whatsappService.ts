@@ -54,6 +54,10 @@ const OPENWA_API_KEY = import.meta.env.VITE_OPENWA_API_KEY || '';
 const recentNotifyKeys = new Map<string, number>();
 const NOTIFY_DEDUP_MS = 2 * 60 * 1000;
 
+/** Simular escritura humana (~10 s) antes de enviar (anti-baneo). */
+const WPPCONNECT_TYPING_MIN_MS = 10_000;
+const WPPCONNECT_TYPING_MAX_MS = 12_000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -269,9 +273,9 @@ async function sendViaWppConnect(phone: string, text: string): Promise<{ ok: boo
     return { ok: false, error: 'Falta VITE_WPPCONNECT_TOKEN (genérelo en el VPS)' };
   }
 
-  // Simular escritura humana antes del mensaje
+  // Simular escritura humana antes del mensaje (~10 s)
   await wppconnectPost('/typing', { phone, isGroup: false, value: true });
-  await sleep(randomBetween(2000, 3000));
+  await sleep(randomBetween(WPPCONNECT_TYPING_MIN_MS, WPPCONNECT_TYPING_MAX_MS));
 
   const sent = await wppconnectPost('/send-message', { phone, message: text, isGroup: false });
 

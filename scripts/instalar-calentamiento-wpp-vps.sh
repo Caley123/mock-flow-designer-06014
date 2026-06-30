@@ -16,12 +16,25 @@ sed -i 's/\r$//' /etc/systemd/system/sie-wpp-warmup.timer
 if ! grep -q '^WPPCONNECT_TYPING_MIN_MS=' "$ENV_FILE" 2>/dev/null; then
   cat >> "$ENV_FILE" <<'EOF'
 WPPCONNECT_TYPING_MIN_MS=10000
-WPPCONNECT_TYPING_MAX_MS=18000
+WPPCONNECT_TYPING_MAX_MS=12000
 WPPCONNECT_WARMUP_ROUNDS=3
 WPPCONNECT_WARMUP_PAUSE_MIN_MS=15000
 WPPCONNECT_WARMUP_PAUSE_MAX_MS=35000
+WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2
 EOF
 fi
+
+for kv in \
+  'WPPCONNECT_TYPING_MIN_MS=10000' \
+  'WPPCONNECT_TYPING_MAX_MS=12000' \
+  'WPPCONNECT_CHIP_HOURLY_LIMITS=sie-chip-04=2'
+do
+  key="${kv%%=*}"
+  val="${kv#*=}"
+  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+  fi
+done
 
 systemctl daemon-reload
 systemctl enable sie-wpp-warmup.timer
