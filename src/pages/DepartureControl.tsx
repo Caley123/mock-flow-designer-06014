@@ -94,6 +94,26 @@ interface BulkConfirmTarget {
   tipo: DepartureType;
 }
 
+function matchesBulkFilters(
+  group: DepartureGroup,
+  level: 'all' | EducationalLevel,
+  grade: 'all' | string,
+  section: 'all' | string,
+) {
+  if (level !== 'all' && group.level !== level) return false;
+  if (grade !== 'all' && group.grade !== grade) return false;
+  if (section !== 'all' && group.section !== section) return false;
+  return true;
+}
+
+function hasActiveBulkFilters(
+  level: 'all' | EducationalLevel,
+  grade: 'all' | string,
+  section: 'all' | string,
+) {
+  return level !== 'all' || grade !== 'all' || section !== 'all';
+}
+
 function buildDepartureGroups(records: ArrivalRecord[]): DepartureGroup[] {
   const map = new Map<string, DepartureGroup>();
 
@@ -196,23 +216,37 @@ export const DepartureControl = () => {
     };
   }, [loadArrivals]);
 
+  useEffect(() => {
+    setLevelFilter(bulkLevel);
+    setGradeFilter(bulkGrade);
+    setSectionFilter(bulkSection);
+  }, [bulkLevel, bulkGrade, bulkSection]);
+
   const departureGroups = useMemo(() => buildDepartureGroups(records), [records]);
+
+  const bulkFiltersActive = hasActiveBulkFilters(bulkLevel, bulkGrade, bulkSection);
+
+  const filteredDepartureGroups = useMemo(
+    () =>
+      bulkFiltersActive
+        ? departureGroups.filter((g) => matchesBulkFilters(g, bulkLevel, bulkGrade, bulkSection))
+        : departureGroups,
+    [departureGroups, bulkLevel, bulkGrade, bulkSection, bulkFiltersActive],
+  );
 
   const groupsWithPending = useMemo(
     () => departureGroups.filter((g) => g.pending > 0),
     [departureGroups],
   );
 
+  const filteredGroupsWithPending = useMemo(
+    () => filteredDepartureGroups.filter((g) => g.pending > 0),
+    [filteredDepartureGroups],
+  );
+
   const bulkPendingIds = useMemo(() => {
-    return departureGroups
-      .filter((g) => {
-        if (bulkLevel !== 'all' && g.level !== bulkLevel) return false;
-        if (bulkGrade !== 'all' && g.grade !== bulkGrade) return false;
-        if (bulkSection !== 'all' && g.section !== bulkSection) return false;
-        return g.pending > 0;
-      })
-      .flatMap((g) => g.pendingRecordIds);
-  }, [departureGroups, bulkLevel, bulkGrade, bulkSection]);
+    return filteredGroupsWithPending.flatMap((g) => g.pendingRecordIds);
+  }, [filteredGroupsWithPending]);
 
   const bulkSelectionLabel = useMemo(() => {
     if (bulkLevel === 'all' && bulkGrade === 'all' && bulkSection === 'all') {
@@ -361,10 +395,16 @@ export const DepartureControl = () => {
         })}`;
 
   const syncFiltersFromBulk = () => {
-    if (bulkLevel !== 'all') setLevelFilter(bulkLevel);
-    if (bulkGrade !== 'all') setGradeFilter(bulkGrade);
-    if (bulkSection !== 'all') setSectionFilter(bulkSection);
+    setLevelFilter(bulkLevel);
+    setGradeFilter(bulkGrade);
+    setSectionFilter(bulkSection);
     setDepartureFilter('pending');
+  };
+
+  const clearBulkFilters = () => {
+    setBulkLevel('all');
+    setBulkGrade('all');
+    setBulkSection('all');
   };
 
   return (
@@ -503,11 +543,16 @@ export const DepartureControl = () => {
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
+              {bulkFiltersActive && (
+                <Button variant="ghost" size="sm" onClick={clearBulkFilters}>
+                  Limpiar filtros
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={syncFiltersFromBulk}
-                disabled={bulkLevel === 'all' && bulkGrade === 'all' && bulkSection === 'all'}
+                disabled={!bulkFiltersActive}
               >
                 Ver en detalle
               </Button>
@@ -540,9 +585,27 @@ export const DepartureControl = () => {
               title="Sin llegadas registradas"
               description="No hay estudiantes con ingreso en la fecha seleccionada"
             />
+          ) : filteredDepartureGroups.length === 0 ? (
+            <StaffEmptyState
+              icon={GraduationCap}
+              title="Sin aulas para estos filtros"
+              description={`No hay llegadas registradas en ${bulkSelectionLabel} para la fecha seleccionada`}
+              action={
+                <Button variant="outline" size="sm" onClick={clearBulkFilters}>
+                  Limpiar filtros
+                </Button>
+              }
+            />
           ) : (
+            <>
+              {bulkFiltersActive && (
+                <p className="text-xs text-muted-foreground">
+                  Mostrando {filteredDepartureGroups.length} aula
+                  {filteredDepartureGroups.length === 1 ? '' : 's'} · {bulkSelectionLabel}
+                </p>
+              )}
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {departureGroups.map((group) => (
+              {filteredDepartureGroups.map((group) => (
                 <div
                   key={group.key}
                   className={cn(
@@ -586,24 +649,35 @@ export const DepartureControl = () => {
                 </div>
               ))}
             </div>
+            </>
           )}
 
-          {groupsWithPending.length > 1 && (
+          {(bulkFiltersActive ? filteredGroupsWithPending : groupsWithPending).length > 1 && (
             <div className="flex justify-end border-t border-border/60 pt-3">
               <Button
                 variant="secondary"
                 className="gap-2"
-                disabled={stats.pending === 0 || bulkSubmitting}
+                disabled={
+                  (bulkFiltersActive ? filteredGroupsWithPending : groupsWithPending).length === 0 ||
+                  bulkSubmitting
+                }
                 onClick={() =>
                   requestBulkDeparture(
-                    'todas las aulas con pendientes',
-                    groupsWithPending.flatMap((g) => g.pendingRecordIds),
+                    bulkFiltersActive ? bulkSelectionLabel : 'todas las aulas con pendientes',
+                    (bulkFiltersActive ? filteredGroupsWithPending : groupsWithPending).flatMap(
+                      (g) => g.pendingRecordIds,
+                    ),
                     departureType,
                   )
                 }
               >
                 <Users className="h-4 w-4" />
-                Registrar todas las aulas pendientes ({stats.pending})
+                Registrar todas las aulas pendientes (
+                {(bulkFiltersActive ? filteredGroupsWithPending : groupsWithPending).reduce(
+                  (sum, g) => sum + g.pending,
+                  0,
+                )}
+                )
               </Button>
             </div>
           )}
