@@ -87,6 +87,8 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[wpp-webhook] escuchando en 127.0.0.1:${PORT} sesión=${SESSION}`);
+// 0.0.0.0: el contenedor Docker llega vía host.docker.internal (172.17.0.1).
+// El puerto no se expone al exterior; solo localhost + red docker bridge.
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[wpp-webhook] escuchando en 0.0.0.0:${PORT} sesión=${SESSION}`);
 });

@@ -468,6 +468,10 @@
   /* Login lite — tablets: formulario visible, fondo oscuro, sin GSAP */
   .login-page--lite {
     @apply grid-cols-1;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
 
   .login-panel--lite {
@@ -2997,9 +3001,19 @@
     @apply min-h-screen min-h-[100dvh] min-h-[100svh] flex flex-col;
     background-color: hsl(var(--background));
     font-family: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  @media (max-width: 1023px) {
+    .tutor-page--profile-open {
+      overflow: hidden;
+      touch-action: none;
+    }
   }
 
   .tutor-header {
@@ -3169,6 +3183,11 @@
     @apply font-mono;
   }
 
+  /* Tablet/móvil: lector Bluetooth sin teclado virtual */
+  .tutor-scan-input[inputmode='none'] {
+    caret-color: transparent;
+  }
+
   .tutor-scan-input::placeholder,
   .tutor-field-input::placeholder {
     color: hsl(var(--muted-foreground));
@@ -3221,16 +3240,17 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  @media (max-width: 767px) {
+  @media (max-width: 1023px) {
     .tutor-student-card {
       @apply fixed z-50 rounded-t-[1.75rem] rounded-b-none border-x-0 border-b-0;
       left: 0;
       right: 0;
       bottom: 0;
-      max-height: min(92dvh, 92svh);
+      max-height: min(92dvh, var(--tutor-vv-height, 92dvh), 92svh);
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      padding-bottom: env(safe-area-inset-bottom, 0px);
+      overscroll-behavior: contain;
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--tutor-keyboard-inset, 0px));
       box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
     }
 
@@ -3253,6 +3273,10 @@
     .tutor-student-card__btn-next,
     .tutor-student-card__btn-incident {
       @apply min-h-[3rem];
+    }
+
+    .tutor-identity__photo {
+      @apply h-48 w-48 sm:h-56 sm:w-56;
     }
   }
 

@@ -1,59 +1,74 @@
 #!/usr/bin/env bash
-# Prueba de envío: rudeus1-6 desde chips 01/02/03 + mensajes entre chips + 949261503
+# Prueba de envío con mensajes variados (banco de frases).
+# Uso: bash scripts/enviar-prueba-chips.sh
 set -euo pipefail
 
+APP_DIR="${APP_DIR:-/opt/sie/app}"
 ENV_FILE="/opt/sie/.env.wppconnect"
 API="http://127.0.0.1:21465/api"
-TARGET="51949261503"
+TARGET="${TARGET:-51949261503}"
+CHIPS="${CHIPS:-sie-chip-01,sie-chip-02,sie-chip-03}"
 
 source "$ENV_FILE"
 SECRET="$WPPCONNECT_SECRET_KEY"
 
+pick_msg() {
+  node "${APP_DIR}/scripts/wppconnect/lib/pickWarmupCli.mjs"
+}
+
 token_for() {
-  curl -s -X POST "$API/$1/$SECRET/generate-token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
+  curl -sf -X POST "$API/$1/$SECRET/generate-token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
 }
 
 phone_of() {
   local session="$1" token
   token=$(token_for "$session")
-  curl -s -H "Authorization: Bearer $token" "$API/$session/get-phone-number" | tr -dc '0-9'
+  curl -sf -H "Authorization: Bearer $token" "$API/$session/get-phone-number" | tr -dc '0-9'
 }
 
 send_msg() {
   local session="$1" phone="$2" text="$3" token resp
   token=$(token_for "$session")
-  resp=$(curl -s -X POST "$API/$session/send-message" \
+  resp=$(curl -sf -X POST "$API/$session/send-message" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
-    -d "{\"phone\":\"$phone\",\"isGroup\":false,\"message\":\"$text\"}")
-  echo "[$session] -> $phone : $text"
-  echo "  $resp"
-  sleep 3
+    -d "$(node -e "console.log(JSON.stringify({phone:process.argv[1],isGroup:false,message:process.argv[2]}))" "$phone" "$text")")
+  echo "[$session] -> $phone"
+  echo "  $(echo "$text" | head -c 100)"
+  if ! echo "$resp" | grep -q '"status":"success"'; then
+    echo "  RESP: ${resp:0:200}"
+  fi
+  sleep "$(node -e "console.log(5+Math.floor(Math.random()*15))")"
 }
 
-echo "=== Números de cada chip ==="
-N1=$(phone_of sie-chip-01)
-N2=$(phone_of sie-chip-02)
-N3=$(phone_of sie-chip-03)
-echo "chip-01: $N1"
-echo "chip-02: $N2"
-echo "chip-03: $N3"
-echo "destino: $TARGET"
+declare -A PHONES
+IFS=',' read -ra CHIP_LIST <<< "$CHIPS"
+for CHIP in "${CHIP_LIST[@]}"; do
+  CHIP=$(echo "$CHIP" | xargs)
+  PHONES[$CHIP]=$(phone_of "$CHIP" || true)
+  echo "$CHIP: ${PHONES[$CHIP]:-(desconectado)}"
+done
+echo "destino externo: $TARGET"
 echo ""
 
-echo "=== rudeus1-6 al $TARGET ==="
-send_msg sie-chip-01 "$TARGET" "rudeus1"
-send_msg sie-chip-02 "$TARGET" "rudeus2"
-send_msg sie-chip-03 "$TARGET" "rudeus3"
-send_msg sie-chip-01 "$TARGET" "rudeus4"
-send_msg sie-chip-02 "$TARGET" "rudeus5"
-send_msg sie-chip-03 "$TARGET" "rudeus6"
+echo "=== Mensajes variados al destino ==="
+for CHIP in "${CHIP_LIST[@]}"; do
+  CHIP=$(echo "$CHIP" | xargs)
+  send_msg "$CHIP" "$TARGET" "$(pick_msg)"
+done
 
 echo ""
-echo "=== Entre chips ==="
-[ -n "$N1" ] && [ -n "$N2" ] && send_msg sie-chip-01 "$N2" "01->02: rudeus rotacion"
-[ -n "$N2" ] && [ -n "$N3" ] && send_msg sie-chip-02 "$N3" "02->03: rudeus rotacion"
-[ -n "$N3" ] && [ -n "$N1" ] && send_msg sie-chip-03 "$N1" "03->01: rudeus rotacion"
+echo "=== Entre chips (calentamiento) ==="
+for i in "${!CHIP_LIST[@]}"; do
+  FROM=$(echo "${CHIP_LIST[$i]}" | xargs)
+  TO_IDX=$(( (i + 1) % ${#CHIP_LIST[@]} ))
+  TO=$(echo "${CHIP_LIST[$TO_IDX]}" | xargs)
+  FP="${PHONES[$FROM]:-}"
+  TP="${PHONES[$TO]:-}"
+  if [[ -n "$FP" && -n "$TP" ]]; then
+    send_msg "$FROM" "$TP" "$(pick_msg)"
+  fi
+done
 
-echo ""
 echo "=== Listo ==="
+node "${APP_DIR}/scripts/wppconnect/lib/pickWarmupCli.mjs" --stats

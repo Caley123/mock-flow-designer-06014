@@ -10,7 +10,8 @@ export default {
   port: '21465',
   deviceName: 'Asiscole SIE',
   poweredBy: 'I.E. San Ramon',
-  startAllSession: true,
+  // false: cada chip se inicia bajo demanda (evita colgar al vincular el 2.º celular)
+  startAllSession: false,
   tokenStoreType: 'file',
   maxListeners: 30,
   customUserDataDir: './userDataDir/',
@@ -52,6 +53,8 @@ export default {
     deviceSyncTimeout: 0,
     disableWelcome: true,
     browserArgs: [
+      '--no-proxy-server',
+      '--proxy-server=direct://',
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',

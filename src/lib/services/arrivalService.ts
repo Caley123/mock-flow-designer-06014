@@ -855,8 +855,27 @@ export async function fetchMonthArrivalsForStudent(
   year?: number,
   month?: number
 ): Promise<ArrivalRecord[]> {
-  const { start, end } =
+  const bounds =
     year != null && month != null ? getMonthBounds(year, month) : getLimaMonthBounds();
+  const y = year ?? bounds.year;
+  const m = month ?? bounds.month;
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('asistencia_mes_por_estudiante', {
+    p_student_id: studentId,
+    p_year: y,
+    p_month: m,
+  });
+
+  if (!rpcError && rpcData != null) {
+    const rows = Array.isArray(rpcData) ? rpcData : [];
+    return rows.map((row) => mapRpcArrival(row as RpcArrivalRow));
+  }
+
+  if (rpcError && rpcError.code !== 'PGRST202' && !rpcError.message?.includes('does not exist')) {
+    console.warn('fetchMonthArrivalsForStudent rpc:', rpcError.message);
+  }
+
+  const { start, end } = bounds;
   const { data, error } = await supabase
     .from('registros_llegada')
     .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
@@ -1041,4 +1060,5 @@ export const arrivalService = {
   fetchArrivalLimits,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
+  fetchMonthArrivalsForStudent,
 };

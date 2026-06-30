@@ -62,6 +62,9 @@ import { configService } from '@/lib/services';
 import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
+import { useTutorViewport } from '@/hooks/useTutorViewport';
+import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
+import { cn } from '@/lib/utils';
 
 export const TutorScanner = () => {
   const navigate = useNavigate();
@@ -111,6 +114,9 @@ export const TutorScanner = () => {
   const bumpProfileIdleRef = useRef<() => void>(() => {});
 
   const user = authService.getCurrentUser();
+  const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
+
+  useTutorViewport(showStudentProfile && touchBarcode);
 
   const focusBarcodeInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -129,6 +135,7 @@ export const TutorScanner = () => {
 
       const input = barcodeInputRef.current;
       if (!input) return;
+
       input.focus({ preventScroll: true });
       if (input.value.length > 0) {
         input.select();
@@ -143,7 +150,16 @@ export const TutorScanner = () => {
     void scheduleService.getConfig();
     loadArrivalLimit();
     const stopClock = startClock();
-    focusBarcodeInput();
+    if (!touchBarcode) {
+      focusBarcodeInput();
+    } else {
+      const t = window.setTimeout(() => focusBarcodeInput(), 400);
+      return () => {
+        isMountedRef.current = false;
+        stopClock?.();
+        window.clearTimeout(t);
+      };
+    }
 
     return () => {
       isMountedRef.current = false;
@@ -809,7 +825,12 @@ export const TutorScanner = () => {
   }, [nowHHMM, activeArrivalLimit]);
 
   return (
-    <div className="tutor-page">
+    <div
+      className={cn(
+        'tutor-page',
+        showStudentProfile && touchBarcode && 'tutor-page--profile-open',
+      )}
+    >
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {scanAnnouncement}
       </div>
@@ -827,7 +848,7 @@ export const TutorScanner = () => {
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <Badge
               variant={limitTone}
-              className="md:hidden text-[10px] px-2 py-0.5 shrink-0"
+              className="lg:hidden text-[10px] px-2 py-0.5 shrink-0"
             >
               {nowHHMM || '—:—'}
             </Badge>
@@ -852,7 +873,7 @@ export const TutorScanner = () => {
         </div>
 
         {/* Barra de sesión — solo móvil */}
-        <div className="tutor-mobile-bar md:hidden" aria-label="Estado de la sesión">
+        <div className="tutor-mobile-bar lg:hidden" aria-label="Estado de la sesión">
           <div className="tutor-mobile-bar__strip">
             <div className="tutor-mobile-bar__stat">
               <span className="tutor-mobile-bar__stat-val">{sessionCount.total}</span>
@@ -922,7 +943,7 @@ export const TutorScanner = () => {
                       ref={barcodeInputRef}
                       id="barcode-input"
                       type="text"
-                      inputMode="text"
+                      inputMode={touchBarcode ? 'none' : 'text'}
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
@@ -930,7 +951,8 @@ export const TutorScanner = () => {
                       onChange={handleBarcodeChange}
                       onKeyDown={handleBarcodeKeyDown}
                       autoComplete="off"
-                      autoFocus
+                      autoFocus={!touchBarcode}
+                      readOnly={touchBarcode && showStudentProfile && !showIncidentDialog}
                       placeholder="Escanee el carnet…"
                       aria-describedby="barcode-scan-hint"
                       className="tutor-scan-input"
@@ -1052,7 +1074,7 @@ export const TutorScanner = () => {
               <>
                 <button
                   type="button"
-                  className="tutor-student-backdrop md:hidden"
+                  className="tutor-student-backdrop lg:hidden"
                   aria-label="Cerrar perfil del estudiante"
                   onClick={closeStudentProfile}
                 />
@@ -1172,7 +1194,7 @@ export const TutorScanner = () => {
                 </div>
               </>
             )}
-            <div className="tutor-side-stack hidden md:block">
+            <div className="tutor-side-stack hidden lg:block">
             <div className="tutor-side-card">
               <div className="tutor-side-card__head">
                 <CardTitle className="text-base font-semibold">Estado del turno</CardTitle>
@@ -1271,7 +1293,7 @@ export const TutorScanner = () => {
         </div>
 
         {/* Historial reciente colapsable — solo móvil */}
-        <details className="tutor-mobile-feed md:hidden">
+        <details className="tutor-mobile-feed lg:hidden">
           <summary className="tutor-mobile-feed__summary">
             Últimos escaneos
             {sessionCount.total > 0 && (

@@ -66,27 +66,55 @@ export function createWppClient(options = {}) {
     }
   }
 
+  async function apiGet(session, route) {
+    const token = await getToken(session);
+    const res = await fetch(`${apiBase}/${session}${route}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    const raw = await res.text().catch(() => res.statusText);
+    if (!res.ok) {
+      const err = new Error(raw.slice(0, 200) || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { raw };
+    }
+  }
+
   async function isConnected(session) {
     try {
-      const token = await getToken(session);
-      const res = await fetch(`${apiBase}/${session}/check-connection-session`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      });
-      const json = await res.json().catch(() => ({}));
+      const json = await apiGet(session, '/check-connection-session');
       return json.status === true || json.message === 'Connected' || json.connected === true;
     } catch {
       return false;
     }
   }
 
-  async function sendMessage(session, phone, message) {
+  async function getPhoneNumber(session) {
+    const json = await apiGet(session, '/get-phone-number');
+    const raw = String(json.response ?? json.phone ?? json.number ?? json.raw ?? '').replace(/\D/g, '');
+    return raw || null;
+  }
+
+  function typingDelayMs() {
+    const min = Number(process.env.WPPCONNECT_TYPING_MIN_MS || options.typingMinMs || 10_000);
+    const max = Number(process.env.WPPCONNECT_TYPING_MAX_MS || options.typingMaxMs || 18_000);
+    const lo = Math.min(min, max);
+    const hi = Math.max(min, max);
+    return lo + Math.floor(Math.random() * (hi - lo + 1));
+  }
+
+  async function sendMessage(session, phone, message, sendOptions = {}) {
+    const typingMs = sendOptions.typingMs ?? typingDelayMs();
     await apiPost(session, '/typing', { phone, isGroup: false, value: true }).catch(() => {});
-    const typingMs = 2000 + Math.floor(Math.random() * 2000);
     await new Promise((r) => setTimeout(r, typingMs));
     const result = await apiPost(session, '/send-message', { phone, message, isGroup: false });
     await apiPost(session, '/typing', { phone, isGroup: false, value: false }).catch(() => {});
     return result;
   }
 
-  return { getToken, apiPost, isConnected, sendMessage };
+  return { getToken, apiGet, apiPost, isConnected, getPhoneNumber, sendMessage, typingDelayMs };
 }

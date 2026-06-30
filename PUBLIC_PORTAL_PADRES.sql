@@ -89,3 +89,48 @@ $$;
 
 REVOKE ALL ON FUNCTION public.buscar_asistencia_por_dni(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.buscar_asistencia_por_dni(text) TO anon, authenticated;
+
+-- Mes completo de asistencia (portal público / calendario padres). Sin login.
+CREATE OR REPLACE FUNCTION public.asistencia_mes_por_estudiante(
+  p_student_id integer,
+  p_year integer,
+  p_month integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_student_id IS NULL OR p_year IS NULL OR p_month IS NULL THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  IF p_month < 1 OR p_month > 12 THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  RETURN coalesce(
+    (
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'id', id_registro,
+          'studentId', id_estudiante,
+          'date', fecha,
+          'arrivalTime', left(hora_llegada::text, 5),
+          'status', estado
+        )
+        ORDER BY fecha ASC
+      )
+      FROM registros_llegada
+      WHERE id_estudiante = p_student_id
+        AND fecha >= make_date(p_year, p_month, 1)
+        AND fecha < (make_date(p_year, p_month, 1) + interval '1 month')::date
+    ),
+    '[]'::jsonb
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.asistencia_mes_por_estudiante(integer, integer, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.asistencia_mes_por_estudiante(integer, integer, integer) TO anon, authenticated;

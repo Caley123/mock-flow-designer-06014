@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import type { ArrivalRecord } from '@/types';
 
-export type DayStatus = 'present' | 'late' | 'absent' | 'noclass';
+export type DayStatus = 'present' | 'late' | 'absent' | 'norecord' | 'noclass';
 
 export const DAY_STYLES: Record<
   DayStatus,
@@ -27,6 +27,13 @@ export const DAY_STYLES: Record<
     border: '#F2A0A0',
     icon: '✗',
     label: 'falta',
+  },
+  norecord: {
+    bg: '#F7F8FA',
+    text: '#6B7280',
+    border: '#E8EAF0',
+    icon: '',
+    label: '',
   },
   noclass: {
     bg: '#F1F2F5',
@@ -63,6 +70,9 @@ export function resolveDayStatus(
   if (isWeekend(dayKey) || dayKey > todayKey) return 'noclass';
   if (record?.status === 'A tiempo') return 'present';
   if (record?.status === 'Tarde') return 'late';
+  // Hoy sin escaneo aún: no contar como falta hasta que pase el día.
+  if (dayKey === todayKey) return 'norecord';
+  // Día hábil pasado sin entrada registrada = no asistió (o no se escaneó).
   return 'absent';
 }
 
@@ -130,6 +140,12 @@ export function dayDetailCopy(
       return {
         badge: 'Falta',
         description: `${studentFirstName} no asistió al colegio este día. Si fue por enfermedad u otro motivo, puede justificarlo con la tutora.`,
+      };
+    case 'norecord':
+      return {
+        badge: 'Sin registro hoy',
+        description:
+          'Aún no hay entrada registrada hoy. Si su hijo/a ya llegó al colegio, puede demorar unos minutos en aparecer.',
       };
     default:
       return {

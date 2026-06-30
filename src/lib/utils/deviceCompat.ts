@@ -33,6 +33,17 @@ export function isPhoneViewport(): boolean {
   return window.matchMedia('(max-width: 767px)').matches;
 }
 
+/** Tablet o móvil táctil (escáner Bluetooth sin teclado en pantalla). */
+export function prefersTouchBarcodeInput(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    isPhoneViewport() ||
+    isTabletUserAgent() ||
+    window.matchMedia('(max-width: 1023px)').matches ||
+    window.matchMedia('(pointer: coarse)').matches
+  );
+}
+
 /**
  * Login simple — solo móviles y tablets del colegio.
  * Laptops y monitores siempre usan el login completo (panel carnet).
