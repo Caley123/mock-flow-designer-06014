@@ -63,7 +63,7 @@ import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 import { useTutorViewport } from '@/hooks/useTutorViewport';
-import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
+import { isTabletUserAgent, prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { cn } from '@/lib/utils';
 
 export const TutorScanner = () => {
@@ -116,8 +116,12 @@ export const TutorScanner = () => {
 
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
+  const touchTablet = useMemo(
+    () => prefersTouchBarcodeInput() || isTabletUserAgent(),
+    [],
+  );
 
-  useTutorViewport(showStudentProfile && touchBarcode);
+  useTutorViewport(showStudentProfile && touchTablet);
 
   useEffect(() => {
     if (!showStudentProfile) return;
@@ -891,7 +895,8 @@ export const TutorScanner = () => {
     <div
       className={cn(
         'tutor-page',
-        showStudentProfile && touchBarcode && 'tutor-page--profile-open',
+        touchTablet && 'tutor-page--touch',
+        showStudentProfile && touchTablet && 'tutor-page--profile-open',
       )}
     >
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -911,7 +916,7 @@ export const TutorScanner = () => {
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <Badge
               variant={limitTone}
-              className="lg:hidden text-[10px] px-2 py-0.5 shrink-0"
+              className={cn('text-[10px] px-2 py-0.5 shrink-0', !touchTablet && 'lg:hidden')}
             >
               {nowHHMM || '—:—'}
             </Badge>
@@ -936,7 +941,10 @@ export const TutorScanner = () => {
         </div>
 
         {/* Barra de sesión — solo móvil */}
-        <div className="tutor-mobile-bar lg:hidden" aria-label="Estado de la sesión">
+        <div
+          className={cn('tutor-mobile-bar', !touchTablet && 'lg:hidden')}
+          aria-label="Estado de la sesión"
+        >
           <div className="tutor-mobile-bar__strip">
             <div className="tutor-mobile-bar__stat">
               <span className="tutor-mobile-bar__stat-val">{sessionCount.total}</span>
@@ -1164,7 +1172,7 @@ export const TutorScanner = () => {
               <>
                 <button
                   type="button"
-                  className="tutor-student-backdrop lg:hidden"
+                  className={cn('tutor-student-backdrop', !touchTablet && 'lg:hidden')}
                   aria-label="Cerrar perfil del estudiante"
                   onClick={closeStudentProfile}
                 />
@@ -1291,7 +1299,7 @@ export const TutorScanner = () => {
                 </div>
               </>
             )}
-            <div className="tutor-side-stack hidden lg:block">
+            <div className={cn('tutor-side-stack', touchTablet ? 'hidden' : 'hidden lg:block')}>
             <div className="tutor-side-card">
               <div className="tutor-side-card__head">
                 <CardTitle className="text-base font-semibold">Estado del turno</CardTitle>
@@ -1390,7 +1398,7 @@ export const TutorScanner = () => {
         </div>
 
         {/* Historial reciente colapsable — solo móvil */}
-        <details className="tutor-mobile-feed lg:hidden">
+        <details className={cn('tutor-mobile-feed', !touchTablet && 'lg:hidden')}>
           <summary className="tutor-mobile-feed__summary">
             Últimos escaneos
             {sessionCount.total > 0 && (

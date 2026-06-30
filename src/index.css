@@ -3253,8 +3253,117 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Panel estudiante en tablet/móvil (también horizontal >1024px) */
+  .tutor-page--touch .tutor-student-card {
+    @apply fixed z-50 flex flex-col rounded-t-[1.75rem] rounded-b-none border-x-0 border-b-0;
+    left: 0;
+    right: 0;
+    top: max(0.5rem, env(safe-area-inset-top, 0px));
+    bottom: 0;
+    max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top, 0px)));
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
+  }
+
+  .tutor-page--touch .tutor-student-card__hero-sticky {
+    @apply relative shrink-0 border-b border-border/70 bg-card px-4 pb-4 pt-10;
+  }
+
+  .tutor-page--touch .tutor-student-card__scroll {
+    @apply flex-1 min-h-0 overflow-y-auto px-4 pb-5 pt-3;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  .tutor-page--touch .tutor-identity--sheet {
+    @apply flex flex-col items-center gap-3 border-0 pb-0 text-center;
+  }
+
+  .tutor-page--touch .tutor-identity__photo-frame {
+    width: clamp(11rem, 46vw, 17.5rem);
+    height: clamp(11rem, 46vw, 17.5rem);
+    flex-shrink: 0;
+    margin-inline: auto;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    border: 4px solid hsl(var(--primary) / 0.35);
+    box-shadow: 0 8px 32px hsl(var(--foreground) / 0.12);
+    background: hsl(var(--muted) / 0.35);
+    aspect-ratio: 1;
+  }
+
+  .tutor-page--touch .tutor-identity__photo-frame > *,
+  .tutor-page--touch .tutor-identity__photo-frame img {
+    height: 100% !important;
+    width: 100% !important;
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: cover;
+    object-position: center 20%;
+  }
+
+  .tutor-page--touch .tutor-identity__meta {
+    @apply flex w-full flex-col items-center;
+  }
+
+  .tutor-page--touch .tutor-identity--sheet .tutor-student-card__status {
+    @apply mt-1;
+  }
+
+  .tutor-page--touch .tutor-identity--sheet .tutor-identity__name {
+    @apply text-xl leading-tight;
+  }
+
+  .tutor-page--touch .tutor-student-card__actions {
+    @apply grid-cols-1 pb-2;
+  }
+
+  .tutor-page--touch .tutor-student-card__btn-next,
+  .tutor-page--touch .tutor-student-card__btn-incident {
+    @apply min-h-[3rem];
+  }
+
+  .tutor-page--touch .tutor-schedule {
+    @apply mt-0;
+  }
+
+  @media (orientation: landscape) {
+    .tutor-page--touch .tutor-student-card {
+      @apply rounded-none;
+      top: 0;
+      max-height: 100dvh;
+    }
+
+    .tutor-page--touch .tutor-student-card__hero-sticky {
+      @apply px-5 py-3 pt-9;
+    }
+
+  .tutor-page--touch .tutor-identity--sheet {
+      @apply flex-col items-center gap-2 text-center;
+    }
+
+    .tutor-page--touch .tutor-identity__photo-frame {
+      width: clamp(13rem, min(58vh, 42vw), 26rem);
+      height: clamp(13rem, min(58vh, 42vw), 26rem);
+    }
+
+    .tutor-page--touch .tutor-identity__meta {
+      @apply min-w-0 w-full items-center text-center;
+    }
+
+    .tutor-page--touch .tutor-identity--sheet .tutor-identity__name {
+      @apply mt-0 text-lg sm:text-xl;
+    }
+
+    .tutor-page--touch .tutor-quick-report__grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 1023px) {
-    .tutor-student-card {
+    .tutor-page:not(.tutor-page--touch) .tutor-student-card {
       @apply fixed z-50 flex flex-col rounded-t-[1.75rem] rounded-b-none border-x-0 border-b-0;
       left: 0;
       right: 0;
@@ -3264,103 +3373,6 @@
       overflow: hidden;
       padding-bottom: env(safe-area-inset-bottom, 0px);
       box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
-    }
-
-    .tutor-student-card__hero-sticky {
-      @apply relative shrink-0 border-b border-border/70 bg-card px-4 pb-4 pt-10;
-    }
-
-    .tutor-student-card__scroll {
-      @apply flex-1 min-h-0 overflow-y-auto px-4 pb-5 pt-3;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      touch-action: pan-y;
-    }
-
-    .tutor-identity--sheet {
-      @apply flex flex-col items-center gap-3 border-0 pb-0 text-center;
-    }
-
-    .tutor-identity__photo-frame {
-      width: clamp(11rem, 46vw, 17.5rem);
-      height: clamp(11rem, 46vw, 17.5rem);
-      flex-shrink: 0;
-      margin-inline: auto;
-      overflow: hidden;
-      border-radius: 1.25rem;
-      border: 4px solid hsl(var(--primary) / 0.35);
-      box-shadow: 0 8px 32px hsl(var(--foreground) / 0.12);
-      background: hsl(var(--muted) / 0.35);
-    }
-
-    .tutor-identity__photo-frame > * {
-      height: 100% !important;
-      width: 100% !important;
-      max-height: 100%;
-      max-width: 100%;
-    }
-
-    .tutor-identity__meta {
-      @apply flex w-full flex-col items-center;
-    }
-
-    .tutor-identity--sheet .tutor-student-card__status {
-      @apply mt-1;
-    }
-
-    .tutor-identity--sheet .tutor-identity__name {
-      @apply text-xl leading-tight;
-    }
-
-    .tutor-student-card__actions {
-      @apply grid-cols-1 pb-2;
-    }
-
-    .tutor-student-card__btn-next,
-    .tutor-student-card__btn-incident {
-      @apply min-h-[3rem];
-    }
-
-    .tutor-schedule {
-      @apply mt-0;
-    }
-  }
-
-  @media (max-width: 1023px) and (orientation: landscape) {
-    .tutor-student-card {
-      @apply rounded-none;
-      top: 0;
-      max-height: 100dvh;
-    }
-
-    .tutor-student-card__hero-sticky {
-      @apply px-5 py-4 pt-10;
-    }
-
-    .tutor-identity--sheet {
-      @apply flex-row items-center gap-5 text-left;
-    }
-
-    .tutor-identity__photo-frame {
-      width: clamp(10rem, 32vh, 15rem);
-      height: clamp(10rem, 32vh, 15rem);
-      margin-inline: 0;
-    }
-
-    .tutor-identity__meta {
-      @apply min-w-0 flex-1 items-start text-left;
-    }
-
-    .tutor-identity--sheet .tutor-student-card__status {
-      @apply mt-0;
-    }
-
-    .tutor-identity--sheet .tutor-identity__name {
-      @apply mt-1 text-xl;
-    }
-
-    .tutor-quick-report__grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 
