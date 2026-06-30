@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,7 +42,6 @@ export const ArrivalControl = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'A tiempo' | 'Tarde'>('all');
-  const [stats, setStats] = useState<{ total: number; onTime: number; late: number } | null>(null);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
@@ -84,19 +83,14 @@ export const ArrivalControl = () => {
       if (error) {
         toast.error('Error al cargar llegadas');
         setRecords([]);
-        setStats({ total: 0, onTime: 0, late: 0 });
       } else {
-        const onTime = arrivals.filter((r) => r.status === 'A tiempo').length;
-        const late = arrivals.filter((r) => r.status === 'Tarde').length;
         setRecords(arrivals);
-        setStats({ total: arrivals.length, onTime, late });
       }
     } catch (error) {
       if (!isMountedRef.current) return;
       console.error('Error en loadArrivals:', error);
       toast.error('Error al procesar las llegadas');
       setRecords([]);
-      setStats({ total: 0, onTime: 0, late: 0 });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -129,23 +123,35 @@ export const ArrivalControl = () => {
     }
   };
 
-  const filteredRecords = records.filter((record) => {
-    const studentName = record.student?.fullName ?? '';
-    const matchesSearch = studentName
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || record.status === statusFilter;
-    const matchesLevel =
-      levelFilter === 'all' || record.student?.level === levelFilter;
-    const matchesGrade =
-      gradeFilter === 'all' || record.student?.grade === gradeFilter;
-    const matchesSection =
-      sectionFilter === 'all' || record.student?.section === sectionFilter;
-    return matchesSearch && matchesStatus && matchesLevel && matchesGrade && matchesSection;
-  });
+  const filteredRecords = useMemo(
+    () =>
+      records.filter((record) => {
+        const studentName = record.student?.fullName ?? '';
+        const matchesSearch = studentName
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' || record.status === statusFilter;
+        const matchesLevel =
+          levelFilter === 'all' || record.student?.level === levelFilter;
+        const matchesGrade =
+          gradeFilter === 'all' || record.student?.grade === gradeFilter;
+        const matchesSection =
+          sectionFilter === 'all' || record.student?.section === sectionFilter;
+        return matchesSearch && matchesStatus && matchesLevel && matchesGrade && matchesSection;
+      }),
+    [records, searchTerm, statusFilter, levelFilter, gradeFilter, sectionFilter],
+  );
+
+  const filteredStats = useMemo(() => {
+    const onTime = filteredRecords.filter((r) => r.status === 'A tiempo').length;
+    const late = filteredRecords.filter((r) => r.status === 'Tarde').length;
+    return { total: filteredRecords.length, onTime, late };
+  }, [filteredRecords]);
 
   const onTimePct =
-    stats && stats.total > 0 ? Math.round((stats.onTime / stats.total) * 100) : 0;
+    filteredStats.total > 0
+      ? Math.round((filteredStats.onTime / filteredStats.total) * 100)
+      : 0;
 
   return (
     <div className="app-page app-page-shell">
@@ -160,13 +166,13 @@ export const ArrivalControl = () => {
       <div className="app-kpi-grid !grid-cols-1 sm:!grid-cols-3">
         <StaffKpiStat
           label="Total llegadas"
-          value={stats?.total || 0}
+          value={filteredStats.total}
           icon={Users}
           tone="primary"
         />
         <StaffKpiStat
           label="A tiempo"
-          value={stats?.onTime || 0}
+          value={filteredStats.onTime}
           hint={`${onTimePct}% del total`}
           hintIcon={CheckCircle}
           icon={CheckCircle}
@@ -174,7 +180,7 @@ export const ArrivalControl = () => {
         />
         <StaffKpiStat
           label="Tarde"
-          value={stats?.late || 0}
+          value={filteredStats.late}
           hint="Requieren seguimiento"
           hintIcon={AlertCircle}
           icon={AlertCircle}
