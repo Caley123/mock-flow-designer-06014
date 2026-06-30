@@ -3188,6 +3188,20 @@
     caret-color: transparent;
   }
 
+  .tutor-name-search-results {
+    max-height: min(70dvh, 32rem);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .tutor-name-search-results__row + .tutor-name-search-results__row {
+    @apply border-t border-border/70;
+  }
+
+  .tutor-name-search-results__photo {
+    @apply border-2 border-border/80 shadow-sm;
+  }
+
   .tutor-scan-input::placeholder,
   .tutor-field-input::placeholder {
     color: hsl(var(--muted-foreground));

@@ -183,6 +183,46 @@ export const studentsService = {
     }
   },
 
+  /**
+   * Búsqueda del escáner tutor: nombre + DNI/carnet en una sola consulta.
+   * Combina RPC por nombre y lookup por código para hermanos y DNI parcial.
+   */
+  async searchForTutorScanner(
+    query: string,
+    limit: number = 25,
+  ): Promise<{ students: Student[]; error: string | null }> {
+    const trimmed = query.trim().replace(/\s+/g, ' ');
+    if (trimmed.length < 2) {
+      return { students: [], error: null };
+    }
+
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    const isDniLike = digitsOnly.length >= 2 && digitsOnly.length >= trimmed.replace(/\s/g, '').length * 0.6;
+
+    const [nameResult, dniResult] = await Promise.all([
+      this.searchByName(trimmed, limit),
+      isDniLike
+        ? this.lookupByBarcodeOrDni(trimmed, { skipReincidence: true })
+        : Promise.resolve({ student: null as Student | null, error: null as string | null }),
+    ]);
+
+    const merged = new Map<number, Student>();
+    if (dniResult.student) merged.set(dniResult.student.id, dniResult.student);
+    for (const s of nameResult.students) merged.set(s.id, s);
+
+    const students = [...merged.values()].sort((a, b) => {
+      const lastA = a.fullName.trim().split(/\s+/).pop() ?? '';
+      const lastB = b.fullName.trim().split(/\s+/).pop() ?? '';
+      const byLast = lastA.localeCompare(lastB, 'es');
+      if (byLast !== 0) return byLast;
+      const gradeCmp = a.grade.localeCompare(b.grade, 'es', { numeric: true });
+      if (gradeCmp !== 0) return gradeCmp;
+      return a.fullName.localeCompare(b.fullName, 'es');
+    });
+
+    return { students, error: nameResult.error ?? dniResult.error };
+  },
+
   async getAll(filters?: {
     grade?: string;
     section?: string;

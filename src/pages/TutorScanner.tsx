@@ -209,7 +209,7 @@ export const TutorScanner = () => {
     setNameSearchEmpty(false);
 
     const timeoutId = window.setTimeout(async () => {
-      const { students, error } = await studentsService.searchByName(nameSearch.trim(), 12);
+      const { students, error } = await studentsService.searchForTutorScanner(nameSearch.trim(), 25);
       if (cancelled || !isMountedRef.current) return;
       if (error) {
         setNameSearchResults([]);
@@ -681,6 +681,59 @@ export const TutorScanner = () => {
     processStudent(studentToRegister, scanSeq);
   };
 
+  const handleNameSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = nameSearch.trim();
+    if (q.length < 2) return;
+
+    if (nameSearchResults.length === 1) {
+      void handleNameSearchSelect(nameSearchResults[0]);
+      return;
+    }
+
+    setNameSearching(true);
+    setNameSearchError(null);
+    try {
+      const { students, error } = await studentsService.searchForTutorScanner(q, 25);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      if (students.length === 1) {
+        void handleNameSearchSelect(students[0]);
+        return;
+      }
+      if (students.length > 1) {
+        setNameSearchResults(students);
+        setNameSearchEmpty(false);
+        return;
+      }
+
+      const digits = q.replace(/\D/g, '');
+      if (digits.length >= 4) {
+        const { student, error: dniError } = await studentsService.lookupByBarcodeOrDni(q, {
+          skipReincidence: true,
+        });
+        if (student) {
+          setNameSearch('');
+          setNameSearchResults([]);
+          setNameSearchEmpty(false);
+          processStudent(student, ++latestProfileScanRef.current);
+        } else if (dniError) {
+          toast.error(dniError);
+        } else {
+          setNameSearchEmpty(true);
+        }
+      } else {
+        setNameSearchResults([]);
+        setNameSearchEmpty(true);
+      }
+    } finally {
+      setNameSearching(false);
+    }
+  };
+
   const handleScan = (e: React.FormEvent) => {
     e.preventDefault();
     const code = barcode;
@@ -985,12 +1038,19 @@ export const TutorScanner = () => {
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="name-search-input"
-                        type="search"
+                        type="text"
                         value={nameSearch}
                         onChange={(e) => setNameSearch(e.target.value)}
+                        onKeyDown={handleNameSearchKeyDown}
                         placeholder="Nombre, apellido o DNI…"
                         autoComplete="off"
                         enterKeyHint="search"
+                        inputMode={
+                          nameSearch.replace(/\D/g, '').length >= 2 &&
+                          nameSearch.replace(/\D/g, '').length >= nameSearch.trim().length * 0.6
+                            ? 'numeric'
+                            : 'text'
+                        }
                         disabled={lookupPending}
                         className="tutor-field-input pl-9 min-h-12 sm:min-h-10"
                         aria-describedby="name-search-hint"
@@ -1002,8 +1062,13 @@ export const TutorScanner = () => {
                       )}
                     </div>
                     <p id="name-search-hint" className="text-xs text-muted-foreground">
-                      Escriba nombre, apellido o DNI. Puede usar varias palabras en cualquier orden.
+                      Escriba nombre, apellido o DNI. Con DNI completo pulse Enter para registrar. Hasta 25 resultados.
                     </p>
+                    {nameSearchResults.length > 0 && (
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {nameSearchResults.length} estudiante{nameSearchResults.length === 1 ? '' : 's'} — toque el correcto
+                      </p>
+                    )}
                     {nameSearchError && (
                       <p className="text-xs text-destructive" role="alert">
                         {nameSearchError}
@@ -1016,7 +1081,7 @@ export const TutorScanner = () => {
                       <div
                         id="name-search-results"
                         role="listbox"
-                        className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-popover shadow-lg"
+                        className="tutor-name-search-results absolute z-20 mt-1 w-full overflow-auto rounded-xl border border-border bg-popover shadow-xl"
                       >
                         {nameSearchResults.map((result) => (
                           <button
@@ -1024,12 +1089,27 @@ export const TutorScanner = () => {
                             type="button"
                             role="option"
                             onClick={() => handleNameSearchSelect(result)}
-                            className="flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                            className="tutor-name-search-results__row flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:px-4 sm:py-3.5"
                           >
-                            <span className="font-medium text-foreground">{result.fullName}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {result.level} · {result.grade} {result.section}
-                              {result.barcode ? ` · ${result.barcode}` : ''}
+                            <StudentPhoto
+                              src={result.profilePhoto}
+                              name={result.fullName}
+                              className="tutor-name-search-results__photo h-14 w-14 shrink-0 rounded-lg sm:h-16 sm:w-16"
+                              imageClassName="object-cover object-center"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-base leading-snug text-foreground">
+                                {result.fullName}
+                              </span>
+                              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+                                <span className="font-mono font-semibold text-foreground/90">
+                                  DNI {result.barcode || '—'}
+                                </span>
+                                <span aria-hidden>·</span>
+                                <span>
+                                  {result.level} · {result.grade} &apos;{result.section}&apos;
+                                </span>
+                              </span>
                             </span>
                           </button>
                         ))}
