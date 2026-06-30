@@ -63,6 +63,7 @@ import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 import { useTutorViewport } from '@/hooks/useTutorViewport';
+import { isDniLikeQuery, TUTOR_NAME_SEARCH_LIMIT } from '@/lib/utils/studentSearch';
 import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { cn } from '@/lib/utils';
@@ -221,7 +222,7 @@ export const TutorScanner = () => {
     setNameSearchEmpty(false);
 
     const timeoutId = window.setTimeout(async () => {
-      const { students, error } = await studentsService.searchForTutorScanner(nameSearch.trim(), 25);
+      const { students, error } = await studentsService.searchForTutorScanner(nameSearch.trim());
       if (cancelled || !isMountedRef.current) return;
       if (error) {
         setNameSearchResults([]);
@@ -707,7 +708,7 @@ export const TutorScanner = () => {
     setNameSearching(true);
     setNameSearchError(null);
     try {
-      const { students, error } = await studentsService.searchForTutorScanner(q, 25);
+      const { students, error } = await studentsService.searchForTutorScanner(q);
       if (error) {
         toast.error(error);
         return;
@@ -1061,12 +1062,7 @@ export const TutorScanner = () => {
                         placeholder="Nombre, apellido o DNI…"
                         autoComplete="off"
                         enterKeyHint="search"
-                        inputMode={
-                          nameSearch.replace(/\D/g, '').length >= 2 &&
-                          nameSearch.replace(/\D/g, '').length >= nameSearch.trim().length * 0.6
-                            ? 'numeric'
-                            : 'text'
-                        }
+                        inputMode={isDniLikeQuery(nameSearch) ? 'numeric' : 'text'}
                         disabled={lookupPending}
                         className="tutor-field-input pl-9 min-h-12 sm:min-h-10"
                         aria-describedby="name-search-hint"
@@ -1078,7 +1074,8 @@ export const TutorScanner = () => {
                       )}
                     </div>
                     <p id="name-search-hint" className="text-xs text-muted-foreground">
-                      Escriba nombre, apellido o DNI. Con DNI completo pulse Enter para registrar. Hasta 25 resultados.
+                      Escriba nombre, apellido o DNI. Cada palabra filtra (ej. &quot;huamani rey&quot;). Hasta{' '}
+                      {TUTOR_NAME_SEARCH_LIMIT} resultados.
                     </p>
                     {nameSearchResults.length > 0 && (
                       <p className="text-xs font-medium text-muted-foreground">
@@ -1105,16 +1102,16 @@ export const TutorScanner = () => {
                             type="button"
                             role="option"
                             onClick={() => handleNameSearchSelect(result)}
-                            className="tutor-name-search-results__row flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:px-4 sm:py-3.5"
+                            className="tutor-name-search-results__row flex w-full items-center gap-3 px-3 py-3.5 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none sm:px-4 sm:py-4"
                           >
                             <StudentPhoto
                               src={result.profilePhoto}
                               name={result.fullName}
-                              className="tutor-name-search-results__photo h-14 w-14 shrink-0 rounded-lg sm:h-16 sm:w-16"
+                              className="tutor-name-search-results__photo h-16 w-16 shrink-0 rounded-xl sm:h-[4.5rem] sm:w-[4.5rem]"
                               imageClassName="object-cover object-center"
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block font-semibold text-base leading-snug text-foreground">
+                              <span className="block font-semibold text-base leading-snug text-foreground sm:text-lg">
                                 {result.fullName}
                               </span>
                               <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">

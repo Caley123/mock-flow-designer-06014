@@ -3186,9 +3186,21 @@
   }
 
   .tutor-name-search-results {
-    max-height: min(70dvh, 32rem);
+    max-height: min(82dvh, 52rem);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+  }
+
+  .tutor-page--touch .tutor-name-search-results {
+    max-height: min(88dvh, 56rem);
+  }
+
+  .tutor-name-search-results__row {
+    min-height: 4.75rem;
+  }
+
+  .tutor-page--touch .tutor-name-search-results__row {
+    min-height: 5.25rem;
   }
 
   .tutor-name-search-results__row + .tutor-name-search-results__row {

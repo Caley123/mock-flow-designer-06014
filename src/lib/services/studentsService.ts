@@ -1,6 +1,15 @@
 import { supabase } from '../supabaseClient';
 import { Student, EducationalLevel } from '@/types';
 import { resolveStudentProfilePhotoUrl } from '@/lib/utils/profilePhoto';
+import {
+  TUTOR_NAME_SEARCH_LIMIT,
+  foldSearchText,
+  isDniLikeQuery,
+  normalizeSearchQuery,
+  sortStudentsForSearch,
+  studentMatchesSearchTokens,
+  tokenizeSearchQuery,
+} from '@/lib/utils/studentSearch';
 import { sessionService } from './sessionService';
 
 function requireApiToken(): string | null {
@@ -185,42 +194,64 @@ export const studentsService = {
 
   /**
    * Búsqueda del escáner tutor: nombre + DNI/carnet en una sola consulta.
-   * Combina RPC por nombre y lookup por código para hermanos y DNI parcial.
+   * Busca por frase completa y por cada palabra; filtra y ordena en cliente.
    */
   async searchForTutorScanner(
     query: string,
-    limit: number = 25,
+    limit: number = TUTOR_NAME_SEARCH_LIMIT,
   ): Promise<{ students: Student[]; error: string | null }> {
-    const trimmed = query.trim().replace(/\s+/g, ' ');
+    const trimmed = normalizeSearchQuery(query);
     if (trimmed.length < 2) {
       return { students: [], error: null };
     }
 
-    const digitsOnly = trimmed.replace(/\D/g, '');
-    const isDniLike = digitsOnly.length >= 2 && digitsOnly.length >= trimmed.replace(/\s/g, '').length * 0.6;
+    const tokens = tokenizeSearchQuery(trimmed);
+    const matchTokens = tokens.length > 0 ? tokens : [trimmed];
+    const isDniLike = isDniLikeQuery(trimmed);
 
-    const [nameResult, dniResult] = await Promise.all([
-      this.searchByName(trimmed, limit),
-      isDniLike
-        ? this.lookupByBarcodeOrDni(trimmed, { skipReincidence: true })
-        : Promise.resolve({ student: null as Student | null, error: null as string | null }),
-    ]);
+    const queriesToRun = new Set<string>([trimmed, ...tokens]);
+    const foldedFull = foldSearchText(trimmed);
+    if (foldedFull.length >= 2 && foldedFull !== trimmed.toLowerCase()) {
+      queriesToRun.add(foldedFull);
+    }
+    for (const tok of tokens) {
+      const folded = foldSearchText(tok);
+      if (folded.length >= 2 && folded !== tok.toLowerCase()) {
+        queriesToRun.add(folded);
+      }
+    }
+
+    let nameError: string | null = null;
+    const nameSearches = await Promise.all(
+      [...queriesToRun].map((q) => this.searchByName(q, limit)),
+    );
 
     const merged = new Map<number, Student>();
-    if (dniResult.student) merged.set(dniResult.student.id, dniResult.student);
-    for (const s of nameResult.students) merged.set(s.id, s);
+    for (const result of nameSearches) {
+      if (result.error) nameError = result.error;
+      for (const student of result.students) {
+        merged.set(student.id, student);
+      }
+    }
 
-    const students = [...merged.values()].sort((a, b) => {
-      const lastA = a.fullName.trim().split(/\s+/).pop() ?? '';
-      const lastB = b.fullName.trim().split(/\s+/).pop() ?? '';
-      const byLast = lastA.localeCompare(lastB, 'es');
-      if (byLast !== 0) return byLast;
-      const gradeCmp = a.grade.localeCompare(b.grade, 'es', { numeric: true });
-      if (gradeCmp !== 0) return gradeCmp;
-      return a.fullName.localeCompare(b.fullName, 'es');
-    });
+    const dniResult = isDniLike
+      ? await this.lookupByBarcodeOrDni(trimmed, { skipReincidence: true })
+      : { student: null as Student | null, error: null as string | null };
 
-    return { students, error: nameResult.error ?? dniResult.error };
+    if (dniResult.student) {
+      merged.set(dniResult.student.id, dniResult.student);
+    }
+
+    const dniStudentId = dniResult.student?.id;
+    const students = sortStudentsForSearch(
+      [...merged.values()].filter(
+        (student) =>
+          student.id === dniStudentId || studentMatchesSearchTokens(student, matchTokens),
+      ),
+      matchTokens,
+    ).slice(0, limit);
+
+    return { students, error: nameError ?? dniResult.error };
   },
 
   async getAll(filters?: {
