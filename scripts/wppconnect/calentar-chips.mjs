@@ -102,30 +102,61 @@ async function main() {
     sendsByChip.set(session, (sendsByChip.get(session) || 0) + 1);
   }
 
+  /** Si el chip asignado llegó al tope (ej. chip-04 = 2), usa otro chip con cupo. */
+  function pickWarmupSender(preferredSession, chipList) {
+    if (canWarmupSend(preferredSession)) return preferredSession;
+
+    const candidates = chipList
+      .map((chip) => chip.session)
+      .filter((session) => session !== preferredSession && canWarmupSend(session))
+      .sort((a, b) => {
+        const remA = warmupSendCap(a) - (sendsByChip.get(a) || 0);
+        const remB = warmupSendCap(b) - (sendsByChip.get(b) || 0);
+        return remB - remA || a.localeCompare(b, 'es');
+      });
+
+    return candidates[0] || null;
+  }
+
+  async function sendWarmupStep(preferredFrom, toPhone, toSession) {
+    const sender = pickWarmupSender(preferredFrom, chips);
+    if (!sender) {
+      log(
+        `SKIP paso ${preferredFrom} → ${toSession} — ningún chip con cupo de envío`,
+      );
+      return false;
+    }
+
+    if (sender !== preferredFrom) {
+      log(
+        `REDIR ${preferredFrom} → ${sender} (tope ${sendsByChip.get(preferredFrom) || 0}/${warmupSendCap(preferredFrom)})`,
+      );
+    }
+
+    const message = pickWarmupMessage();
+    const typingMs = wpp.typingDelayMs();
+
+    try {
+      log(`${sender} → ${toPhone} (escribiendo ${(typingMs / 1000).toFixed(1)}s)`);
+      await wpp.sendMessage(sender, toPhone, message, { typingMs });
+      recordWarmupSend(sender);
+      log(`  OK: ${message.slice(0, 72)}${message.length > 72 ? '…' : ''}`);
+      sent++;
+      return true;
+    } catch (err) {
+      log(`  ERROR: ${err.message}`);
+      failed++;
+      return false;
+    }
+  }
+
   for (let round = 1; round <= ROUNDS; round++) {
     log(`--- Ronda ${round}/${ROUNDS} ---`);
     for (let i = 0; i < chips.length; i++) {
       const from = chips[i];
       const to = chips[(i + 1) % chips.length];
 
-      if (!canWarmupSend(from.session)) {
-        log(`SKIP envío ${from.session} — tope de calentamiento (${sendsByChip.get(from.session) || 0}/${warmupSendCap(from.session)})`);
-        continue;
-      }
-
-      const message = pickWarmupMessage();
-      const typingMs = wpp.typingDelayMs();
-
-      try {
-        log(`${from.session} → ${to.phone} (escribiendo ${(typingMs / 1000).toFixed(1)}s)`);
-        await wpp.sendMessage(from.session, to.phone, message, { typingMs });
-        recordWarmupSend(from.session);
-        log(`  OK: ${message.slice(0, 72)}${message.length > 72 ? '…' : ''}`);
-        sent++;
-      } catch (err) {
-        log(`  ERROR: ${err.message}`);
-        failed++;
-      }
+      await sendWarmupStep(from.session, to.phone, to.session);
 
       if (round < ROUNDS || i < chips.length - 1) {
         const pause = randomBetween(PAUSE_MIN, PAUSE_MAX);
@@ -135,7 +166,11 @@ async function main() {
     }
   }
 
+  const sendSummary = [...sendsByChip.entries()]
+    .map(([session, count]) => `${session}=${count}`)
+    .join(', ');
   log(`=== Fin: ${sent} enviados, ${failed} fallos, ${chips.length} chips activos ===`);
+  if (sendSummary) log(`Envíos por chip: ${sendSummary}`);
   process.exit(failed > 0 && sent === 0 ? 1 : 0);
 }
 

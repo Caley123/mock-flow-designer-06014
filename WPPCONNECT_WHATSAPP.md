@@ -86,6 +86,7 @@ El SIE encola cada aviso en **`sie-wpp-notify-queue`** (puerto `3100`, ruta púb
 | **Spintax** | Saludo y cierre aleatorios; hora con **segundos** |
 | **Typing** | Simula “escribiendo…” **10–12 s** antes de cada mensaje |
 | **Tope horario** | Máx. **250** msg/hora por chip (chip-04: **máx. 2**/hora) |
+| **Calentamiento diario** | Chip-04 envía como máximo **2** mensajes; si la ronda necesita más, **otros chips** envían en su lugar |
 
 Capacidad teórica con 7 chips conectados: **~1.748 msg/h** (6×250 + 2). El contador se reinicia al inicio de cada hora en **America/Lima** (UTC−5, sin horario de verano).
 
