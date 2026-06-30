@@ -69,6 +69,8 @@ import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { useHardwareBarcodeCapture } from '@/hooks/useHardwareBarcodeCapture';
 import { cn } from '@/lib/utils';
 
+const NAME_SEARCH_SCROLL_AFTER = 8;
+
 export const TutorScanner = () => {
   const navigate = useNavigate();
   const invalidateIncidents = useInvalidateIncidents();
@@ -980,7 +982,12 @@ export const TutorScanner = () => {
       <main id="main-content" className="tutor-main">
         <div className="tutor-grid">
           <section className="tutor-left">
-            <div className="tutor-scan-card">
+            <div
+              className={cn(
+                'tutor-scan-card',
+                nameSearchResults.length > 0 && 'tutor-scan-card--search-open',
+              )}
+            >
               <div className="tutor-scan-card__head">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
@@ -1108,7 +1115,11 @@ export const TutorScanner = () => {
                       <div
                         id="name-search-results"
                         role="listbox"
-                        className="tutor-name-search-results absolute z-20 mt-1 w-full overflow-auto rounded-xl border border-border bg-popover shadow-xl"
+                        className={cn(
+                          'tutor-name-search-results w-full rounded-xl border border-border bg-popover shadow-xl',
+                          nameSearchResults.length > NAME_SEARCH_SCROLL_AFTER &&
+                            'tutor-name-search-results--scroll',
+                        )}
                       >
                         {nameSearchResults.map((result) => (
                           <button

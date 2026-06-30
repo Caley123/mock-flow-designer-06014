@@ -3159,6 +3159,14 @@
     @apply rounded-2xl sm:rounded-[28px] border border-border bg-card overflow-hidden;
   }
 
+  .tutor-scan-card--search-open {
+    overflow: visible;
+  }
+
+  .tutor-scan-card--search-open .tutor-scan-card__head {
+    @apply rounded-t-2xl sm:rounded-t-[28px];
+  }
+
   .tutor-scan-card__head {
     @apply border-b border-border px-4 py-4 sm:px-7 sm:py-6;
     border-left: 3px solid hsl(var(--primary));
@@ -3186,13 +3194,18 @@
   }
 
   .tutor-name-search-results {
-    max-height: min(82dvh, 52rem);
+    @apply mt-1;
+  }
+
+  .tutor-name-search-results--scroll {
+    max-height: min(70dvh, 42rem);
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
 
-  .tutor-page--touch .tutor-name-search-results {
-    max-height: min(88dvh, 56rem);
+  .tutor-page--touch .tutor-name-search-results--scroll {
+    max-height: min(75dvh, 44rem);
   }
 
   .tutor-name-search-results__row {
