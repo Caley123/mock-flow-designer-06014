@@ -34,6 +34,9 @@ import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
 
+const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
+const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
 export const ArrivalControl = () => {
   const [records, setRecords] = useState<ArrivalRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +44,8 @@ export const ArrivalControl = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'A tiempo' | 'Tarde'>('all');
   const [stats, setStats] = useState<{ total: number; onTime: number; late: number } | null>(null);
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
+  const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
   const isMountedRef = useRef(true);
   
   // Obtener fecha actual en formato YYYY-MM-DD
@@ -132,7 +137,11 @@ export const ArrivalControl = () => {
     const matchesStatus = statusFilter === 'all' || record.status === statusFilter;
     const matchesLevel =
       levelFilter === 'all' || record.student?.level === levelFilter;
-    return matchesSearch && matchesStatus && matchesLevel;
+    const matchesGrade =
+      gradeFilter === 'all' || record.student?.grade === gradeFilter;
+    const matchesSection =
+      sectionFilter === 'all' || record.student?.section === sectionFilter;
+    return matchesSearch && matchesStatus && matchesLevel && matchesGrade && matchesSection;
   });
 
   const onTimePct =
@@ -173,7 +182,7 @@ export const ArrivalControl = () => {
         />
       </div>
 
-      <StaffToolbar title="Filtros del día" description="Fecha, estudiante y estado">
+      <StaffToolbar title="Filtros del día" description="Fecha, estudiante, nivel, grado, sección y estado">
         <div className="space-y-2">
           <Label>Fecha</Label>
           <Input
@@ -205,6 +214,38 @@ export const ArrivalControl = () => {
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="Primaria">Primaria</SelectItem>
               <SelectItem value="Secundaria">Secundaria</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Grado</Label>
+          <Select value={gradeFilter} onValueChange={(value) => setGradeFilter(value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {GRADES.map((grade) => (
+                <SelectItem key={grade} value={grade}>
+                  {grade}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Sección</Label>
+          <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {SECTIONS.map((section) => (
+                <SelectItem key={section} value={section}>
+                  {section}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
