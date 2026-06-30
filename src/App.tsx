@@ -15,21 +15,22 @@ import { PageMetaManager } from "./components/seo/PageMetaManager";
 import { SiteAnalytics } from "./components/seo/SiteAnalytics";
 import { StaffLayoutShell } from "./components/layout/StaffLayoutShell";
 import { lazyPage } from "./lib/lazyPage";
+import { Dashboard } from "./pages/Dashboard";
+import { RegisterIncident } from "./pages/RegisterIncident";
+import { IncidentsList } from "./pages/IncidentsList";
+import { StudentsList } from "./pages/StudentsList";
+import { AttendanceReport } from "./pages/AttendanceReport";
+import { ArrivalControl } from "./pages/ArrivalControl";
+import { DepartureControl } from "./pages/DepartureControl";
+import { ParentMeetings } from "./pages/ParentMeetings";
+import { JustifyFaults } from "./pages/JustifyFaults";
+import { FaultsCatalog } from "./pages/FaultsCatalog";
+import { Reports } from "./pages/Reports";
+import { AuditLogs } from "./pages/AuditLogs";
+import { SystemConfig } from "./pages/SystemConfig";
 
 const Login = lazyPage(() => import("./pages/Login").then(m => ({ default: m.Login })));
-const Dashboard = lazyPage(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
-const RegisterIncident = lazyPage(() => import("./pages/RegisterIncident").then(m => ({ default: m.RegisterIncident })));
-const IncidentsList = lazyPage(() => import("./pages/IncidentsList").then(m => ({ default: m.IncidentsList })));
-const StudentsList = lazyPage(() => import("./pages/StudentsList").then(m => ({ default: m.StudentsList })));
-const FaultsCatalog = lazyPage(() => import("./pages/FaultsCatalog").then(m => ({ default: m.FaultsCatalog })));
-const Reports = lazyPage(() => import("./pages/Reports").then(m => ({ default: m.Reports })));
-const AttendanceReport = lazyPage(() => import("./pages/AttendanceReport").then(m => ({ default: m.AttendanceReport })));
 const TutorScanner = lazyPage(() => import("./pages/TutorScanner").then(m => ({ default: m.TutorScanner })));
-const AuditLogs = lazyPage(() => import("./pages/AuditLogs").then(m => ({ default: m.AuditLogs })));
-const SystemConfig = lazyPage(() => import("./pages/SystemConfig").then(m => ({ default: m.SystemConfig })));
-const ArrivalControl = lazyPage(() => import("./pages/ArrivalControl").then(m => ({ default: m.ArrivalControl })));
-const DepartureControl = lazyPage(() => import("./pages/DepartureControl").then(m => ({ default: m.DepartureControl })));
-const ParentMeetings = lazyPage(() => import("./pages/ParentMeetings").then(m => ({ default: m.ParentMeetings })));
 const ParentPortalRoute = lazyPage(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
 );
@@ -80,14 +81,9 @@ const RootRoute = () => {
 /** Pantalla completa para rutas sin Layout (login, tutor, etc.). */
 const FullScreenLoading = () => <LoadingScreen message="Cargando SIE…" />;
 
-const LazyFullScreen = ({ children }: { children: React.ReactNode }) => {
-  const location = useLocation();
-  return (
-    <Suspense key={location.pathname} fallback={<FullScreenLoading />}>
-      {children}
-    </Suspense>
-  );
-};
+const LazyFullScreen = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<FullScreenLoading />}>{children}</Suspense>
+);
 
 const AppContent = () => {
   return (
@@ -104,7 +100,7 @@ const AppContent = () => {
       />
       <Route path="/" element={<RootRoute />} />
 
-      {/* Staff — supervisor, director, admin */}
+      {/* Panel staff — un solo layout, sin lazy por página (evita Suspense colgado) */}
       <Route
         element={
           <ProtectedRoute requiredRole={['Supervisor', 'Director', 'Admin']}>
@@ -121,30 +117,38 @@ const AppContent = () => {
         <Route path="/departure-control" element={<DepartureControl />} />
         <Route path="/parent-meetings" element={<ParentMeetings />} />
         <Route path="/justify-faults" element={<JustifyFaults />} />
-      </Route>
-
-      {/* Staff — director y admin */}
-      <Route
-        element={
-          <ProtectedRoute requiredRole={['Director', 'Admin']}>
-            <StaffLayoutShell requiredRole={['Director', 'Admin']} />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/faults" element={<FaultsCatalog />} />
-        <Route path="/reports" element={<Reports />} />
-      </Route>
-
-      {/* Staff — solo admin */}
-      <Route
-        element={
-          <ProtectedRoute requiredRole={['Admin']}>
-            <StaffLayoutShell requiredRole={['Admin']} />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/audit" element={<AuditLogs />} />
-        <Route path="/system-config" element={<SystemConfig />} />
+        <Route
+          path="/faults"
+          element={
+            <ProtectedRoute requiredRole={['Director', 'Admin']}>
+              <FaultsCatalog />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute requiredRole={['Director', 'Admin']}>
+              <Reports />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute requiredRole={['Admin']}>
+              <AuditLogs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/system-config"
+          element={
+            <ProtectedRoute requiredRole={['Admin']}>
+              <SystemConfig />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
       <Route

@@ -71,7 +71,20 @@ export default defineConfig(({ mode }) => {
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes('node_modules')) return;
+          if (!id.includes('node_modules')) {
+            if (id.includes('/src/pages/')) {
+              const publicOnly =
+                id.includes('/Login') ||
+                id.includes('/TutorScanner') ||
+                id.includes('/ParentPortal') ||
+                id.includes('/ParentDniPortal') ||
+                id.includes('/ArrivalView') ||
+                id.includes('/ChangePassword') ||
+                id.includes('/NotFound');
+              if (!publicOnly) return 'staff-app';
+            }
+            return;
+          }
 
           // Reportes: sólo se cargan al generar Excel/PDF
           if (id.includes('/exceljs/')) return 'report-excel';
