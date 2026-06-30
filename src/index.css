@@ -3007,13 +3007,46 @@
   }
 
   .tutor-page--touch {
-    overflow-y: auto;
+    height: 100dvh;
+    height: 100svh;
+    max-height: 100dvh;
+    max-height: 100svh;
+    overflow: hidden;
+  }
+
+  .tutor-page--touch .tutor-main {
+    @apply min-h-0 flex-1 overflow-y-auto overflow-x-hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
   }
 
   .tutor-page--touch.tutor-page--profile-open {
     overflow: hidden;
+  }
+
+  .tutor-page--touch.tutor-page--profile-open .tutor-main {
+    overflow: hidden;
+  }
+
+  /* Móvil/tablet sin clase JS (carga inicial) — mismo patrón de scroll */
+  @media (max-width: 1023px) {
+    .tutor-page {
+      height: 100dvh;
+      height: 100svh;
+      max-height: 100dvh;
+      max-height: 100svh;
+      overflow: hidden;
+    }
+
+    .tutor-page .tutor-main {
+      @apply min-h-0 flex-1 overflow-y-auto overflow-x-hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+    }
+
+    .tutor-page.tutor-page--profile-open .tutor-main {
+      overflow: hidden;
+    }
   }
 
   .tutor-header {
@@ -3116,6 +3149,13 @@
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 
+  @media (min-width: 1024px) {
+    .tutor-page:not(.tutor-page--touch) .tutor-main {
+      flex: 1 1 auto;
+      overflow: visible;
+    }
+  }
+
   @media (max-width: 767px) {
     .tutor-main {
       padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
@@ -3215,6 +3255,7 @@
 
   .tutor-page--touch .tutor-name-search-results--scroll {
     max-height: min(75dvh, 44rem);
+    overscroll-behavior: auto;
   }
 
   @media (min-width: 1024px) {
