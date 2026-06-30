@@ -47,7 +47,11 @@ export function useHardwareBarcodeCapture({
         nameInput instanceof HTMLInputElement &&
         (target === nameInput || target?.closest('[data-tutor-name-search]'))
       ) {
-        if (nameInput.value.trim().length > 0) return;
+        return;
+      }
+
+      if (target?.id === 'barcode-input') {
+        return;
       }
 
       const now = Date.now();

@@ -108,6 +108,7 @@ export const TutorScanner = () => {
   >([]);
   const [studentSchedule, setStudentSchedule] = useState<StudentScheduleStatus | null>(null);
   const [quickFaultId, setQuickFaultId] = useState<number | null>(null);
+  const [barcodeKeyboard, setBarcodeKeyboard] = useState(false);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const hardwareScanInputRef = useRef<HTMLInputElement>(null);
@@ -120,6 +121,7 @@ export const TutorScanner = () => {
   const todayArrivalsRef = useRef<Map<number, ArrivalRecord>>(new Map());
   const clearScanRef = useRef<() => void>(() => {});
   const bumpProfileIdleRef = useRef<() => void>(() => {});
+  const manualEntryActiveRef = useRef(false);
 
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
@@ -145,12 +147,13 @@ export const TutorScanner = () => {
 
   const focusBarcodeInput = useCallback(() => {
     requestAnimationFrame(() => {
+      if (manualEntryActiveRef.current) return;
+
       const active = document.activeElement;
       const nameInput = document.getElementById('name-search-input');
       if (
-        active === nameInput &&
-        nameInput instanceof HTMLInputElement &&
-        nameInput.value.trim().length > 0
+        active === nameInput ||
+        (active instanceof HTMLElement && active.closest('[data-tutor-name-search]'))
       ) {
         return;
       }
@@ -1063,16 +1066,39 @@ export const TutorScanner = () => {
                       ref={barcodeInputRef}
                       id="barcode-input"
                       type="text"
-                      inputMode={touchBarcode ? 'none' : 'text'}
+                      inputMode={touchBarcode ? (barcodeKeyboard ? 'numeric' : 'none') : 'text'}
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
                       value={barcode}
                       onChange={handleBarcodeChange}
                       onKeyDown={handleBarcodeKeyDown}
+                      onPointerDown={() => {
+                        if (touchBarcode) setBarcodeKeyboard(true);
+                      }}
+                      onFocus={() => {
+                        manualEntryActiveRef.current = true;
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          const active = document.activeElement;
+                          if (
+                            active?.id === 'barcode-input' ||
+                            active?.id === 'name-search-input' ||
+                            active?.closest('[data-tutor-name-search]')
+                          ) {
+                            return;
+                          }
+                          manualEntryActiveRef.current = false;
+                          setBarcodeKeyboard(false);
+                          if (touchBarcode && showStudentProfileRef.current && !showIncidentDialog) {
+                            hardwareScanInputRef.current?.focus({ preventScroll: true });
+                          }
+                        }, 150);
+                      }}
                       autoComplete="off"
                       autoFocus={!touchBarcode}
-                      placeholder="Escanee el carnet…"
+                      placeholder="Escanee el carnet o escriba DNI…"
                       aria-describedby="barcode-scan-hint"
                       className="tutor-scan-input"
                     />
@@ -1112,6 +1138,22 @@ export const TutorScanner = () => {
                         value={nameSearch}
                         onChange={(e) => setNameSearch(e.target.value)}
                         onKeyDown={handleNameSearchKeyDown}
+                        onFocus={() => {
+                          manualEntryActiveRef.current = true;
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => {
+                            const active = document.activeElement;
+                            if (
+                              active?.id === 'name-search-input' ||
+                              active?.id === 'barcode-input' ||
+                              active?.closest('[data-tutor-name-search]')
+                            ) {
+                              return;
+                            }
+                            manualEntryActiveRef.current = false;
+                          }, 150);
+                        }}
                         placeholder="Nombre, apellido o DNI…"
                         autoComplete="off"
                         enterKeyHint="search"
