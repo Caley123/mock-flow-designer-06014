@@ -28,6 +28,7 @@ const TutorScanner = lazyPage(() => import("./pages/TutorScanner").then(m => ({ 
 const AuditLogs = lazyPage(() => import("./pages/AuditLogs").then(m => ({ default: m.AuditLogs })));
 const SystemConfig = lazyPage(() => import("./pages/SystemConfig").then(m => ({ default: m.SystemConfig })));
 const ArrivalControl = lazyPage(() => import("./pages/ArrivalControl").then(m => ({ default: m.ArrivalControl })));
+const DepartureControl = lazyPage(() => import("./pages/DepartureControl").then(m => ({ default: m.DepartureControl })));
 const ParentMeetings = lazyPage(() => import("./pages/ParentMeetings").then(m => ({ default: m.ParentMeetings })));
 const ParentPortalRoute = lazyPage(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
@@ -112,6 +113,7 @@ const AppContent = () => {
         <Route path="/students" element={<StudentsList />} />
         <Route path="/attendance-report" element={<AttendanceReport />} />
         <Route path="/arrival-control" element={<ArrivalControl />} />
+        <Route path="/departure-control" element={<DepartureControl />} />
         <Route path="/parent-meetings" element={<ParentMeetings />} />
         <Route path="/justify-faults" element={<JustifyFaults />} />
       </Route>

@@ -69,6 +69,7 @@ export const NOINDEX_PREFIXES = [
   '/audit',
   '/system-config',
   '/arrival-control',
+  '/departure-control',
   '/parent-meetings',
   '/parent-portal',
   '/justify-faults',

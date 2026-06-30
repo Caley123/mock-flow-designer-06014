@@ -89,6 +89,10 @@ export const Navbar = () => {
         label: 'Asistencia',
         icon: Clock,
         roles: ['Supervisor', 'Director', 'Admin'],
+        subItems: [
+          { path: '/arrival-control', label: 'Control de Llegadas' },
+          { path: '/departure-control', label: 'Registro de Salidas' },
+        ],
       },
       {
         path: '/incidents',

@@ -645,7 +645,7 @@ export const Dashboard = () => {
                     )}
                   </p>
                 </div>
-                <Button size="sm" variant="outline-warning" onClick={() => navigate('/arrival-control')}>
+                <Button size="sm" variant="outline-warning" onClick={() => navigate('/departure-control')}>
                   Ir
                 </Button>
               </div>
