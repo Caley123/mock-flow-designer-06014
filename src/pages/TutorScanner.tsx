@@ -122,6 +122,9 @@ export const TutorScanner = () => {
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
   const touchTablet = useTutorTouchLayout();
+  const nameSearchScrollable = touchTablet
+    ? nameSearchResults.length > NAME_SEARCH_SCROLL_AFTER
+    : nameSearchResults.length > 0;
 
   useTutorViewport(showStudentProfile && touchTablet);
 
@@ -985,7 +988,7 @@ export const TutorScanner = () => {
             <div
               className={cn(
                 'tutor-scan-card',
-                nameSearchResults.length > 0 && 'tutor-scan-card--search-open',
+                nameSearchResults.length > 0 && touchTablet && 'tutor-scan-card--search-open',
               )}
             >
               <div className="tutor-scan-card__head">
@@ -1117,8 +1120,7 @@ export const TutorScanner = () => {
                         role="listbox"
                         className={cn(
                           'tutor-name-search-results w-full rounded-xl border border-border bg-popover shadow-xl',
-                          nameSearchResults.length > NAME_SEARCH_SCROLL_AFTER &&
-                            'tutor-name-search-results--scroll',
+                          nameSearchScrollable && 'tutor-name-search-results--scroll',
                         )}
                       >
                         {nameSearchResults.map((result) => (
