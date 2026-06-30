@@ -80,9 +80,14 @@ const RootRoute = () => {
 /** Pantalla completa para rutas sin Layout (login, tutor, etc.). */
 const FullScreenLoading = () => <LoadingScreen message="Cargando SIE…" />;
 
-const LazyFullScreen = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<FullScreenLoading />}>{children}</Suspense>
-);
+const LazyFullScreen = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  return (
+    <Suspense key={location.pathname} fallback={<FullScreenLoading />}>
+      {children}
+    </Suspense>
+  );
+};
 
 const AppContent = () => {
   return (

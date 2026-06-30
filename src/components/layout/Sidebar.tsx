@@ -19,6 +19,7 @@ import {
   isStaffNavItemActive,
   type StaffNavItem,
 } from '@/config/staffNavigation';
+import { preloadRoute } from '@/lib/routePreloads';
 
 export const Sidebar = () => {
   const location = useLocation();
@@ -55,6 +56,10 @@ export const Sidebar = () => {
   const isParentRole = user?.role === 'Padre';
 
   const isActive = (item: StaffNavItem) => isStaffNavItemActive(location.pathname, item);
+
+  const prefetchPath = (path: string) => {
+    preloadRoute(path);
+  };
 
   useEffect(() => {
     const group = navItems.find((item) => isStaffNavItemActive(location.pathname, item));
@@ -132,6 +137,9 @@ export const Sidebar = () => {
                     <Link
                       to={defaultPath}
                       onClick={() => setMobileMenuOpen(false)}
+                      onMouseEnter={() => prefetchPath(defaultPath)}
+                      onFocus={() => prefetchPath(defaultPath)}
+                      onTouchStart={() => prefetchPath(defaultPath)}
                       className={cn(
                         'flex min-w-0 flex-1 items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                         active
@@ -174,6 +182,9 @@ export const Sidebar = () => {
                             key={subItem.path}
                             to={subItem.path}
                             onClick={() => setMobileMenuOpen(false)}
+                            onMouseEnter={() => prefetchPath(subItem.path)}
+                            onFocus={() => prefetchPath(subItem.path)}
+                            onTouchStart={() => prefetchPath(subItem.path)}
                             className={cn(
                               'flex items-center rounded-lg px-4 py-2 text-sm transition-all duration-200',
                               subActive
@@ -197,6 +208,9 @@ export const Sidebar = () => {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
+                onMouseEnter={() => prefetchPath(item.path)}
+                onFocus={() => prefetchPath(item.path)}
+                onTouchStart={() => prefetchPath(item.path)}
                 className={cn(
                   'flex items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                   active

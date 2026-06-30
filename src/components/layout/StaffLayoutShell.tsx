@@ -1,11 +1,12 @@
 import { Suspense, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Layout } from './Layout';
-import { PageLoader } from '@/components/ui/page-loader';
+import { RouteSuspenseFallback } from './RouteSuspenseFallback';
 import { faultsService, incidentsService } from '@/lib/services';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
+import { preloadStaffRoutes } from '@/lib/routePreloads';
 import {
   INCIDENTS_PAGE_SIZE,
 } from '@/hooks/queries/useIncidentsQuery';
@@ -17,6 +18,13 @@ interface StaffLayoutShellProps {
 /** Layout staff con sidebar visible mientras el chunk de la página carga. */
 export function StaffLayoutShell({ requiredRole }: StaffLayoutShellProps) {
   const queryClient = useQueryClient();
+  const location = useLocation();
+
+  useEffect(() => {
+    void ensureSupabaseReady().finally(() => {
+      window.setTimeout(() => preloadStaffRoutes(), 1000);
+    });
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -58,7 +66,7 @@ export function StaffLayoutShell({ requiredRole }: StaffLayoutShellProps) {
 
   return (
     <Layout requiredRole={requiredRole}>
-      <Suspense fallback={<PageLoader message="Cargando…" />}>
+      <Suspense key={location.pathname} fallback={<RouteSuspenseFallback />}>
         <Outlet />
       </Suspense>
     </Layout>
