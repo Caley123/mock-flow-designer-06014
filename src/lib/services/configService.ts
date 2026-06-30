@@ -14,12 +14,17 @@ const CONFIG_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
 /**
  * Convierte un registro de configuración de DB a formato frontend
  */
+function resolveConfigId(config: ConfiguracionSistemaDB): number | null {
+  const raw = config.id_config ?? (config as ConfiguracionSistemaDB & { id?: number }).id;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
+}
+
 function mapSystemConfig(config: ConfiguracionSistemaDB): SystemConfig {
   return {
-    id: config.id_config,
+    id: resolveConfigId(config) ?? 0,
     key: config.clave,
     value: coerceTimeConfigValue(config.valor),
-    description: config.descripcion,
+    description: config.descripcion ?? undefined,
     updatedAt: config.fecha_actualizacion,
   };
 }
@@ -173,6 +178,10 @@ export async function update(
     description?: string;
   }
 ): Promise<{ config: SystemConfig | null; error: string | null }> {
+  if (!Number.isFinite(id) || id <= 0) {
+    return { config: null, error: 'ID de configuración inválido' };
+  }
+
   try {
     const { data: updatedConfig, error } = await supabase
       .from('configuracion_sistema')
@@ -209,32 +218,35 @@ export async function upsertByKey(data: {
   description?: string;
 }): Promise<{ config: SystemConfig | null; error: string | null }> {
   const cacheKey = `config:${data.key}`;
-  const existing = await getByKey(data.key);
 
-  if (existing.error) {
-    return { config: null, error: existing.error };
-  }
+  try {
+    await ensureSupabaseReady();
+    const { data: row, error } = await supabase
+      .from('configuracion_sistema')
+      .upsert(
+        {
+          clave: data.key,
+          valor: data.value,
+          descripcion: data.description ?? null,
+          fecha_actualizacion: new Date().toISOString(),
+        },
+        { onConflict: 'clave' },
+      )
+      .select()
+      .single();
 
-  let result: { config: SystemConfig | null; error: string | null };
+    if (error) {
+      console.error('Error al guardar configuración:', error);
+      return { config: null, error: error.message };
+    }
 
-  if (existing.config) {
-    result = await update(existing.config.id, {
-      value: data.value,
-      description: data.description ?? existing.config.description ?? undefined,
-    });
-  } else {
-    result = await create({
-      key: data.key,
-      value: data.value,
-      description: data.description,
-    });
-  }
-
-  if (!result.error) {
     invalidateCache(cacheKey);
+    return { config: mapSystemConfig(row), error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('Error al guardar configuración:', error);
+    return { config: null, error: message };
   }
-
-  return result;
 }
 
 export async function deleteConfig(id: number): Promise<{ success: boolean; error: string | null }> {

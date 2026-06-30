@@ -222,7 +222,8 @@ export interface DashboardStats {
 
 // Nuevas tablas del sistema
 export interface ConfiguracionSistemaDB {
-  id_config: number;
+  id_config?: number;
+  id?: number;
   clave: string;
   valor: string;
   descripcion: string | null;
