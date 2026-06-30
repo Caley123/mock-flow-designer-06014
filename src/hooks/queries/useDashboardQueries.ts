@@ -61,3 +61,17 @@ export function useMonthlyTrendQuery(enabled = true) {
     placeholderData: keepPreviousData,
   });
 }
+
+export function useWeeklyAttendanceTrendQuery(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.dashboard.weeklyAttendance(),
+    queryFn: async () => {
+      const { weeklyData, error } = await arrivalService.getWeeklyAttendanceTrend();
+      if (error) throw new Error(error);
+      return weeklyData ?? [];
+    },
+    enabled,
+    staleTime: DASHBOARD_STALE_MS,
+    placeholderData: keepPreviousData,
+  });
+}

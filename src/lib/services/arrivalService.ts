@@ -667,6 +667,83 @@ export async function getBimestralAttendance(filters: {
 }
 
 /**
+ * Obtener tendencia de asistencia (últimos 5 días hábiles)
+ */
+export async function getWeeklyAttendanceTrend(): Promise<{
+  weeklyData: Array<{
+    day: string;
+    date: string;
+    total: number;
+    onTime: number;
+    late: number;
+  }>;
+  error: string | null;
+}> {
+  try {
+    const now = new Date();
+    const dayLabels = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    const weekDays: { date: Date; label: string; dateKey: string }[] = [];
+    let daysBack = 0;
+
+    while (weekDays.length < 5) {
+      const date = new Date(now);
+      date.setDate(now.getDate() - daysBack);
+      const dayOfWeek = date.getDay();
+
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        weekDays.push({
+          date,
+          label: dayLabels[dayOfWeek],
+          dateKey: `${y}-${m}-${d}`,
+        });
+      }
+      daysBack++;
+      if (daysBack > 14) break;
+    }
+
+    weekDays.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    if (weekDays.length === 0) {
+      return { weeklyData: [], error: null };
+    }
+
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select('fecha, estado')
+      .gte('fecha', weekDays[0].dateKey)
+      .lte('fecha', weekDays[weekDays.length - 1].dateKey);
+
+    if (error) {
+      console.error('Error al obtener tendencia semanal de asistencia:', error);
+      return { weeklyData: [], error: error.message };
+    }
+
+    const weeklyData = weekDays.map(({ label, dateKey }) => {
+      const dayRecords = (data ?? []).filter((r) => r.fecha === dateKey);
+      const onTime = dayRecords.filter((r) => r.estado === 'A tiempo').length;
+      const late = dayRecords.filter((r) => r.estado === 'Tarde').length;
+      return {
+        day: label,
+        date: dateKey,
+        total: dayRecords.length,
+        onTime,
+        late,
+      };
+    });
+
+    return { weeklyData, error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error al obtener tendencia de asistencia';
+    console.error('Error en getWeeklyAttendanceTrend:', error);
+    return { weeklyData: [], error: message };
+  }
+}
+
+/**
  * Obtener estadísticas de llegadas del día
  */
 export async function getTodayStats(): Promise<{
@@ -1051,6 +1128,7 @@ export const arrivalService = {
   getArrivals,
   getMonthlyAttendance,
   getBimestralAttendance,
+  getWeeklyAttendanceTrend,
   getTodayStats,
   createDepartureRecord,
   getStudentsWithoutDeparture,

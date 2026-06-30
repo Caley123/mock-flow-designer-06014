@@ -7,6 +7,7 @@ export const queryKeys = {
     departureAlerts: () => [...queryKeys.dashboard.all, 'departure-alerts'] as const,
     recentIncidents: () => [...queryKeys.dashboard.all, 'recent-incidents'] as const,
     monthlyTrend: () => [...queryKeys.dashboard.all, 'monthly-trend'] as const,
+    weeklyAttendance: () => [...queryKeys.dashboard.all, 'weekly-attendance'] as const,
   },
   incidents: {
     all: ['incidents'] as const,

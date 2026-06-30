@@ -26,6 +26,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Line,
+  Legend,
 } from 'recharts';
 import { useEffect } from 'react';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -58,6 +59,7 @@ import {
   useDepartureAlertsQuery,
   useRecentIncidentsQuery,
   useMonthlyTrendQuery,
+  useWeeklyAttendanceTrendQuery,
 } from '@/hooks/queries/useDashboardQueries';
 
 /** Paleta ejecutiva para gráficos (azul pizarra, sin acentos chillones) */
@@ -68,12 +70,19 @@ const CHART = {
   axis: 'hsl(215, 14%, 48%)',
 };
 
+const ATTENDANCE_CHART = {
+  onTime: 'hsl(142, 45%, 42%)',
+  late: 'hsl(0, 62%, 52%)',
+  total: 'hsl(217, 48%, 42%)',
+};
+
 export const Dashboard = () => {
   const statsQuery = useDashboardStatsQuery();
   const statsReady = statsQuery.isSuccess || Boolean(statsQuery.data);
   const alertsQuery = useDepartureAlertsQuery(statsReady);
   const recentIncidentsQuery = useRecentIncidentsQuery(statsReady);
   const monthlyTrendQuery = useMonthlyTrendQuery(statsReady);
+  const weeklyAttendanceQuery = useWeeklyAttendanceTrendQuery(statsReady);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -88,10 +97,17 @@ export const Dashboard = () => {
     }
   }, [recentIncidentsQuery.isError]);
 
+  useEffect(() => {
+    if (weeklyAttendanceQuery.isError) {
+      toast.error('Error al cargar datos de asistencia');
+    }
+  }, [weeklyAttendanceQuery.isError]);
+
   const stats: DashboardStats | null = statsQuery.data ?? null;
   const departureAlerts = alertsQuery.data ?? [];
   const recentIncidents: Incident[] = recentIncidentsQuery.data ?? [];
   const monthlyTrend = monthlyTrendQuery.data ?? [];
+  const weeklyAttendance = weeklyAttendanceQuery.data ?? [];
 
   const initialLoading = statsQuery.isLoading && !stats;
 
@@ -139,14 +155,27 @@ export const Dashboard = () => {
   });
 
   const levelTotal = levelDistributionRows.reduce((sum, item) => sum + item.value, 0);
-  const maxTrend = Math.max(1, ...monthlyTrend.map((d) => d.incidents));
-  const yAxisMax = Math.max(4, Math.ceil(maxTrend * 1.15));
 
-  // Calcular porcentajes de cambio
   const calculatePercentageChange = (current: number, previous: number) => {
     if (previous === 0) return current > 0 ? 100 : 0;
     return ((current - previous) / previous) * 100;
   };
+
+  const maxTrend = Math.max(1, ...monthlyTrend.map((d) => d.incidents));
+  const yAxisMax = Math.max(4, Math.ceil(maxTrend * 1.15));
+
+  const maxAttendanceDay = Math.max(1, ...weeklyAttendance.map((d) => d.total));
+  const attendanceYMax = Math.max(4, Math.ceil(maxAttendanceDay * 1.15));
+
+  const todayAttendance =
+    weeklyAttendance.length > 0 ? weeklyAttendance[weeklyAttendance.length - 1] : null;
+  const attendanceGrowth =
+    weeklyAttendance.length >= 2
+      ? calculatePercentageChange(
+          weeklyAttendance[weeklyAttendance.length - 1].total,
+          weeklyAttendance[weeklyAttendance.length - 2].total
+        )
+      : 0;
 
   // Calcular tasa de resolución
   const resolutionRate = stats.totalIncidents > 0 
@@ -404,6 +433,131 @@ export const Dashboard = () => {
           </StaffDataPanelBody>
         </StaffDataPanel>
       </div>
+
+      <StaffDataPanel>
+        <StaffDataPanelHeader
+          compact
+          accent="success"
+          title="Asistencia semanal"
+          description="Llegadas registradas · últimos 5 días hábiles"
+          action={
+            <div className="flex items-center gap-2">
+              {todayAttendance && (
+                <span className="hidden text-[11px] text-muted-foreground sm:inline">
+                  Hoy: {todayAttendance.onTime} a tiempo · {todayAttendance.late} tarde
+                </span>
+              )}
+              {weeklyAttendance.length >= 2 && (
+                <span className="inline-flex items-center rounded-md border border-emerald-500/25 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm dark:text-emerald-400">
+                  <ArrowUpRight className="mr-1 h-3 w-3" />
+                  {attendanceGrowth > 0 ? '+' : ''}
+                  {attendanceGrowth.toFixed(1)}%
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => navigate('/arrival-control')}
+              >
+                Ver control
+              </Button>
+            </div>
+          }
+        />
+        <StaffDataPanelBody compact className="app-chart-surface !border-t-emerald-500/15 !from-emerald-500/10 !p-0">
+          {weeklyAttendance.length === 0 ? (
+            <StaffEmptyState
+              icon={Clock}
+              title="Sin registros de asistencia"
+              description="Aún no hay llegadas en los últimos días hábiles."
+            />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={weeklyAttendance} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
+                <XAxis
+                  dataKey="day"
+                  stroke={CHART.axis}
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART.grid }}
+                />
+                <YAxis
+                  stroke={CHART.axis}
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART.grid }}
+                  allowDecimals={false}
+                  domain={[0, attendanceYMax]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    fontSize: '12px',
+                  }}
+                  formatter={(value: number, name: string) => {
+                    const labels: Record<string, string> = {
+                      onTime: 'A tiempo',
+                      late: 'Tarde',
+                      total: 'Total',
+                    };
+                    return [value, labels[name] ?? name];
+                  }}
+                  labelFormatter={(label, payload) => {
+                    const date = payload?.[0]?.payload?.date as string | undefined;
+                    return date ? `${label} · ${date}` : label;
+                  }}
+                />
+                <Legend
+                  verticalAlign="top"
+                  height={28}
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(value) => {
+                    const labels: Record<string, string> = {
+                      onTime: 'A tiempo',
+                      late: 'Tarde',
+                    };
+                    return labels[value] ?? value;
+                  }}
+                />
+                <Bar
+                  dataKey="onTime"
+                  stackId="attendance"
+                  fill={ATTENDANCE_CHART.onTime}
+                  radius={[0, 0, 0, 0]}
+                  maxBarSize={48}
+                />
+                <Bar
+                  dataKey="late"
+                  stackId="attendance"
+                  fill={ATTENDANCE_CHART.late}
+                  radius={[8, 8, 0, 0]}
+                  maxBarSize={48}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke={ATTENDANCE_CHART.total}
+                  strokeWidth={2}
+                  legendType="none"
+                  dot={{
+                    r: 4,
+                    fill: 'hsl(var(--card))',
+                    stroke: ATTENDANCE_CHART.total,
+                    strokeWidth: 2,
+                  }}
+                  activeDot={{ r: 5, fill: ATTENDANCE_CHART.total, stroke: 'hsl(var(--card))', strokeWidth: 2 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+        </StaffDataPanelBody>
+      </StaffDataPanel>
 
       <div className="app-section-grid-2">
         <StaffDataPanel className="h-full">
