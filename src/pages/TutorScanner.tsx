@@ -67,7 +67,7 @@ import { isDniLikeQuery, TUTOR_NAME_SEARCH_LIMIT } from '@/lib/utils/studentSear
 import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { useHardwareBarcodeCapture } from '@/hooks/useHardwareBarcodeCapture';
-import { cn } from '@/lib/utils';
+import { buildStudentLookupVariants } from '@/lib/services/studentsService';
 
 const NAME_SEARCH_SCROLL_AFTER = 8;
 
@@ -122,6 +122,8 @@ export const TutorScanner = () => {
   const clearScanRef = useRef<() => void>(() => {});
   const bumpProfileIdleRef = useRef<() => void>(() => {});
   const manualEntryActiveRef = useRef(false);
+  const lastScanRef = useRef({ code: '', at: 0 });
+  const nameBarcodeBufferRef = useRef({ buf: '', lastAt: 0 });
 
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
@@ -151,10 +153,7 @@ export const TutorScanner = () => {
 
       const active = document.activeElement;
       const nameInput = document.getElementById('name-search-input');
-      if (
-        active === nameInput ||
-        (active instanceof HTMLElement && active.closest('[data-tutor-name-search]'))
-      ) {
+      if (active === nameInput) {
         return;
       }
       if (active instanceof HTMLTextAreaElement || active?.closest('[data-tutor-incident-dialog]')) {
@@ -177,6 +176,15 @@ export const TutorScanner = () => {
       }
     });
   }, [touchBarcode, showIncidentDialog]);
+
+  const releaseScanFocus = useCallback(() => {
+    manualEntryActiveRef.current = false;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.id === 'name-search-input') {
+      active.blur();
+    }
+    requestAnimationFrame(() => focusBarcodeInput());
+  }, [focusBarcodeInput]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -558,14 +566,19 @@ export const TutorScanner = () => {
       if (fromIndex) return fromIndex;
 
       try {
-        const { student, error } = await studentsService.getByBarcode(code, {
+        const { student, error } = await studentsService.lookupByBarcodeOrDni(code, {
           skipReincidence: true,
         });
         if (student) {
-          barcodeIndexRef.current.set(code, student);
+          for (const variant of buildStudentLookupVariants(code)) {
+            barcodeIndexRef.current.set(variant, student);
+          }
+          if (student.barcode?.trim()) {
+            barcodeIndexRef.current.set(student.barcode.trim(), student);
+          }
           return student;
         }
-        if (error) console.warn('getByBarcode:', error);
+        if (error) console.warn('lookupByBarcodeOrDni:', error);
         return null;
       } catch {
         return null;
@@ -578,8 +591,6 @@ export const TutorScanner = () => {
     (foundStudent: Student, scanSeq: number) => {
       if (!isMountedRef.current) return;
 
-      focusBarcodeInput();
-
       const isLatestProfile = scanSeq === latestProfileScanRef.current;
 
       const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
@@ -591,6 +602,7 @@ export const TutorScanner = () => {
           `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}`,
           { duration: 2800 }
         );
+        releaseScanFocus();
         return;
       }
 
@@ -598,6 +610,7 @@ export const TutorScanner = () => {
         if (isLatestProfile) {
           toast.info(`Registrando a ${foundStudent.fullName}…`, { duration: 1800 });
         }
+        releaseScanFocus();
         return;
       }
 
@@ -636,12 +649,14 @@ export const TutorScanner = () => {
         status,
         showedOptimisticUi
       );
+
+      releaseScanFocus();
     },
     [
       applyScanSuccess,
       computeArrivalSnapshot,
-      focusBarcodeInput,
       persistArrivalInBackground,
+      releaseScanFocus,
     ]
   );
 
@@ -678,13 +693,22 @@ export const TutorScanner = () => {
 
   const startScan = useCallback(
     (rawInput: string) => {
+      const code = rawInput.replace(/\r?\n/g, '').trim();
+      if (!code) return;
+
+      const now = Date.now();
+      if (lastScanRef.current.code === code && now - lastScanRef.current.at < 400) {
+        return;
+      }
+      lastScanRef.current = { code, at: now };
+
       // Cada escaneo es actividad real: mantiene viva la sesión del tutor (cliente
       // y servidor) aunque no toque la pantalla, evitando cierres a los 15 min.
       sessionService.touchActivity();
       authService.renewSessionThrottled();
       setBarcode('');
       const scanSeq = ++latestProfileScanRef.current;
-      void processScanCode(rawInput, scanSeq);
+      void processScanCode(code, scanSeq);
     },
     [processScanCode]
   );
@@ -692,6 +716,7 @@ export const TutorScanner = () => {
   useHardwareBarcodeCapture({
     enabled: !showIncidentDialog,
     onScan: startScan,
+    maxGapMs: 200,
   });
 
   const handleNameSearchSelect = async (selected: Student) => {
@@ -723,6 +748,27 @@ export const TutorScanner = () => {
   };
 
   const handleNameSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const now = Date.now();
+      if (e.key.length === 1 && /^[0-9A-Za-z]$/.test(e.key)) {
+        if (now - nameBarcodeBufferRef.current.lastAt > 200) {
+          nameBarcodeBufferRef.current.buf = '';
+        }
+        nameBarcodeBufferRef.current.buf += e.key;
+        nameBarcodeBufferRef.current.lastAt = now;
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        const rapidCode = nameBarcodeBufferRef.current.buf.trim();
+        nameBarcodeBufferRef.current.buf = '';
+        if (rapidCode.length >= 8 && /^\d+$/.test(rapidCode)) {
+          e.preventDefault();
+          setNameSearch('');
+          setNameSearchResults([]);
+          startScan(rapidCode);
+          return;
+        }
+      }
+    }
+
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const q = nameSearch.trim();
@@ -773,6 +819,26 @@ export const TutorScanner = () => {
     } finally {
       setNameSearching(false);
     }
+  };
+
+  const handleNameSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    if (/[\r\n]/.test(v)) {
+      const code = v.replace(/\r?\n/g, '').trim();
+      setNameSearch('');
+      setNameSearchResults([]);
+      if (code.length >= 4) startScan(code);
+      return;
+    }
+    // Si el lector escanea con foco en búsqueda, la ráfaga llega al input de nombre.
+    if (v.length >= 4 && v.length - nameSearch.length >= 4 && /^[0-9A-Za-z]+$/.test(v.trim())) {
+      const code = v.trim();
+      setNameSearch('');
+      setNameSearchResults([]);
+      startScan(code);
+      return;
+    }
+    setNameSearch(v);
   };
 
   const handleScan = (e: React.FormEvent) => {
@@ -882,7 +948,7 @@ export const TutorScanner = () => {
     setStudent(null);
     setShowStudentProfile(false);
     setArrivalRecord(null);
-    focusBarcodeInput();
+    releaseScanFocus();
   };
 
   clearScanRef.current = clearScan;
@@ -901,7 +967,7 @@ export const TutorScanner = () => {
     setBarcode('');
     setNameSearch('');
     setNameSearchResults([]);
-    focusBarcodeInput();
+    releaseScanFocus();
   };
 
   const arrivalOnTime = arrivalRecord?.status === 'A tiempo';
@@ -1084,8 +1150,7 @@ export const TutorScanner = () => {
                           const active = document.activeElement;
                           if (
                             active?.id === 'barcode-input' ||
-                            active?.id === 'name-search-input' ||
-                            active?.closest('[data-tutor-name-search]')
+                            active?.id === 'name-search-input'
                           ) {
                             return;
                           }
@@ -1136,7 +1201,7 @@ export const TutorScanner = () => {
                         id="name-search-input"
                         type="text"
                         value={nameSearch}
-                        onChange={(e) => setNameSearch(e.target.value)}
+                        onChange={handleNameSearchChange}
                         onKeyDown={handleNameSearchKeyDown}
                         onFocus={() => {
                           manualEntryActiveRef.current = true;
@@ -1146,12 +1211,12 @@ export const TutorScanner = () => {
                             const active = document.activeElement;
                             if (
                               active?.id === 'name-search-input' ||
-                              active?.id === 'barcode-input' ||
-                              active?.closest('[data-tutor-name-search]')
+                              active?.id === 'barcode-input'
                             ) {
                               return;
                             }
                             manualEntryActiveRef.current = false;
+                            releaseScanFocus();
                           }, 150);
                         }}
                         placeholder="Nombre, apellido o DNI…"

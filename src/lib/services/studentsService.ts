@@ -93,7 +93,11 @@ export const studentsService = {
   },
 
   lookupBarcodeInIndex(index: Map<string, Student>, barcode: string): Student | null {
-    return index.get(barcode.trim()) ?? null;
+    for (const variant of buildStudentLookupVariants(barcode)) {
+      const hit = index.get(variant);
+      if (hit) return hit;
+    }
+    return null;
   },
 
   invalidateScannerBarcodeIndex(): void {

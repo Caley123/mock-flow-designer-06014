@@ -43,14 +43,11 @@ export function useHardwareBarcodeCapture({
       if (target?.closest('[data-tutor-incident-dialog]')) return;
 
       const nameInput = document.getElementById('name-search-input');
-      if (
-        nameInput instanceof HTMLInputElement &&
-        (target === nameInput || target?.closest('[data-tutor-name-search]'))
-      ) {
+      if (nameInput instanceof HTMLInputElement && target === nameInput) {
         return;
       }
 
-      if (target?.id === 'barcode-input') {
+      if (target?.id === 'barcode-input' || target?.id === 'tutor-hardware-scan-sink') {
         return;
       }
 
