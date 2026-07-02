@@ -650,7 +650,8 @@ export const TutorScanner = () => {
       const arrivalOpts: CreateArrivalOptions = {
         date,
         arrivalTime: time,
-        // estado: lo calcula el servidor según nivel y hora_limite_llegada_*
+        educationalLevel: foundStudent.level,
+        status,
       };
 
       if (foundStudent.barcode?.trim()) {

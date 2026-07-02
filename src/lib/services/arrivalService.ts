@@ -113,6 +113,8 @@ export type CreateArrivalOptions = {
   date?: string;
   arrivalTime?: string;
   status?: 'A tiempo' | 'Tarde';
+  /** Nivel del estudiante (RPC escáner). Necesario para tutores: RLS bloquea SELECT en estudiantes. */
+  educationalLevel?: string;
 };
 
 export type CreateArrivalResult = {
@@ -217,12 +219,20 @@ async function createArrivalRecordInner(
     if (options?.status) {
       insertData.estado = options.status;
     } else {
-      const { data: estRow } = await supabase
-        .from('estudiantes')
-        .select('nivel_educativo')
-        .eq('id_estudiante', studentId)
-        .maybeSingle();
-      const limitHHMM = await getArrivalLimitTime(estRow?.nivel_educativo);
+      let nivelEducativo = options?.educationalLevel ?? null;
+      let nivelFromDb: string | null = null;
+
+      if (!nivelEducativo) {
+        const { data: estRow } = await supabase
+          .from('estudiantes')
+          .select('nivel_educativo')
+          .eq('id_estudiante', studentId)
+          .maybeSingle();
+        nivelFromDb = estRow?.nivel_educativo ?? null;
+        nivelEducativo = nivelFromDb;
+      }
+
+      const limitHHMM = await getArrivalLimitTime(nivelEducativo);
       insertData.estado = compareArrivalStatus(
         normalizeTimeValue(formattedTime, '00:00'),
         limitHHMM,
