@@ -1399,18 +1399,19 @@ export const TutorScanner = () => {
                   aria-label={`Registro de ${student.fullName}`}
                 >
                 <div className="tutor-student-card__banner" aria-hidden />
-                <div className="tutor-student-card__hero-sticky">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="tutor-student-card__close"
-                    onClick={closeStudentProfile}
-                  >
-                    <X className="h-5 w-5" />
-                    <span className="sr-only">Cerrar</span>
-                  </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="tutor-student-card__close"
+                  onClick={closeStudentProfile}
+                >
+                  <X className="h-5 w-5" />
+                  <span className="sr-only">Cerrar</span>
+                </Button>
 
+                <div className="tutor-student-card__scroll">
+                <div className="tutor-student-card__hero-sticky">
                   <div className="tutor-identity tutor-identity--sheet">
                     <div className="tutor-identity__photo-frame">
                       <StudentPhoto
@@ -1436,8 +1437,6 @@ export const TutorScanner = () => {
                     </div>
                   </div>
                 </div>
-
-                <div className="tutor-student-card__scroll">
                   {/* Horario del salón */}
                   {studentSchedule && (
                     <div

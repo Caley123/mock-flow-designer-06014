@@ -3383,15 +3383,15 @@
     box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
   }
 
-  .tutor-page--touch .tutor-student-card__hero-sticky {
-    @apply relative shrink-0 border-b border-border/70 bg-card px-4 pb-4 pt-10;
-  }
-
   .tutor-page--touch .tutor-student-card__scroll {
-    @apply flex-1 min-h-0 overflow-y-auto px-4 pb-5 pt-3;
+    @apply relative flex-1 min-h-0 overflow-y-auto px-4 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] pt-2;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     touch-action: pan-y;
+  }
+
+  .tutor-page--touch .tutor-student-card__hero-sticky {
+    @apply relative shrink-0 border-b border-border/70 bg-card pb-4 pt-10;
   }
 
   .tutor-page--touch .tutor-identity--sheet {
@@ -3505,15 +3505,30 @@
       padding-bottom: env(safe-area-inset-bottom, 0px);
       box-shadow: 0 -8px 40px hsl(0 0% 0% / 0.25);
     }
+
+    .tutor-page:not(.tutor-page--touch) .tutor-student-card__scroll {
+      @apply relative flex-1 min-h-0 overflow-y-auto px-4 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] pt-2;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+    }
+
+    .tutor-page:not(.tutor-page--touch) .tutor-student-card__hero-sticky {
+      @apply relative shrink-0 border-b border-border/70 bg-card pb-4 pt-10;
+    }
   }
 
   @media (min-width: 1024px) {
-    .tutor-student-card__hero-sticky {
-      @apply relative p-6 sm:p-8 pb-0;
+    .tutor-student-card {
+      @apply relative flex flex-col;
     }
 
     .tutor-student-card__scroll {
       @apply px-6 pb-6 sm:px-8 sm:pb-8 pt-0;
+    }
+
+    .tutor-student-card__hero-sticky {
+      @apply p-6 sm:p-8 pb-0 pt-12;
     }
 
     .tutor-identity--sheet {
