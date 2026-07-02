@@ -125,6 +125,8 @@ export const TutorScanner = () => {
   const manualEntryActiveRef = useRef(false);
   const lastScanRef = useRef({ code: '', at: 0 });
   const nameBarcodeBufferRef = useRef({ buf: '', lastAt: 0 });
+  const hardwareSinkBufferRef = useRef('');
+  const displayedStudentIdRef = useRef<number | null>(null);
 
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
@@ -144,6 +146,19 @@ export const TutorScanner = () => {
     manualEntryActiveRef.current = true;
   }, []);
 
+  const prepareForHardwareScan = useCallback(() => {
+    manualEntryActiveRef.current = false;
+    setNameSearch('');
+    setNameSearchResults([]);
+    const nameEl = document.getElementById('name-search-input') as HTMLInputElement | null;
+    const hadNameFocus = document.activeElement === nameEl;
+    if (hadNameFocus) {
+      nameEl.blur();
+    }
+  }, []);
+
+  const startScanRef = useRef<(code: string) => void>(() => {});
+
   useEffect(() => {
     if (!showStudentProfile) return;
     const card = studentCardRef.current;
@@ -155,19 +170,25 @@ export const TutorScanner = () => {
 
   const focusBarcodeInput = useCallback(() => {
     requestAnimationFrame(() => {
-      if (manualEntryActiveRef.current) return;
+      const useHardwareSink =
+        touchBarcode && showStudentProfileRef.current && !showIncidentDialog;
+
+      if (manualEntryActiveRef.current && !useHardwareSink) return;
 
       const active = document.activeElement;
       const nameInput = document.getElementById('name-search-input');
       if (active === nameInput) {
-        return;
+        if (useHardwareSink) {
+          manualEntryActiveRef.current = false;
+          (nameInput as HTMLInputElement).blur();
+        } else {
+          return;
+        }
       }
       if (active instanceof HTMLTextAreaElement || active?.closest('[data-tutor-incident-dialog]')) {
         return;
       }
 
-      const useHardwareSink =
-        touchBarcode && showStudentProfileRef.current && !showIncidentDialog;
       const input = useHardwareSink
         ? hardwareScanInputRef.current
         : barcodeInputRef.current;
@@ -184,13 +205,9 @@ export const TutorScanner = () => {
   }, [touchBarcode, showIncidentDialog]);
 
   const releaseScanFocus = useCallback(() => {
-    manualEntryActiveRef.current = false;
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.id === 'name-search-input') {
-      active.blur();
-    }
+    prepareForHardwareScan();
     requestAnimationFrame(() => focusBarcodeInput());
-  }, [focusBarcodeInput]);
+  }, [focusBarcodeInput, prepareForHardwareScan]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -382,6 +399,7 @@ export const TutorScanner = () => {
       options?: { countInSession?: boolean; duplicate?: boolean }
     ) => {
       showStudentProfileRef.current = true;
+      displayedStudentIdRef.current = studentToShow.id;
       setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
@@ -503,8 +521,10 @@ export const TutorScanner = () => {
           todayArrivalsRef.current.set(studentToShow.id, record);
 
           if (alreadyRegistered) {
-            if (isLatestProfile && showedOptimisticUi) {
-              revertOptimisticSessionCount(optimisticStatus);
+            if (isLatestProfile) {
+              if (showedOptimisticUi) {
+                revertOptimisticSessionCount(optimisticStatus);
+              }
               applyScanSuccess(studentToShow, record, { countInSession: false, duplicate: true });
             }
             toast.info(
@@ -557,6 +577,9 @@ export const TutorScanner = () => {
               }
             });
           }
+        })
+        .catch((err: unknown) => {
+          inFlightStudentIdsRef.current.delete(studentToShow.id);
         });
     },
     [
@@ -600,7 +623,7 @@ export const TutorScanner = () => {
 
       const isLatestProfile = scanSeq === latestProfileScanRef.current;
       const shouldUpdateProfile =
-        isLatestProfile || foundStudent.id !== student?.id;
+        isLatestProfile || foundStudent.id !== displayedStudentIdRef.current;
 
       const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
       if (cachedToday) {
@@ -666,7 +689,6 @@ export const TutorScanner = () => {
       computeArrivalSnapshot,
       persistArrivalInBackground,
       releaseScanFocus,
-      student?.id,
     ]
   );
 
@@ -706,8 +728,12 @@ export const TutorScanner = () => {
       const code = rawInput.replace(/\r?\n/g, '').trim();
       if (!code) return;
 
+      prepareForHardwareScan();
+
       const now = Date.now();
-      if (lastScanRef.current.code === code && now - lastScanRef.current.at < 400) {
+      const deduped =
+        lastScanRef.current.code === code && now - lastScanRef.current.at < 400;
+      if (deduped) {
         return;
       }
       lastScanRef.current = { code, at: now };
@@ -720,8 +746,19 @@ export const TutorScanner = () => {
       const scanSeq = ++latestProfileScanRef.current;
       void processScanCode(code, scanSeq);
     },
-    [processScanCode]
+    [processScanCode, prepareForHardwareScan]
   );
+
+  startScanRef.current = startScan;
+
+  const flushHardwareSink = useCallback((suffix = '') => {
+    const code = (hardwareSinkBufferRef.current + suffix).replace(/\r?\n/g, '').trim();
+    hardwareSinkBufferRef.current = '';
+    if (hardwareScanInputRef.current) {
+      hardwareScanInputRef.current.value = '';
+    }
+    if (code.length >= 4) startScanRef.current(code);
+  }, []);
 
   useHardwareBarcodeCapture({
     enabled: !showIncidentDialog,
@@ -730,8 +767,7 @@ export const TutorScanner = () => {
   });
 
   const handleNameSearchSelect = async (selected: Student) => {
-    setNameSearch('');
-    setNameSearchResults([]);
+    prepareForHardwareScan();
     setNameSearchError(null);
     setNameSearchEmpty(false);
     const scanSeq = ++latestProfileScanRef.current;
@@ -956,6 +992,7 @@ export const TutorScanner = () => {
     setNameSearch('');
     setNameSearchResults([]);
     setStudent(null);
+    displayedStudentIdRef.current = null;
     showStudentProfileRef.current = false;
     setShowStudentProfile(false);
     setArrivalRecord(null);
@@ -973,6 +1010,7 @@ export const TutorScanner = () => {
 
   const closeStudentProfile = () => {
     showStudentProfileRef.current = false;
+    displayedStudentIdRef.current = null;
     setShowStudentProfile(false);
     setStudent(null);
     setArrivalRecord(null);
@@ -1017,14 +1055,22 @@ export const TutorScanner = () => {
         autoCorrect="off"
         spellCheck={false}
         autoComplete="off"
-        aria-hidden
         tabIndex={-1}
         className="tutor-hardware-scan-sink"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            flushHardwareSink();
+          }
+        }}
         onChange={(e) => {
           const raw = e.target.value;
           e.target.value = '';
-          const code = raw.replace(/\r?\n/g, '').trim();
-          if (code.length >= 4) startScan(code);
+          if (/[\r\n]/.test(raw)) {
+            flushHardwareSink(raw);
+            return;
+          }
+          hardwareSinkBufferRef.current += raw;
         }}
       />
       <header className="tutor-header">
@@ -1219,12 +1265,15 @@ export const TutorScanner = () => {
                             const active = document.activeElement;
                             if (
                               active?.id === 'name-search-input' ||
-                              active?.id === 'barcode-input'
+                              active?.id === 'barcode-input' ||
+                              active?.closest('[data-tutor-name-search]')
                             ) {
                               return;
                             }
                             manualEntryActiveRef.current = false;
-                            releaseScanFocus();
+                            if (showStudentProfileRef.current) {
+                              focusBarcodeInput();
+                            }
                           }, 150);
                         }}
                         placeholder="Nombre, apellido o DNI…"
