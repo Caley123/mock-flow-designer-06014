@@ -68,6 +68,7 @@ import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { useHardwareBarcodeCapture } from '@/hooks/useHardwareBarcodeCapture';
 import { buildStudentLookupVariants } from '@/lib/services/studentsService';
+import { cn } from '@/lib/utils';
 
 const NAME_SEARCH_SCROLL_AFTER = 8;
 
