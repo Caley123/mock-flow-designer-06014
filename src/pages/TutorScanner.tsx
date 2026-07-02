@@ -139,6 +139,11 @@ export const TutorScanner = () => {
     showStudentProfileRef.current = showStudentProfile;
   }, [showStudentProfile]);
 
+  /** Solo true cuando el tutor tocó el campo (no en focus programático del lector). */
+  const markManualEntry = useCallback(() => {
+    manualEntryActiveRef.current = true;
+  }, []);
+
   useEffect(() => {
     if (!showStudentProfile) return;
     const card = studentCardRef.current;
@@ -376,6 +381,7 @@ export const TutorScanner = () => {
       record: ArrivalRecord,
       options?: { countInSession?: boolean; duplicate?: boolean }
     ) => {
+      showStudentProfileRef.current = true;
       setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
@@ -593,10 +599,12 @@ export const TutorScanner = () => {
       if (!isMountedRef.current) return;
 
       const isLatestProfile = scanSeq === latestProfileScanRef.current;
+      const shouldUpdateProfile =
+        isLatestProfile || foundStudent.id !== student?.id;
 
       const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
       if (cachedToday) {
-        if (isLatestProfile) {
+        if (shouldUpdateProfile) {
           applyScanSuccess(foundStudent, cachedToday, { countInSession: false, duplicate: true });
         }
         toast.info(
@@ -638,7 +646,7 @@ export const TutorScanner = () => {
 
       inFlightStudentIdsRef.current.add(foundStudent.id);
 
-      const showedOptimisticUi = isLatestProfile;
+      const showedOptimisticUi = shouldUpdateProfile;
       if (showedOptimisticUi) {
         applyScanSuccess(foundStudent, optimisticRecord);
       }
@@ -658,6 +666,7 @@ export const TutorScanner = () => {
       computeArrivalSnapshot,
       persistArrivalInBackground,
       releaseScanFocus,
+      student?.id,
     ]
   );
 
@@ -947,6 +956,7 @@ export const TutorScanner = () => {
     setNameSearch('');
     setNameSearchResults([]);
     setStudent(null);
+    showStudentProfileRef.current = false;
     setShowStudentProfile(false);
     setArrivalRecord(null);
     releaseScanFocus();
@@ -962,6 +972,7 @@ export const TutorScanner = () => {
   };
 
   const closeStudentProfile = () => {
+    showStudentProfileRef.current = false;
     setShowStudentProfile(false);
     setStudent(null);
     setArrivalRecord(null);
@@ -1141,10 +1152,8 @@ export const TutorScanner = () => {
                       onChange={handleBarcodeChange}
                       onKeyDown={handleBarcodeKeyDown}
                       onPointerDown={() => {
+                        markManualEntry();
                         if (touchBarcode) setBarcodeKeyboard(true);
-                      }}
-                      onFocus={() => {
-                        manualEntryActiveRef.current = true;
                       }}
                       onBlur={() => {
                         window.setTimeout(() => {
@@ -1204,9 +1213,7 @@ export const TutorScanner = () => {
                         value={nameSearch}
                         onChange={handleNameSearchChange}
                         onKeyDown={handleNameSearchKeyDown}
-                        onFocus={() => {
-                          manualEntryActiveRef.current = true;
-                        }}
+                        onPointerDown={markManualEntry}
                         onBlur={() => {
                           window.setTimeout(() => {
                             const active = document.activeElement;
@@ -1336,6 +1343,7 @@ export const TutorScanner = () => {
                   onClick={closeStudentProfile}
                 />
                 <div
+                  key={student.id}
                   ref={studentCardRef}
                   className={`tutor-student-card ${arrivalOnTime ? 'tutor-student-card--ontime' : 'tutor-student-card--late'}`}
                   role="region"
