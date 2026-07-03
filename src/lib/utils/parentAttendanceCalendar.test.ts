@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ArrivalRecord } from '@/types';
 import { computeMonthMetrics, resolveDayStatus } from './parentAttendanceCalendar';
+import type { ArrivalLimitsByLevel } from './arrivalLimit';
+
+const limits: ArrivalLimitsByLevel = {
+  general: '08:00',
+  primaria: '08:00',
+  secundaria: '19:20',
+};
+
+const ctx = { limits, level: 'Secundaria' as const };
 
 const record = (date: string, status: ArrivalRecord['status']): ArrivalRecord => ({
   id: 1,
@@ -21,11 +30,13 @@ describe('parentAttendanceCalendar', () => {
     expect(resolveDayStatus('2026-06-25', undefined, '2026-06-25')).toBe('norecord');
   });
 
-  it('marca presente o tarde con registro', () => {
-    expect(resolveDayStatus('2026-06-03', record('2026-06-03', 'A tiempo'), '2026-06-28')).toBe(
-      'present'
+  it('recalcula tarde según límite del nivel en el calendario', () => {
+    const lateByLimit = record('2026-06-03', 'A tiempo');
+    lateByLimit.arrivalTime = '19:34';
+    expect(resolveDayStatus('2026-06-03', lateByLimit, '2026-06-28', ctx)).toBe('late');
+    expect(resolveDayStatus('2026-06-03', record('2026-06-03', 'A tiempo'), '2026-06-28', ctx)).toBe(
+      'present',
     );
-    expect(resolveDayStatus('2026-06-03', record('2026-06-03', 'Tarde'), '2026-06-28')).toBe('late');
   });
 
   it('cuenta faltas en días pasados sin escaneo', () => {

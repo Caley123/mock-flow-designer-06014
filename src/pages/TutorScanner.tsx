@@ -94,6 +94,7 @@ export const TutorScanner = () => {
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [arrivalRecord, setArrivalRecord] = useState<ArrivalRecord | null>(null);
   const [arrivalLimits, setArrivalLimits] = useState<ArrivalLimitsByLevel>({
+    general: '08:00',
     primaria: '08:00',
     secundaria: '08:00',
   });
@@ -650,7 +651,8 @@ export const TutorScanner = () => {
       const arrivalOpts: CreateArrivalOptions = {
         date,
         arrivalTime: time,
-        // estado: lo calcula el servidor según nivel y hora_limite_llegada_*
+        status,
+        studentLevel: foundStudent.level,
       };
 
       if (foundStudent.barcode?.trim()) {

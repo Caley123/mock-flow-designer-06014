@@ -4,6 +4,8 @@ import { normalizeTimeValue } from '@/config/systemSettings';
 export type ArrivalLimitsByLevel = {
   primaria: string;
   secundaria: string;
+  /** Respaldo cuando el nivel del estudiante no está definido. */
+  general: string;
 };
 
 /** Normaliza nivel educativo del estudiante. */
@@ -30,7 +32,17 @@ export function resolveArrivalLimitForLevel(
   const nivel = normalizeEducationalLevel(level);
   if (nivel === 'Primaria') return limits.primaria;
   if (nivel === 'Secundaria') return limits.secundaria;
-  return limits.secundaria;
+  return limits.general;
+}
+
+/** Estado según hora de llegada y nivel (primaria / secundaria). */
+export function resolveArrivalStatusForStudent(
+  arrivalTime: string,
+  limits: ArrivalLimitsByLevel,
+  level?: string | null
+): 'A tiempo' | 'Tarde' {
+  const limit = resolveArrivalLimitForLevel(limits, level);
+  return compareArrivalStatus(arrivalTime, limit);
 }
 
 export function compareArrivalStatus(

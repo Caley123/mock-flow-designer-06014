@@ -4,12 +4,12 @@ import { configService } from './configService';
 import { studentsService } from './studentsService';
 import { getLimaNow, getLimaTodayDate, getLimaMonthBounds, getMonthBounds } from '@/lib/utils/limaDateTime';
 import { getCached, setCached } from '@/lib/utils/memoryCache';
+import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
 import {
-  arrivalLimitConfigKey,
-  compareArrivalStatus,
-  type ArrivalLimitsByLevel,
+  resolveArrivalLimitForLevel,
+  resolveArrivalStatusForStudent,
 } from '@/lib/utils/arrivalLimit';
-import { normalizeTimeValue } from '@/config/systemSettings';
+import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 
 const ARRIVAL_LIMIT_CACHE_TTL = 15 * 60 * 1000;
 
@@ -63,30 +63,39 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
   };
 }
 
+const ARRIVAL_LIMITS_CACHE_KEY = 'config:arrival-limits-bundle';
+
+function buildArrivalLimitsFromConfigs(
+  configs: Record<string, { value?: string } | undefined>,
+): ArrivalLimitsByLevel {
+  const general = normalizeTimeValue(
+    configs[SYSTEM_SETTING_KEYS.arrivalLimit]?.value,
+    '08:00',
+  );
+  return {
+    general,
+    primaria: normalizeTimeValue(
+      configs[SYSTEM_SETTING_KEYS.arrivalLimitPrimary]?.value,
+      general,
+    ),
+    secundaria: normalizeTimeValue(
+      configs[SYSTEM_SETTING_KEYS.arrivalLimitSecondary]?.value,
+      general,
+    ),
+  };
+}
+
 /**
- * Hora límite de llegada según nivel (Primaria / Secundaria).
- * Si no hay clave por nivel, usa hora_limite_llegada global como respaldo.
+ * Hora límite de llegada según nivel (Primaria / Secundaria / general).
  */
 async function getArrivalLimitTime(level?: string): Promise<string> {
-  const configKey = arrivalLimitConfigKey(level);
-  const cacheKey = `config:${configKey}`;
-  const cached = getCached<string>(cacheKey);
-  if (cached) return cached;
-
-  const { config } = await configService.getByKey(configKey);
-  let raw = config?.value;
-  if (!raw && configKey !== 'hora_limite_llegada') {
-    const { config: legacy } = await configService.getByKey('hora_limite_llegada');
-    raw = legacy?.value;
-  }
-  const normalized = normalizeTimeValue(raw, '08:00');
-  setCached(cacheKey, normalized, ARRIVAL_LIMIT_CACHE_TTL);
-  return normalized;
+  const limits = await fetchArrivalLimits();
+  return resolveArrivalLimitForLevel(limits, level);
 }
 
 /** Precarga límites de llegada por nivel. */
 export async function prefetchArrivalConfig(): Promise<void> {
-  await Promise.all([getArrivalLimitTime('Primaria'), getArrivalLimitTime('Secundaria')]);
+  await fetchArrivalLimits();
 }
 
 export async function fetchArrivalLimitTime(level?: string): Promise<string> {
@@ -94,11 +103,55 @@ export async function fetchArrivalLimitTime(level?: string): Promise<string> {
 }
 
 export async function fetchArrivalLimits(): Promise<ArrivalLimitsByLevel> {
-  const [primaria, secundaria] = await Promise.all([
-    getArrivalLimitTime('Primaria'),
-    getArrivalLimitTime('Secundaria'),
-  ]);
-  return { primaria, secundaria };
+  const cached = getCached<ArrivalLimitsByLevel>(ARRIVAL_LIMITS_CACHE_KEY);
+  if (cached) return cached;
+
+  const keys = [
+    SYSTEM_SETTING_KEYS.arrivalLimit,
+    SYSTEM_SETTING_KEYS.arrivalLimitPrimary,
+    SYSTEM_SETTING_KEYS.arrivalLimitSecondary,
+  ];
+  const { configs, error } = await configService.getByKeys(keys);
+  if (error) {
+    const fallback: ArrivalLimitsByLevel = {
+      general: '08:00',
+      primaria: '08:00',
+      secundaria: '08:00',
+    };
+    return fallback;
+  }
+
+  const limits = buildArrivalLimitsFromConfigs(configs);
+  setCached(ARRIVAL_LIMITS_CACHE_KEY, limits, ARRIVAL_LIMIT_CACHE_TTL);
+  for (const key of keys) {
+    if (configs[key]) {
+      setCached(`config:${key}`, configs[key], ARRIVAL_LIMIT_CACHE_TTL);
+    }
+  }
+  return limits;
+}
+
+/** Límites para portal público de padres (sin sesión). */
+export async function fetchPublicArrivalLimits(): Promise<ArrivalLimitsByLevel> {
+  try {
+    const { data, error } = await supabase.rpc('limites_llegada_publicos');
+    if (!error && data && typeof data === 'object') {
+      const payload = data as Record<string, unknown>;
+      const general = normalizeTimeValue(payload.general, '08:00');
+      return {
+        general,
+        primaria: normalizeTimeValue(payload.primaria, general),
+        secundaria: normalizeTimeValue(payload.secundaria, general),
+      };
+    }
+  } catch {
+    /* RPC opcional hasta aplicar PATCH SQL */
+  }
+  return fetchArrivalLimits().catch(() => ({
+    general: '08:00',
+    primaria: '08:00',
+    secundaria: '08:00',
+  }));
 }
 
 function getNowHHMM(): string {
@@ -113,6 +166,8 @@ export type CreateArrivalOptions = {
   date?: string;
   arrivalTime?: string;
   status?: 'A tiempo' | 'Tarde';
+  /** Nivel del estudiante para aplicar hora_limite_llegada_primaria / _secundaria. */
+  studentLevel?: string | null;
 };
 
 export type CreateArrivalResult = {
@@ -217,15 +272,20 @@ async function createArrivalRecordInner(
     if (options?.status) {
       insertData.estado = options.status;
     } else {
-      const { data: estRow } = await supabase
-        .from('estudiantes')
-        .select('nivel_educativo')
-        .eq('id_estudiante', studentId)
-        .maybeSingle();
-      const limitHHMM = await getArrivalLimitTime(estRow?.nivel_educativo);
-      insertData.estado = compareArrivalStatus(
+      let level = options?.studentLevel ?? null;
+      if (!level) {
+        const { data: estRow } = await supabase
+          .from('estudiantes')
+          .select('nivel_educativo')
+          .eq('id_estudiante', studentId)
+          .maybeSingle();
+        level = estRow?.nivel_educativo ?? null;
+      }
+      const limits = await fetchArrivalLimits();
+      insertData.estado = resolveArrivalStatusForStudent(
         normalizeTimeValue(formattedTime, '00:00'),
-        limitHHMM,
+        limits,
+        level,
       );
     }
 
@@ -1165,6 +1225,7 @@ export const arrivalService = {
   prefetchArrivalConfig,
   fetchArrivalLimitTime,
   fetchArrivalLimits,
+  fetchPublicArrivalLimits,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
   fetchMonthArrivalsForStudent,
