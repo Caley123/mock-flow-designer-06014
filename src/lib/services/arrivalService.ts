@@ -451,21 +451,56 @@ export async function getArrivals(filters?: {
       return { records: [], error: error.message };
     }
 
-    const records = await Promise.all(
-      (data || []).map(async (row) => {
-        if (row.hora_llegada && row.hora_llegada.length > 5) {
-          row.hora_llegada = row.hora_llegada.substring(0, 5);
-        }
-        const mapped = mapArrivalRecord(row);
-        const nivel = mapped.student?.level ?? row.estudiante?.nivel_educativo ?? null;
-        return resolveRecordStatus(mapped, nivel, true);
-      }),
-    );
+    const limits = await fetchArrivalLimits();
+    const records = (data || []).map((row) => {
+      if (row.hora_llegada && row.hora_llegada.length > 5) {
+        row.hora_llegada = row.hora_llegada.substring(0, 5);
+      }
+      const mapped = mapArrivalRecord(row);
+      const nivel = mapped.student?.level ?? row.estudiante?.nivel_educativo ?? null;
+      const status = resolveArrivalStatusForStudent(mapped.arrivalTime, limits, nivel);
+      return status === mapped.status ? mapped : { ...mapped, status };
+    });
+
     return { records, error: null };
   } catch (error: any) {
     console.error('Error al obtener registros de llegada:', error);
     return { records: [], error: error.message };
   }
+}
+
+const ARRIVAL_REPORT_BATCH_SIZE = 150;
+
+type ArrivalReportRow = Pick<RegistroLlegadaDB, 'id_estudiante' | 'fecha' | 'hora_llegada' | 'estado'>;
+
+async function fetchArrivalsForReport(
+  studentIds: number[],
+  startStr: string,
+  endStr: string,
+): Promise<{ rows: ArrivalReportRow[]; error: string | null }> {
+  if (studentIds.length === 0) {
+    return { rows: [], error: null };
+  }
+
+  const allRows: ArrivalReportRow[] = [];
+  for (let i = 0; i < studentIds.length; i += ARRIVAL_REPORT_BATCH_SIZE) {
+    const batch = studentIds.slice(i, i + ARRIVAL_REPORT_BATCH_SIZE);
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select('id_estudiante, fecha, hora_llegada, estado')
+      .in('id_estudiante', batch)
+      .gte('fecha', startStr)
+      .lte('fecha', endStr);
+
+    if (error) {
+      return { rows: [], error: error.message };
+    }
+    if (data?.length) {
+      allRows.push(...(data as ArrivalReportRow[]));
+    }
+  }
+
+  return { rows: allRows, error: null };
 }
 
 /**
@@ -517,30 +552,25 @@ export async function getMonthlyAttendance(filters: {
       return { rows: [], daysInMonth, error: null };
     }
 
-    const { data: arrivalsData, error: arrivalsError } = await supabase
-      .from('registros_llegada')
-      .select(`
-        *,
-        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(*)
-      `)
-      .in('id_estudiante', studentIds)
-      .gte('fecha', startStr)
-      .lte('fecha', endStr);
+    const { rows: arrivalsData, error: arrivalsError } = await fetchArrivalsForReport(
+      studentIds,
+      startStr,
+      endStr,
+    );
 
     if (arrivalsError) {
       console.error('Error al obtener registros mensuales de llegada:', arrivalsError);
-      return { rows: [], daysInMonth, error: arrivalsError.message };
+      return { rows: [], daysInMonth, error: arrivalsError };
     }
 
-    const recordsMap = new Map<number, Map<number, ArrivalRecord>>();
-    (arrivalsData || []).forEach((record) => {
-      const mapped = mapArrivalRecord(record);
-      const dateObj = new Date(mapped.date);
+    const recordsMap = new Map<number, Map<number, ArrivalReportRow>>();
+    arrivalsData.forEach((record) => {
+      const dateObj = new Date(record.fecha);
       const day = dateObj.getUTCDate();
-      if (!recordsMap.has(mapped.studentId)) {
-        recordsMap.set(mapped.studentId, new Map());
+      if (!recordsMap.has(record.id_estudiante)) {
+        recordsMap.set(record.id_estudiante, new Map());
       }
-      recordsMap.get(mapped.studentId)!.set(day, mapped);
+      recordsMap.get(record.id_estudiante)!.set(day, record);
     });
 
     const convertStatus = (status?: string): AttendanceStatus => {
@@ -562,7 +592,7 @@ export async function getMonthlyAttendance(filters: {
       const days = Array.from({ length: daysInMonth }, (_, idx) => {
         const day = idx + 1;
         const record = dayStatusMap.get(day);
-        const status = convertStatus(record?.status);
+        const status = convertStatus(record?.estado);
         switch (status) {
           case 'A_tiempo':
             onTime += 1;
@@ -580,7 +610,7 @@ export async function getMonthlyAttendance(filters: {
         return {
           day,
           status,
-          arrivalTime: record?.arrivalTime,
+          arrivalTime: record?.hora_llegada,
         };
       });
 
@@ -665,29 +695,24 @@ export async function getBimestralAttendance(filters: {
       return { rows: [], daysInBimestre, error: null };
     }
 
-    const { data: arrivalsData, error: arrivalsError } = await supabase
-      .from('registros_llegada')
-      .select(`
-        *,
-        estudiante:estudiantes!registros_llegada_id_estudiante_fkey(*)
-      `)
-      .in('id_estudiante', studentIds)
-      .gte('fecha', startStr)
-      .lte('fecha', endStr);
+    const { rows: arrivalsData, error: arrivalsError } = await fetchArrivalsForReport(
+      studentIds,
+      startStr,
+      endStr,
+    );
 
     if (arrivalsError) {
       console.error('Error al obtener registros bimestrales de llegada:', arrivalsError);
-      return { rows: [], daysInBimestre, error: arrivalsError.message };
+      return { rows: [], daysInBimestre, error: arrivalsError };
     }
 
-    const recordsMap = new Map<number, Map<string, ArrivalRecord>>();
-    (arrivalsData || []).forEach((record) => {
-      const mapped = mapArrivalRecord(record);
-      const dateKey = mapped.date;
-      if (!recordsMap.has(mapped.studentId)) {
-        recordsMap.set(mapped.studentId, new Map());
+    const recordsMap = new Map<number, Map<string, ArrivalReportRow>>();
+    arrivalsData.forEach((record) => {
+      const dateKey = record.fecha;
+      if (!recordsMap.has(record.id_estudiante)) {
+        recordsMap.set(record.id_estudiante, new Map());
       }
-      recordsMap.get(mapped.studentId)!.set(dateKey, mapped);
+      recordsMap.get(record.id_estudiante)!.set(dateKey, record);
     });
 
     const convertStatus = (status?: string): AttendanceStatus => {
@@ -716,7 +741,7 @@ export async function getBimestralAttendance(filters: {
 
       const days = allDates.map((dateStr, idx) => {
         const record = dayStatusMap.get(dateStr);
-        const status = convertStatus(record?.status);
+        const status = convertStatus(record?.estado);
         const dateObj = new Date(dateStr);
         const day = dateObj.getDate();
         
@@ -737,7 +762,7 @@ export async function getBimestralAttendance(filters: {
         return {
           day,
           status,
-          arrivalTime: record?.arrivalTime,
+          arrivalTime: record?.hora_llegada,
         };
       });
 

@@ -24,6 +24,7 @@ import { ArrivalControl } from "./pages/ArrivalControl";
 import { DepartureControl } from "./pages/DepartureControl";
 import { ParentMeetings } from "./pages/ParentMeetings";
 import { JustifyFaults } from "./pages/JustifyFaults";
+import { TeachersAdmin } from "./pages/TeachersAdmin";
 import { FaultsCatalog } from "./pages/FaultsCatalog";
 import { Reports } from "./pages/Reports";
 import { AuditLogs } from "./pages/AuditLogs";
@@ -31,10 +32,12 @@ import { SystemConfig } from "./pages/SystemConfig";
 
 const Login = lazyPage(() => import("./pages/Login").then(m => ({ default: m.Login })));
 const TutorScanner = lazyPage(() => import("./pages/TutorScanner").then(m => ({ default: m.TutorScanner })));
+const TeacherIncidentScanner = lazyPage(() =>
+  import("./pages/TeacherIncidentScanner").then(m => ({ default: m.TeacherIncidentScanner }))
+);
 const ParentPortalRoute = lazyPage(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
 );
-const JustifyFaults = lazyPage(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
 const ArrivalView = lazyPage(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
 const ParentDniPortal = lazyPage(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
 const ChangePassword = lazyPage(() => import("./pages/ChangePassword").then(m => ({ default: m.ChangePassword })));
@@ -74,6 +77,7 @@ const RootRoute = () => {
   }
 
   if (user.role === 'Tutor') return <Navigate to="/tutor-scanner" replace />;
+  if (user.role === 'Docente') return <Navigate to="/docente-scanner" replace />;
   if (user.role === 'Padre') return <Navigate to="/parent-portal" replace />;
   return <Navigate to="/dashboard" replace />;
 };
@@ -134,6 +138,14 @@ const AppContent = () => {
           }
         />
         <Route
+          path="/admin/teachers"
+          element={
+            <ProtectedRoute requiredRole={['Admin']}>
+              <TeachersAdmin />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/audit"
           element={
             <ProtectedRoute requiredRole={['Admin']}>
@@ -151,6 +163,16 @@ const AppContent = () => {
         />
       </Route>
 
+      <Route
+        path="/docente-scanner"
+        element={
+          <ProtectedRoute requiredRole={['Docente']}>
+            <LazyFullScreen>
+              <TeacherIncidentScanner />
+            </LazyFullScreen>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/tutor-scanner"
         element={
@@ -247,7 +269,12 @@ const App = () => (
         <Toaster />
         <Sonner />
         <SuccessFlashOverlay />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AppWithSessionMonitor />
         </BrowserRouter>
       </TooltipProvider>

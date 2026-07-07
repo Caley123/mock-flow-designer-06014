@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { Student, EducationalLevel } from '@/types';
+import { Student, EducationalLevel, DocenteClassroom } from '@/types';
 import { resolveStudentProfilePhotoUrl } from '@/lib/utils/profilePhoto';
 import {
   TUTOR_NAME_SEARCH_LIMIT,
@@ -272,6 +272,59 @@ export const studentsService = {
     ).slice(0, limit);
 
     return { students, error: nameError ?? dniResult.error };
+  },
+
+  /** Búsqueda del escáner docente: limitada por salones vía RPC. */
+  async searchForDocenteScanner(
+    query: string,
+    limit: number = 12,
+  ): Promise<{ students: Student[]; error: string | null }> {
+    const trimmed = query.trim().replace(/\s+/g, ' ');
+    if (trimmed.length < 2) {
+      return { students: [], error: null };
+    }
+    return this.searchByName(trimmed, limit);
+  },
+
+  /** Lista estudiantes activos de un salón asignado al docente (vía RPC). */
+  async listForDocenteClassroom(
+    classroom: DocenteClassroom,
+  ): Promise<{ students: Student[]; error: string | null }> {
+    const token = requireApiToken();
+    if (!token) {
+      return { students: [], error: 'Sesión expirada. Vuelva a iniciar sesión.' };
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('sie_docente_listar_estudiantes_salon', {
+        p_token: token,
+        p_level: classroom.level,
+        p_grade: classroom.grade,
+        p_section: classroom.section,
+      });
+
+      if (error) {
+        const msg = error.message ?? '';
+        if (msg.includes('sie_docente_listar_estudiantes_salon') || error.code === 'PGRST202') {
+          return {
+            students: [],
+            error:
+              'Función de listado no instalada en Supabase. Ejecute scripts/PATCH_DOCENTE_LISTAR_SALON.sql en el SQL Editor.',
+          };
+        }
+        return { students: [], error: error.message };
+      }
+
+      const payload = data as { students?: unknown; error?: string | null };
+      if (payload?.error) {
+        return { students: [], error: payload.error };
+      }
+
+      return { students: mapRpcStudents(payload?.students), error: null };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al cargar estudiantes';
+      return { students: [], error: message };
+    }
   },
 
   async getAll(filters?: {

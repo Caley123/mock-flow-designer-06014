@@ -140,10 +140,9 @@ export async function verificarEstudiante(codigoBarras: string) {
   }
 }
 
-// Función para usar desde la consola del navegador
-if (typeof window !== 'undefined') {
-  (window as any).verificarEstudiante = verificarEstudiante;
-  console.log('💡 Función disponible: verificarEstudiante(codigoBarras)');
-  console.log('   Ejemplo: verificarEstudiante("70391919")');
+// Función para usar desde la consola del navegador (solo desarrollo)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as Window & { verificarEstudiante?: typeof verificarEstudiante }).verificarEstudiante =
+    verificarEstudiante;
 }
 

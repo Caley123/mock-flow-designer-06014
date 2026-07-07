@@ -47,10 +47,17 @@ import { buildAttendanceDetailSheet } from '@/lib/utils/excelListExports';
 import { PdfReportDocument, buildFilterSubtitle } from '@/lib/utils/pdfReportBuilder';
 import { REPORT_LOGO_PATH } from '@/lib/utils/reportLogo';
 import { getCurrentSchoolYear, getAllBimestres, formatBimestreLabel, type Bimestre } from '@/lib/utils/bimestreUtils';
+import { CLASSROOM_GRADES, CLASSROOM_SECTIONS, CLASSROOM_LEVELS } from '@/lib/constants/classrooms';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
-const LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
-const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
-const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const TABLE_PAGE_SIZE = 25;
 
 const statusMap: Record<string, { label: string; className: string; description: string }> = {
   A_tiempo: { label: 'A', className: 'bg-emerald-100 text-emerald-700', description: 'A tiempo' },
@@ -65,6 +72,22 @@ const getCurrentMonthValue = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
+function filtersAreComplete(
+  reportType: 'monthly' | 'bimestral',
+  bimestre: Bimestre | 'all',
+  levelFilter: 'all' | EducationalLevel,
+  gradeFilter: 'all' | string,
+  sectionFilter: 'all' | string,
+): boolean {
+  if (levelFilter === 'all' || gradeFilter === 'all' || sectionFilter === 'all') {
+    return false;
+  }
+  if (reportType === 'bimestral' && bimestre === 'all') {
+    return false;
+  }
+  return true;
+}
+
 export const AttendanceReport = () => {
   const [reportType, setReportType] = useState<'monthly' | 'bimestral'>('monthly');
   const [monthValue, setMonthValue] = useState(getCurrentMonthValue());
@@ -76,11 +99,26 @@ export const AttendanceReport = () => {
   const [rows, setRows] = useState<MonthlyAttendanceRow[]>([]);
   const [daysInMonth, setDaysInMonth] = useState<number>(new Date().getDate());
   const [loading, setLoading] = useState(false);
+  const [hasQueried, setHasQueried] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const isMountedRef = useRef(true);
+
+  const filtersReady = filtersAreComplete(
+    reportType,
+    bimestre,
+    levelFilter,
+    gradeFilter,
+    sectionFilter,
+  );
 
   const fetchReport = async () => {
     if (!isMountedRef.current) return;
-    
+
+    if (!filtersReady) {
+      toast.error('Seleccione nivel, grado y sección antes de consultar');
+      return;
+    }
+
     setLoading(true);
     try {
       if (reportType === 'bimestral') {
@@ -106,9 +144,12 @@ export const AttendanceReport = () => {
           toast.error(error);
           setRows([]);
           setDaysInMonth(0);
+          setHasQueried(false);
         } else {
           setRows(reportRows);
           setDaysInMonth(totalDays);
+          setHasQueried(true);
+          setCurrentPage(1);
         }
       } else {
         const [yearStr, monthStr] = monthValue.split('-');
@@ -133,9 +174,12 @@ export const AttendanceReport = () => {
           toast.error(error);
           setRows([]);
           setDaysInMonth(0);
+          setHasQueried(false);
         } else {
           setRows(reportRows);
           setDaysInMonth(totalDays);
+          setHasQueried(true);
+          setCurrentPage(1);
         }
       }
     } catch (error: any) {
@@ -143,6 +187,7 @@ export const AttendanceReport = () => {
       toast.error(error?.message || 'Error al generar reporte');
       setRows([]);
       setDaysInMonth(0);
+      setHasQueried(false);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -152,15 +197,31 @@ export const AttendanceReport = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
-    fetchReport();
-    
     return () => {
       isMountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportType, bimestre, añoEscolar]);
+  }, []);
+
+  useEffect(() => {
+    setHasQueried(false);
+    setRows([]);
+    setCurrentPage(1);
+  }, [reportType, monthValue, bimestre, añoEscolar, levelFilter, gradeFilter, sectionFilter]);
 
   const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, idx) => idx + 1), [daysInMonth]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE));
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * TABLE_PAGE_SIZE;
+    return rows.slice(start, start + TABLE_PAGE_SIZE);
+  }, [rows, currentPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const totalsGlobal = useMemo(() => {
     return rows.reduce(
@@ -417,7 +478,7 @@ export const AttendanceReport = () => {
                 e.stopPropagation();
                 fetchReport();
               }}
-              disabled={loading}
+              disabled={loading || !filtersReady || !hasQueried}
             >
               {loading ? (
                 <>
@@ -435,7 +496,7 @@ export const AttendanceReport = () => {
                 handlePrint();
               }}
               variant="ghost"
-              disabled={rows.length === 0}
+              disabled={rows.length === 0 || !hasQueried}
             >
               <Printer className="w-4 h-4 mr-2" />
               Imprimir
@@ -447,7 +508,7 @@ export const AttendanceReport = () => {
                 exportToPDF();
               }}
               variant="ghost"
-              disabled={rows.length === 0}
+              disabled={rows.length === 0 || !hasQueried}
             >
               <FileDown className="w-4 h-4 mr-2" />
               Exportar PDF
@@ -459,7 +520,7 @@ export const AttendanceReport = () => {
                 exportToExcel();
               }}
               variant="ghost"
-              disabled={rows.length === 0}
+              disabled={rows.length === 0 || !hasQueried}
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Exportar Excel
@@ -470,14 +531,20 @@ export const AttendanceReport = () => {
         <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
           <StaffKpiStat
             label="Estudiantes"
-            value={rows.length}
-            hint={reportType === 'monthly' ? `Mes ${monthValue}` : `Año ${añoEscolar}`}
+            value={hasQueried ? rows.length : '—'}
+            hint={
+              hasQueried
+                ? reportType === 'monthly'
+                  ? `Mes ${monthValue}`
+                  : `Año ${añoEscolar}`
+                : 'Seleccione filtros y consulte'
+            }
             icon={Users}
             tone="info"
           />
           <StaffKpiStat
             label="A tiempo"
-            value={totalsGlobal.onTime}
+            value={hasQueried ? totalsGlobal.onTime : '—'}
             hint="Llegadas puntuales"
             hintIcon={CheckCircle2}
             icon={CheckCircle2}
@@ -485,7 +552,7 @@ export const AttendanceReport = () => {
           />
           <StaffKpiStat
             label="Tardanzas"
-            value={totalsGlobal.late}
+            value={hasQueried ? totalsGlobal.late : '—'}
             hint="Registros con retraso"
             hintIcon={Clock}
             icon={Clock}
@@ -493,8 +560,8 @@ export const AttendanceReport = () => {
           />
           <StaffKpiStat
             label="Injustificadas"
-            value={totalsGlobal.unjustified}
-            hint={`${totalsGlobal.justified} justificadas`}
+            value={hasQueried ? totalsGlobal.unjustified : '—'}
+            hint={hasQueried ? `${totalsGlobal.justified} justificadas` : 'Sin consulta aún'}
             hintIcon={XCircle}
             icon={AlertTriangle}
             tone="accent"
@@ -504,7 +571,7 @@ export const AttendanceReport = () => {
         <StaffToolbar
           className="print-hidden"
           title="Filtros del reporte"
-          description="Tipo de período, mes o bimestre, y criterios por aula"
+          description="Seleccione nivel, grado y sección; luego pulse Consultar para cargar la planilla"
           footer={
             <div className="flex flex-wrap gap-4 text-sm">
               {Object.entries(statusMap).map(([key, value]) => (
@@ -589,7 +656,7 @@ export const AttendanceReport = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {LEVELS.map((level) => (
+                {CLASSROOM_LEVELS.map((level) => (
                   <SelectItem key={level} value={level}>
                     {level}
                   </SelectItem>
@@ -605,7 +672,7 @@ export const AttendanceReport = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                {GRADES.map((grade) => (
+                {CLASSROOM_GRADES.map((grade) => (
                   <SelectItem key={grade} value={grade}>
                     {grade}
                   </SelectItem>
@@ -621,7 +688,7 @@ export const AttendanceReport = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {SECTIONS.map((section) => (
+                {CLASSROOM_SECTIONS.map((section) => (
                   <SelectItem key={section} value={section}>
                     {section}
                   </SelectItem>
@@ -630,17 +697,29 @@ export const AttendanceReport = () => {
             </Select>
           </div>
           <div className="flex items-end">
-            <Button className="w-full" disabled={loading} onClick={fetchReport}>
+            <Button className="w-full" disabled={loading || !filtersReady} onClick={fetchReport}>
               {loading ? 'Cargando...' : 'Consultar'}
             </Button>
           </div>
+          {!filtersReady && (
+            <p className="col-span-full text-sm text-muted-foreground">
+              Indique nivel, grado y sección para habilitar la consulta
+              {reportType === 'bimestral' ? ' y seleccione un bimestre' : ''}.
+            </p>
+          )}
         </StaffToolbar>
 
         <StaffDataPanel>
           <StaffDataPanelHeader
             accent="success"
             title={reportType === 'monthly' ? 'Planilla mensual' : 'Planilla bimestral'}
-            description={`${rows.length} estudiantes · ${daysInMonth} días en el período`}
+            description={
+              !hasQueried
+                ? 'Configure los filtros y pulse Consultar'
+                : rows.length > TABLE_PAGE_SIZE
+                  ? `${rows.length} estudiantes · página ${currentPage} de ${totalPages} · ${TABLE_PAGE_SIZE} por página · ${daysInMonth} días`
+                  : `${rows.length} estudiantes · ${daysInMonth} días en el período`
+            }
           />
           <div className="p-4 pt-0 sm:p-5 sm:pt-0">
             {loading ? (
@@ -648,13 +727,20 @@ export const AttendanceReport = () => {
                 <Loader2 className="mr-3 h-6 w-6 animate-spin" />
                 Cargando asistencias...
               </div>
+            ) : !hasQueried ? (
+              <StaffEmptyState
+                icon={Calendar}
+                title="Sin consulta realizada"
+                description="Elija nivel, grado y sección, luego pulse Consultar para generar la planilla del período"
+              />
             ) : rows.length === 0 ? (
               <StaffEmptyState
                 icon={Calendar}
                 title="Sin datos para mostrar"
-                description="Ajuste los filtros y pulse Consultar para generar el reporte"
+                description="No hay estudiantes o registros de asistencia con los filtros seleccionados"
               />
             ) : (
+              <>
               <div className="overflow-auto rounded-lg border">
                 <table className="min-w-[960px] text-xs">
                   <thead>
@@ -674,7 +760,7 @@ export const AttendanceReport = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => (
+                    {paginatedRows.map((row) => (
                       <tr key={row.student.id} className="border-t">
                         <td className="sticky left-0 bg-background px-3 py-2 text-sm font-medium">
                           <div>{row.student.fullName}</div>
@@ -711,6 +797,64 @@ export const AttendanceReport = () => {
                   </tbody>
                 </table>
               </div>
+              {rows.length > TABLE_PAGE_SIZE && (
+                <Pagination className="mt-4">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setCurrentPage((p) => Math.max(1, p - 1));
+                        }}
+                        className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(
+                        (p) =>
+                          p === 1 ||
+                          p === totalPages ||
+                          Math.abs(p - currentPage) <= 1,
+                      )
+                      .map((page, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        return (
+                          <span key={page} className="contents">
+                            {prev !== undefined && page - prev > 1 && (
+                              <PaginationItem>
+                                <span className="px-2 text-muted-foreground">…</span>
+                              </PaginationItem>
+                            )}
+                            <PaginationItem>
+                              <PaginationLink
+                                href="#"
+                                isActive={page === currentPage}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setCurrentPage(page);
+                                }}
+                              >
+                                {page}
+                              </PaginationLink>
+                            </PaginationItem>
+                          </span>
+                        );
+                      })}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setCurrentPage((p) => Math.min(totalPages, p + 1));
+                        }}
+                        className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              )}
+              </>
             )}
           </div>
         </StaffDataPanel>

@@ -80,6 +80,8 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 
+import { CLASSROOM_GRADES, CLASSROOM_SECTIONS } from '@/lib/constants/classrooms';
+
 const EDUCATIONAL_LEVELS: EducationalLevel[] = ['Primaria', 'Secundaria'];
 
 const studentFormSchema = z.object({
@@ -108,6 +110,8 @@ export const StudentsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
+  const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
+  const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -164,15 +168,17 @@ export const StudentsList = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, levelFilter]);
+  }, [debouncedSearch, levelFilter, gradeFilter, sectionFilter]);
 
   const studentFilters = useMemo(
     () => ({
       search: debouncedSearch || undefined,
       level: levelFilter === 'all' ? undefined : levelFilter,
+      grade: gradeFilter === 'all' ? undefined : gradeFilter,
+      section: sectionFilter === 'all' ? undefined : sectionFilter,
       page: currentPage,
     }),
-    [debouncedSearch, levelFilter, currentPage]
+    [debouncedSearch, levelFilter, gradeFilter, sectionFilter, currentPage]
   );
 
   const {
@@ -380,13 +386,19 @@ export const StudentsList = () => {
   };
 
   const handleExportExcel = async () => {
-    const filters =
-      levelFilter !== 'all' ? `Nivel: ${levelFilter}` : searchTerm ? `Búsqueda: ${searchTerm}` : undefined;
+    const filterParts: string[] = [];
+    if (levelFilter !== 'all') filterParts.push(`Nivel: ${levelFilter}`);
+    if (gradeFilter !== 'all') filterParts.push(`Grado: ${gradeFilter}`);
+    if (sectionFilter !== 'all') filterParts.push(`Sección: ${sectionFilter}`);
+    if (searchTerm) filterParts.push(`Búsqueda: ${searchTerm}`);
+    const filters = filterParts.length > 0 ? filterParts.join(' · ') : undefined;
     const { students: allRows, error } = await studentsService.getAll({
       active: true,
       fetchAll: true,
       search: debouncedSearch || undefined,
       level: levelFilter === 'all' ? undefined : levelFilter,
+      grade: gradeFilter === 'all' ? undefined : gradeFilter,
+      section: sectionFilter === 'all' ? undefined : sectionFilter,
     });
     if (error) {
       toast.error(error);
@@ -1076,8 +1088,8 @@ export const StudentsList = () => {
         />
       </div>
 
-      <StaffToolbar title="Buscar y filtrar" description="Refine por nombre, código o nivel educativo">
-        <div className="space-y-2 sm:col-span-2">
+      <StaffToolbar title="Buscar y filtrar" description="Refine por nombre, código, nivel, grado o sección">
+        <div className="col-span-full space-y-2">
           <Label htmlFor="students-search">Buscar</Label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1109,6 +1121,38 @@ export const StudentsList = () => {
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-2">
+          <Label>Grado</Label>
+          <Select value={gradeFilter} onValueChange={setGradeFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {CLASSROOM_GRADES.map((grade) => (
+                <SelectItem key={grade} value={grade}>
+                  {grade}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Sección</Label>
+          <Select value={sectionFilter} onValueChange={setSectionFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {CLASSROOM_SECTIONS.map((section) => (
+                <SelectItem key={section} value={section}>
+                  {section}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-end">
           <Button variant="outline" onClick={() => refetch()} className="w-full" disabled={isFetching}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
@@ -1131,7 +1175,7 @@ export const StudentsList = () => {
             <StaffEmptyState
               icon={Users}
               title="No se encontraron estudiantes"
-              description="Prueba otro término de búsqueda o cambia el filtro de nivel"
+              description="Prueba otro término de búsqueda o cambia los filtros de nivel, grado o sección"
             />
           ) : (
             <>

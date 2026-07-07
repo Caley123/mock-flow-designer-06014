@@ -6,6 +6,8 @@ export function getHomeRouteForRole(role: UserRole): string {
   switch (role) {
     case 'Tutor':
       return '/tutor-scanner';
+    case 'Docente':
+      return '/docente-scanner';
     case 'Padre':
       return '/parent-portal';
     default:

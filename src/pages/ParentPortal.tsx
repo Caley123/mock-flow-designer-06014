@@ -27,6 +27,7 @@ import {
   authService,
   incidentsService,
   parentMeetingsService,
+  evidenceService,
 } from '@/lib/services';
 import type { ArrivalRecord, Incident, ParentMeeting, Student } from '@/types';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths } from 'date-fns';
@@ -541,7 +542,30 @@ function ArrivalCard({ record, compact }: { record: ArrivalRecord; compact?: boo
 }
 
 function IncidentCard({ incident, detailed }: { incident: Incident; detailed?: boolean }) {
+  const [evidences, setEvidences] = useState<{ url: string; filename: string }[]>([]);
+  const [loadingEvidence, setLoadingEvidence] = useState(false);
+
+  useEffect(() => {
+    if (!detailed || !incident.hasEvidence) {
+      setEvidences([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingEvidence(true);
+    void evidenceService.getByIncident(incident.id).then(({ evidences: rows, error }) => {
+      if (cancelled) return;
+      if (!error) {
+        setEvidences(rows.map((e) => ({ url: e.url, filename: e.filename })));
+      }
+      setLoadingEvidence(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailed, incident.id, incident.hasEvidence]);
+
   const name = incident.faultType?.name ?? 'Observación registrada';
+  const category = incident.faultType?.category;
   const dateStr = incident.registeredAt
     ? format(new Date(incident.registeredAt), "d 'de' MMMM, HH:mm", { locale: es })
     : '';
@@ -557,21 +581,62 @@ function IncidentCard({ incident, detailed }: { incident: Incident; detailed?: b
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-snug tracking-tight">{name}</p>
+          {category && (
+            <p className="mt-0.5 text-xs text-muted-foreground">Categoría: {category}</p>
+          )}
           <p className="mt-1 text-xs text-muted-foreground">{dateStr}</p>
+          {incident.registeredByUser?.fullName && detailed && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Registrado por: {incident.registeredByUser.fullName}
+            </p>
+          )}
         </div>
-        <Badge
-          variant={
-            incident.status === 'Activa' ? 'destructive' : incident.status === 'Justificada' ? 'default' : 'secondary'
-          }
-          className="w-fit shrink-0"
-        >
-          {statusLabel}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {incident.hasEvidence && (
+            <Badge variant="outline" className="text-[10px]">
+              Con evidencia
+            </Badge>
+          )}
+          <Badge
+            variant={
+              incident.status === 'Activa' ? 'destructive' : incident.status === 'Justificada' ? 'default' : 'secondary'
+            }
+            className="w-fit shrink-0"
+          >
+            {statusLabel}
+          </Badge>
+        </div>
       </div>
       {detailed && incident.observations && (
         <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground leading-relaxed">
           {incident.observations}
         </p>
+      )}
+      {detailed && incident.hasEvidence && (
+        <div className="mt-3 border-t border-border pt-3">
+          {loadingEvidence ? (
+            <p className="text-xs text-muted-foreground">Cargando fotos…</p>
+          ) : evidences.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {evidences.map((ev) => (
+                <a
+                  key={ev.url}
+                  href={ev.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block overflow-hidden rounded-lg border"
+                >
+                  <img
+                    src={ev.url}
+                    alt={ev.filename}
+                    className="h-20 w-full object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );

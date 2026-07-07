@@ -78,7 +78,6 @@ export const StudentPhoto = ({
           alt={name}
           loading={priority === 'low' ? 'lazy' : 'eager'}
           decoding="async"
-          fetchPriority={priority === 'low' ? 'low' : 'auto'}
           className={cn('object-cover', imageClassName)}
           onError={() => setPhotoSrc(null)}
         />

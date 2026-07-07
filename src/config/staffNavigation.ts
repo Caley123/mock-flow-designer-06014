@@ -86,6 +86,7 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
     icon: Settings,
     roles: ['Admin'],
     subItems: [
+      { path: '/admin/teachers', label: 'Docentes' },
       { path: '/audit', label: 'Auditoría' },
       { path: '/system-config', label: 'Configuración' },
     ],
@@ -93,7 +94,7 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
 ];
 
 export function getStaffNavItems(role?: string | null): StaffNavItem[] {
-  if (!role || role === 'Tutor' || role === 'Padre') return [];
+  if (!role || role === 'Tutor' || role === 'Docente' || role === 'Padre') return [];
   return ALL_STAFF_NAV_ITEMS.filter((item) => item.roles.includes(role));
 }
 

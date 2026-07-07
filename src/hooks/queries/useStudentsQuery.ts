@@ -8,6 +8,8 @@ export const STUDENTS_PAGE_SIZE = 10;
 export interface StudentsListFilters {
   search?: string;
   level?: EducationalLevel;
+  grade?: string;
+  section?: string;
   page?: number;
 }
 
@@ -20,6 +22,8 @@ export function useStudentsQuery(filters: StudentsListFilters = {}) {
       const { students, total, stats, error } = await studentsService.getAll({
         search: filters.search,
         level: filters.level,
+        grade: filters.grade,
+        section: filters.section,
         active: true,
         page,
         pageSize: STUDENTS_PAGE_SIZE,

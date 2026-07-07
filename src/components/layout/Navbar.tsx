@@ -60,8 +60,8 @@ export const Navbar = () => {
   }
 
   const getNavItems = (): NavItem[] => {
-    // Tutores no tienen acceso al navbar (usan su propia interfaz)
-    if (user?.role === 'Tutor') {
+    // Tutores y docentes usan interfaz dedicada sin navbar staff
+    if (user?.role === 'Tutor' || user?.role === 'Docente') {
       return [];
     }
 

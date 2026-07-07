@@ -1,6 +1,16 @@
 // Tipos que coinciden con el esquema de la base de datos
-export type UserRole = 'Supervisor' | 'Tutor' | 'Director' | 'Admin' | 'Padre';
+export type UserRole = 'Supervisor' | 'Tutor' | 'Director' | 'Admin' | 'Padre' | 'Docente';
 export type EducationalLevel = 'Primaria' | 'Secundaria';
+
+export interface DocenteClassroom {
+  level: EducationalLevel;
+  grade: string;
+  section: string;
+}
+
+export interface DocenteAssignments {
+  classrooms: DocenteClassroom[];
+}
 
 export type ReincidenceLevel = 0 | 1 | 2 | 3 | 4 | 5;
 

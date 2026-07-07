@@ -58,9 +58,18 @@ import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { cn } from '@/lib/utils';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const DEPARTURE_PAGE_SIZE = 15;
 
 function getTodayDate() {
   const nowLima = new Date().toLocaleString('es-PE', {
@@ -177,6 +186,7 @@ export const DepartureControl = () => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
   const [confirmBulk, setConfirmBulk] = useState<BulkConfirmTarget | null>(null);
   const [individualOpen, setIndividualOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const isMountedRef = useRef(true);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -209,12 +219,17 @@ export const DepartureControl = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
+    void arrivalService.prefetchArrivalConfig();
     void loadArrivals();
 
     return () => {
       isMountedRef.current = false;
     };
   }, [loadArrivals]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, departureFilter, levelFilter, gradeFilter, sectionFilter, selectedDate]);
 
   useEffect(() => {
     setLevelFilter(bulkLevel);
@@ -378,6 +393,19 @@ export const DepartureControl = () => {
       }),
     [records, searchTerm, levelFilter, gradeFilter, sectionFilter, departureFilter],
   );
+
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / DEPARTURE_PAGE_SIZE));
+
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * DEPARTURE_PAGE_SIZE;
+    return filteredRecords.slice(start, start + DEPARTURE_PAGE_SIZE);
+  }, [filteredRecords, currentPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const stats = useMemo(() => {
     const pending = records.filter((r) => !r.departureTime).length;
@@ -834,7 +862,11 @@ export const DepartureControl = () => {
       <StaffDataPanel>
         <StaffDataPanelHeader
           title="Listado del día"
-          description={`${filteredRecords.length} visibles`}
+          description={
+            filteredRecords.length > DEPARTURE_PAGE_SIZE
+              ? `${filteredRecords.length} visibles · página ${currentPage} de ${totalPages} · ${DEPARTURE_PAGE_SIZE} por página`
+              : `${filteredRecords.length} visibles`
+          }
           action={
             <Button onClick={() => void loadArrivals()} variant="outline" size="sm" disabled={loading}>
               Actualizar
@@ -858,6 +890,7 @@ export const DepartureControl = () => {
               }
             />
           ) : (
+            <>
             <div className="app-table-wrap">
               <Table>
                 <TableHeader>
@@ -870,7 +903,7 @@ export const DepartureControl = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRecords.map((record) => (
+                  {paginatedRecords.map((record) => (
                     <TableRow key={record.id}>
                       <TableCell className="font-medium">{record.student?.fullName}</TableCell>
                       <TableCell>
@@ -922,6 +955,65 @@ export const DepartureControl = () => {
                 </TableBody>
               </Table>
             </div>
+            {filteredRecords.length > DEPARTURE_PAGE_SIZE && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.max(1, p - 1));
+                      }}
+                      className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - currentPage) <= 1,
+                    )
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev !== undefined && page - prev > 1;
+                      return (
+                        <span key={page} className="contents">
+                          {showEllipsis && (
+                            <PaginationItem>
+                              <span className="px-2 text-muted-foreground">…</span>
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              href="#"
+                              isActive={page === currentPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </span>
+                      );
+                    })}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      }}
+                      className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+            </>
           )}
         </div>
       </StaffDataPanel>

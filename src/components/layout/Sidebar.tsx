@@ -7,7 +7,7 @@ import {
   User,
   ChevronRight,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { authService } from '@/lib/services';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,28 @@ import {
   type StaffNavItem,
 } from '@/config/staffNavigation';
 import { preloadRoute } from '@/lib/routePreloads';
+
+const navItemClass = (active: boolean) =>
+  cn(
+    'group relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-200',
+    active
+      ? 'bg-sidebar-primary/12 text-sidebar-foreground shadow-[inset_3px_0_0_0_hsl(var(--sidebar-primary))]'
+      : 'text-sidebar-foreground/75 hover:bg-white/[0.06] hover:text-sidebar-foreground',
+  );
+
+const navIconClass = (active: boolean) =>
+  cn(
+    'h-[18px] w-[18px] shrink-0 transition-colors',
+    active ? 'text-sidebar-primary' : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80',
+  );
+
+const subItemClass = (active: boolean) =>
+  cn(
+    'group relative flex items-center rounded-md py-2 pl-9 pr-3 text-[12.5px] transition-all duration-200',
+    active
+      ? 'bg-sidebar-primary/14 font-medium text-sidebar-foreground'
+      : 'text-sidebar-foreground/65 hover:bg-white/[0.05] hover:text-sidebar-foreground/90',
+  );
 
 export const Sidebar = () => {
   const location = useLocation();
@@ -52,7 +74,7 @@ export const Sidebar = () => {
     setExpandedItems(newExpanded);
   };
 
-  const navItems = getStaffNavItems(user?.role);
+  const navItems = useMemo(() => getStaffNavItems(user?.role), [user?.role]);
   const isParentRole = user?.role === 'Padre';
 
   const isActive = (item: StaffNavItem) => isStaffNavItemActive(location.pathname, item);
@@ -64,7 +86,12 @@ export const Sidebar = () => {
   useEffect(() => {
     const group = navItems.find((item) => isStaffNavItemActive(location.pathname, item));
     if (group?.subItems?.length) {
-      setExpandedItems((prev) => new Set(prev).add(group.path));
+      setExpandedItems((prev) => {
+        if (prev.has(group.path)) return prev;
+        const next = new Set(prev);
+        next.add(group.path);
+        return next;
+      });
     }
   }, [location.pathname, navItems]);
 
@@ -75,14 +102,14 @@ export const Sidebar = () => {
           <Button
             variant="ghost"
             size="sm"
-            className="fixed left-4 top-4 z-50 border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg md:hidden"
+            className="fixed left-4 top-4 z-50 border border-sidebar-border/80 bg-sidebar/95 text-sidebar-foreground shadow-lg backdrop-blur-sm md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
           {mobileMenuOpen && (
             <div
-              className="fixed inset-0 bg-black/50 z-40 md:hidden"
+              className="fixed inset-0 z-40 bg-black/50 md:hidden"
               onClick={() => setMobileMenuOpen(false)}
             />
           )}
@@ -92,33 +119,35 @@ export const Sidebar = () => {
       <aside
         className={cn(
           'staff-sidebar fixed left-0 top-0 z-40 flex h-full w-64 flex-col animate-in fade-in slide-in-from-left-2 duration-300',
-          'border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl',
+          'border-r border-sidebar-border/80 text-sidebar-foreground shadow-xl',
           isParentRole
             ? 'hidden md:flex -translate-x-0'
             : mobileMenuOpen
               ? 'translate-x-0'
-              : '-translate-x-full md:translate-x-0'
+              : '-translate-x-full md:translate-x-0',
         )}
       >
-        <div className="flex w-full justify-center border-b border-sidebar-border px-4 pb-4 pt-4">
+        <div className="border-b border-sidebar-border/60 px-5 pb-5 pt-5">
           <Link
             to={user?.role === 'Padre' ? '/parent-portal' : '/'}
-            className="group flex flex-col items-center justify-center gap-2 text-center"
+            className="group flex flex-col items-center justify-center gap-2.5 text-center"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <GuardyMark size="lg" className="transition-transform duration-200 group-hover:scale-105" />
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-lg font-bold leading-none tracking-wide text-sidebar-foreground">
+            <div className="rounded-2xl bg-white/[0.06] p-2.5 ring-1 ring-white/10 transition-transform duration-200 group-hover:scale-[1.02]">
+              <GuardyMark size="lg" />
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <span className="font-display text-lg font-bold leading-none tracking-wide text-sidebar-foreground">
                 SIE
               </span>
-              <p className="text-[11px] leading-snug text-sidebar-foreground/70">
+              <p className="text-[11px] leading-snug text-sidebar-foreground/60">
                 Incidencias Escolares
               </p>
             </div>
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        <nav className="staff-sidebar-nav flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           {user?.role === 'Padre' ? (
             <ParentSidebarNav onNavigate={() => setMobileMenuOpen(false)} />
           ) : null}
@@ -132,27 +161,17 @@ export const Sidebar = () => {
               const defaultPath = getStaffNavDefaultPath(item);
               const showSubItems = isExpanded || active;
               return (
-                <div key={item.path}>
-                  <div className="flex items-stretch gap-0.5">
+                <div key={item.path} className="space-y-0.5">
+                  <div className="flex items-stretch gap-1">
                     <Link
                       to={defaultPath}
                       onClick={() => setMobileMenuOpen(false)}
                       onMouseEnter={() => prefetchPath(defaultPath)}
                       onFocus={() => prefetchPath(defaultPath)}
                       onTouchStart={() => prefetchPath(defaultPath)}
-                      className={cn(
-                        'flex min-w-0 flex-1 items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                        active
-                          ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent pl-[14px] text-sidebar-foreground'
-                          : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
-                      )}
+                      className={navItemClass(active)}
                     >
-                      <Icon
-                        className={cn(
-                          'h-5 w-5 shrink-0',
-                          active ? 'text-sidebar-primary' : 'text-sidebar-foreground/55'
-                        )}
-                      />
+                      <Icon className={navIconClass(active)} />
                       <span className="truncate">{item.label}</span>
                     </Link>
                     <button
@@ -161,20 +180,20 @@ export const Sidebar = () => {
                       aria-label={`Ver opciones de ${item.label}`}
                       onClick={() => toggleExpanded(item.path)}
                       className={cn(
-                        'shrink-0 rounded-lg px-2 py-3 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
-                        active && 'text-sidebar-primary'
+                        'flex shrink-0 items-center justify-center rounded-lg px-2 text-sidebar-foreground/55 transition-colors hover:bg-white/[0.06] hover:text-sidebar-foreground',
+                        active && 'text-sidebar-primary',
                       )}
                     >
                       <ChevronRight
                         className={cn(
                           'h-4 w-4 transition-transform duration-200',
-                          showSubItems && 'rotate-90'
+                          showSubItems && 'rotate-90',
                         )}
                       />
                     </button>
                   </div>
                   {showSubItems && (
-                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-sidebar-border pl-4">
+                    <div className="relative ml-3 space-y-0.5 border-l border-sidebar-border/50 py-1 pl-3">
                       {item.subItems?.map((subItem) => {
                         const subActive = location.pathname === subItem.path;
                         return (
@@ -185,14 +204,17 @@ export const Sidebar = () => {
                             onMouseEnter={() => prefetchPath(subItem.path)}
                             onFocus={() => prefetchPath(subItem.path)}
                             onTouchStart={() => prefetchPath(subItem.path)}
-                            className={cn(
-                              'flex items-center rounded-lg px-4 py-2 text-sm transition-all duration-200',
-                              subActive
-                                ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent font-medium text-sidebar-foreground'
-                                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
-                            )}
+                            className={subItemClass(subActive)}
                           >
-                            <ChevronRight className="mr-2 h-3 w-3" />
+                            <span
+                              className={cn(
+                                'absolute left-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full transition-colors',
+                                subActive
+                                  ? 'bg-sidebar-primary shadow-[0_0_6px_hsl(var(--sidebar-primary)/0.6)]'
+                                  : 'bg-sidebar-foreground/25 group-hover:bg-sidebar-foreground/40',
+                              )}
+                              aria-hidden
+                            />
                             {subItem.label}
                           </Link>
                         );
@@ -211,43 +233,33 @@ export const Sidebar = () => {
                 onMouseEnter={() => prefetchPath(item.path)}
                 onFocus={() => prefetchPath(item.path)}
                 onTouchStart={() => prefetchPath(item.path)}
-                className={cn(
-                  'flex items-center space-x-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                  active
-                    ? 'border-l-2 border-l-sidebar-primary bg-sidebar-accent pl-[14px] text-sidebar-foreground'
-                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
-                )}
+                className={cn(navItemClass(active), 'w-full')}
               >
-                <Icon
-                  className={cn(
-                    'h-5 w-5',
-                    active ? 'text-sidebar-primary' : 'text-sidebar-foreground/55'
-                  )}
-                />
+                <Icon className={navIconClass(active)} />
                 <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="space-y-3 border-t border-sidebar-border p-4">
-          <div className="flex items-center space-x-3 rounded-xl border border-sidebar-border bg-sidebar-accent px-4 py-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info">
-              <User className="h-5 w-5 text-white" />
+        <div className="space-y-2 border-t border-sidebar-border/60 p-4">
+          <div className="flex items-center gap-3 rounded-xl bg-white/[0.05] px-3 py-3 ring-1 ring-white/8">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/25 ring-1 ring-sidebar-primary/30">
+              <User className="h-4 w-4 text-sidebar-primary" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-sidebar-foreground">
                 {user?.fullName}
               </p>
-              <p className="truncate text-xs text-sidebar-foreground/65">{user?.role}</p>
+              <p className="truncate text-[11px] text-sidebar-foreground/55">{user?.role}</p>
             </div>
           </div>
           <Button
             variant="ghost"
-            className="w-full justify-start text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="h-9 w-full justify-start rounded-lg text-[13px] text-sidebar-foreground/80 hover:bg-white/[0.06] hover:text-sidebar-foreground"
             onClick={handleLogout}
           >
-            <LogOut className="mr-3 h-4 w-4" />
+            <LogOut className="mr-2.5 h-4 w-4" />
             Cerrar Sesión
           </Button>
         </div>

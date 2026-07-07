@@ -17,7 +17,13 @@ export const useSessionMonitor = () => {
     const role = sessionService.readSessionRaw()?.user.role;
     void authService.logout();
     const roleQuery =
-      role === 'Tutor' ? '&role=tutor' : role === 'Padre' ? '&role=padre' : '';
+      role === 'Tutor'
+        ? '&role=tutor'
+        : role === 'Docente'
+          ? '&role=docente'
+          : role === 'Padre'
+            ? '&role=padre'
+            : '';
     navigate(`/login?expired=true${roleQuery}`, { replace: true });
   }, [navigate]);
 

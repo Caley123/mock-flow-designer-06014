@@ -9,6 +9,7 @@ interface SessionData {
 
 const DEFAULT_SESSION_MS = 30 * 60 * 1000;
 const TUTOR_SESSION_MS = 15 * 60 * 1000;
+const DOCENTE_SESSION_MS = 15 * 60 * 1000;
 const PARENT_SESSION_MS = 15 * 60 * 1000;
 
 /**
@@ -24,7 +25,7 @@ export const sessionService = {
   STORAGE_KEY: 'session',
 
   getIdleDurationMs(role?: User['role']): number {
-    if (role === 'Tutor') return TUTOR_SESSION_MS;
+    if (role === 'Tutor' || role === 'Docente') return TUTOR_SESSION_MS;
     if (role === 'Padre') return PARENT_SESSION_MS;
     return DEFAULT_SESSION_MS;
   },

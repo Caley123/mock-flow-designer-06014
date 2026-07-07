@@ -33,8 +33,18 @@ import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
 import { authService } from '@/lib/services';
 
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const ARRIVAL_PAGE_SIZE = 15;
 
 type StatusFilter = 'all' | 'A tiempo' | 'Tarde' | 'Sin registrar';
 
@@ -54,6 +64,7 @@ export const ArrivalControl = () => {
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const isMountedRef = useRef(true);
 
   const getTodayDate = () => {
@@ -136,11 +147,16 @@ export const ArrivalControl = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
+    void arrivalService.prefetchArrivalConfig();
     void loadArrivals();
     return () => {
       isMountedRef.current = false;
     };
   }, [loadArrivals]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, levelFilter, gradeFilter, sectionFilter, selectedDate]);
 
   useEffect(() => {
     void loadRoster();
@@ -291,6 +307,19 @@ export const ArrivalControl = () => {
       ? Math.round((filteredStats.onTime / filteredStats.registered) * 100)
       : 0;
 
+  const totalPages = Math.max(1, Math.ceil(displayRows.length / ARRIVAL_PAGE_SIZE));
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * ARRIVAL_PAGE_SIZE;
+    return displayRows.slice(start, start + ARRIVAL_PAGE_SIZE);
+  }, [displayRows, currentPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const isLoading = loading || (isRosterMode && rosterLoading);
 
   const refreshAll = () => {
@@ -431,7 +460,11 @@ export const ArrivalControl = () => {
       <StaffDataPanel>
         <StaffDataPanelHeader
           title="Registros del día"
-          description={`${displayRows.length} visibles · actualice para refrescar`}
+          description={
+            displayRows.length > ARRIVAL_PAGE_SIZE
+              ? `${displayRows.length} visibles · página ${currentPage} de ${totalPages} · ${ARRIVAL_PAGE_SIZE} por página`
+              : `${displayRows.length} visibles · actualice para refrescar`
+          }
           action={
             <Button onClick={refreshAll} variant="outline" size="sm" disabled={isLoading}>
               Actualizar
@@ -455,6 +488,7 @@ export const ArrivalControl = () => {
               }
             />
           ) : (
+            <>
             <div className="app-table-wrap">
               <Table>
                 <TableHeader>
@@ -469,7 +503,7 @@ export const ArrivalControl = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayRows.map((row) => {
+                  {paginatedRows.map((row) => {
                     const { student, record } = row;
                     const rowKey = record?.id ?? `pending-${student.id}`;
 
@@ -574,6 +608,65 @@ export const ArrivalControl = () => {
                 </TableBody>
               </Table>
             </div>
+            {displayRows.length > ARRIVAL_PAGE_SIZE && (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.max(1, p - 1));
+                      }}
+                      className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - currentPage) <= 1,
+                    )
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev !== undefined && page - prev > 1;
+                      return (
+                        <span key={page} className="contents">
+                          {showEllipsis && (
+                            <PaginationItem>
+                              <span className="px-2 text-muted-foreground">…</span>
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink
+                              href="#"
+                              isActive={page === currentPage}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setCurrentPage(page);
+                              }}
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </span>
+                      );
+                    })}
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      }}
+                      className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+            </>
           )}
         </div>
       </StaffDataPanel>

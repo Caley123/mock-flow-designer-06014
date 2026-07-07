@@ -72,7 +72,7 @@ export const evidenceService = {
       });
 
 
-      if (error || !data) {
+      if (error || data == null) {
         // Si falla, eliminar el archivo subido
         await supabase.storage.from('evidencias').remove([filePath]);
         return { 
@@ -81,15 +81,15 @@ export const evidenceService = {
         };
       }
 
-      const evidenceData = data;
+      const evidenceData = typeof data === 'object' ? (data as Record<string, unknown>) : { id_evidencia: data };
 
       const evidence: IncidentEvidence = {
-        id: evidenceData.id_evidencia,
-        incidentId: evidenceData.id_incidencia,
-        filename: evidenceData.nombre_original,
+        id: Number(evidenceData.id_evidencia),
+        incidentId: Number(evidenceData.id_incidencia ?? incidentId),
+        filename: String(evidenceData.nombre_original ?? file.name),
         url: urlData.publicUrl,
-        uploadedBy: evidenceData.id_usuario_subida,
-        uploadedAt: evidenceData.fecha_subida,
+        uploadedBy: Number(evidenceData.id_usuario_subida ?? userId),
+        uploadedAt: String(evidenceData.fecha_subida ?? new Date().toISOString()),
       };
 
       return { evidence, error: null };
