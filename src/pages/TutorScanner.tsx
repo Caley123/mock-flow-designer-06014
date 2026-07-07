@@ -56,11 +56,13 @@ import { getLimaNow } from '@/lib/utils/limaDateTime';
 import {
   compareArrivalStatus,
   resolveArrivalLimitForLevel,
+  resolveArrivalStatusForStudent,
   type ArrivalLimitsByLevel,
 } from '@/lib/utils/arrivalLimit';
 import { configService } from '@/lib/services';
 import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 import type { CreateArrivalOptions } from '@/lib/services/arrivalService';
+import { invalidateArrivalLimitCache } from '@/lib/services/arrivalService';
 import { useTutorProfileIdle } from '@/hooks/useTutorProfileIdle';
 import { useTutorViewport } from '@/hooks/useTutorViewport';
 import { isDniLikeQuery, TUTOR_NAME_SEARCH_LIMIT } from '@/lib/utils/studentSearch';
@@ -94,6 +96,7 @@ export const TutorScanner = () => {
   const [showStudentProfile, setShowStudentProfile] = useState(false);
   const [arrivalRecord, setArrivalRecord] = useState<ArrivalRecord | null>(null);
   const [arrivalLimits, setArrivalLimits] = useState<ArrivalLimitsByLevel>({
+    general: '08:00',
     primaria: '08:00',
     secundaria: '08:00',
   });
@@ -341,6 +344,7 @@ export const TutorScanner = () => {
 
   const loadArrivalLimit = async () => {
     try {
+      invalidateArrivalLimitCache();
       const limits = await arrivalService.fetchArrivalLimits();
       setArrivalLimits(limits);
 
@@ -619,75 +623,81 @@ export const TutorScanner = () => {
 
   const processStudent = useCallback(
     (foundStudent: Student, scanSeq: number) => {
-      if (!isMountedRef.current) return;
+      void (async () => {
+        if (!isMountedRef.current) return;
 
-      const isLatestProfile = scanSeq === latestProfileScanRef.current;
-      const shouldUpdateProfile =
-        isLatestProfile || foundStudent.id !== displayedStudentIdRef.current;
+        const isLatestProfile = scanSeq === latestProfileScanRef.current;
+        const shouldUpdateProfile =
+          isLatestProfile || foundStudent.id !== displayedStudentIdRef.current;
 
-      const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
-      if (cachedToday) {
-        if (shouldUpdateProfile) {
-          applyScanSuccess(foundStudent, cachedToday, { countInSession: false, duplicate: true });
+        const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
+        if (cachedToday) {
+          if (shouldUpdateProfile) {
+            applyScanSuccess(foundStudent, cachedToday, { countInSession: false, duplicate: true });
+          }
+          toast.info(
+            `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}`,
+            { duration: 2800 }
+          );
+          releaseScanFocus();
+          return;
         }
-        toast.info(
-          `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}`,
-          { duration: 2800 }
+
+        if (inFlightStudentIdsRef.current.has(foundStudent.id)) {
+          if (isLatestProfile) {
+            toast.info(`Registrando a ${foundStudent.fullName}…`, { duration: 1800 });
+          }
+          releaseScanFocus();
+          return;
+        }
+        inFlightStudentIdsRef.current.add(foundStudent.id);
+
+        invalidateArrivalLimitCache();
+        const limits = await arrivalService.fetchArrivalLimits();
+        if (!isMountedRef.current) return;
+        setArrivalLimits(limits);
+
+        const { date, time } = getLimaNow();
+        const status = resolveArrivalStatusForStudent(time, limits, foundStudent.level);
+
+        const arrivalOpts: CreateArrivalOptions = {
+          date,
+          arrivalTime: time,
+          studentLevel: foundStudent.level,
+        };
+
+        if (foundStudent.barcode?.trim()) {
+          barcodeIndexRef.current.set(foundStudent.barcode.trim(), foundStudent);
+        }
+
+        const optimisticRecord: ArrivalRecord = {
+          id: 0,
+          studentId: foundStudent.id,
+          date,
+          arrivalTime: time,
+          status,
+          createdAt: new Date().toISOString(),
+          registeredBy: 0,
+        };
+
+        const showedOptimisticUi = shouldUpdateProfile;
+        if (showedOptimisticUi) {
+          applyScanSuccess(foundStudent, optimisticRecord);
+        }
+
+        persistArrivalInBackground(
+          foundStudent,
+          arrivalOpts,
+          scanSeq,
+          status,
+          showedOptimisticUi
         );
+
         releaseScanFocus();
-        return;
-      }
-
-      if (inFlightStudentIdsRef.current.has(foundStudent.id)) {
-        if (isLatestProfile) {
-          toast.info(`Registrando a ${foundStudent.fullName}…`, { duration: 1800 });
-        }
-        releaseScanFocus();
-        return;
-      }
-
-      const { date, time, status } = computeArrivalSnapshot(foundStudent.level);
-      const arrivalOpts: CreateArrivalOptions = {
-        date,
-        arrivalTime: time,
-        educationalLevel: foundStudent.level,
-        status,
-      };
-
-      if (foundStudent.barcode?.trim()) {
-        barcodeIndexRef.current.set(foundStudent.barcode.trim(), foundStudent);
-      }
-
-      const optimisticRecord: ArrivalRecord = {
-        id: 0,
-        studentId: foundStudent.id,
-        date,
-        arrivalTime: time,
-        status,
-        createdAt: new Date().toISOString(),
-        registeredBy: 0,
-      };
-
-      inFlightStudentIdsRef.current.add(foundStudent.id);
-
-      const showedOptimisticUi = shouldUpdateProfile;
-      if (showedOptimisticUi) {
-        applyScanSuccess(foundStudent, optimisticRecord);
-      }
-
-      persistArrivalInBackground(
-        foundStudent,
-        arrivalOpts,
-        scanSeq,
-        status,
-        showedOptimisticUi
-      );
-
-      releaseScanFocus();
+      })();
     },
     [
       applyScanSuccess,
-      computeArrivalSnapshot,
       persistArrivalInBackground,
       releaseScanFocus,
     ]
@@ -1029,10 +1039,12 @@ export const TutorScanner = () => {
   const limitsLabel = `Prim ${arrivalLimits.primaria} · Sec ${arrivalLimits.secundaria}`;
   const activeArrivalLimit = student
     ? resolveArrivalLimitForLevel(arrivalLimits, student.level)
-    : arrivalLimits.secundaria;
+    : arrivalLimits.general;
   const limitTone = useMemo(() => {
     if (!nowHHMM) return 'secondary' as const;
-    return nowHHMM <= activeArrivalLimit ? ('success' as const) : ('warning' as const);
+    return compareArrivalStatus(nowHHMM, activeArrivalLimit) === 'A tiempo'
+      ? ('success' as const)
+      : ('warning' as const);
   }, [nowHHMM, activeArrivalLimit]);
 
   return (

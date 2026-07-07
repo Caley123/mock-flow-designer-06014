@@ -2,14 +2,15 @@ import { supabase } from '../supabaseClient';
 import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, MonthlyAttendanceRow, AttendanceStatus } from '@/types';
 import { configService } from './configService';
 import { studentsService } from './studentsService';
+import { authService } from './authService';
 import { getLimaNow, getLimaTodayDate, getLimaMonthBounds, getMonthBounds } from '@/lib/utils/limaDateTime';
-import { getCached, setCached } from '@/lib/utils/memoryCache';
+import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
+import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
 import {
-  arrivalLimitConfigKey,
-  compareArrivalStatus,
-  type ArrivalLimitsByLevel,
+  resolveArrivalLimitForLevel,
+  resolveArrivalStatusForStudent,
 } from '@/lib/utils/arrivalLimit';
-import { normalizeTimeValue } from '@/config/systemSettings';
+import { SYSTEM_SETTING_KEYS, normalizeTimeValue } from '@/config/systemSettings';
 
 const ARRIVAL_LIMIT_CACHE_TTL = 15 * 60 * 1000;
 
@@ -63,30 +64,70 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
   };
 }
 
+const ARRIVAL_LIMITS_CACHE_KEY = 'config:arrival-limits-bundle';
+
+export function invalidateArrivalLimitCache(): void {
+  invalidateCache(ARRIVAL_LIMITS_CACHE_KEY);
+  invalidateCache(`config:${SYSTEM_SETTING_KEYS.arrivalLimit}`);
+  invalidateCache(`config:${SYSTEM_SETTING_KEYS.arrivalLimitPrimary}`);
+  invalidateCache(`config:${SYSTEM_SETTING_KEYS.arrivalLimitSecondary}`);
+}
+
+function canSyncArrivalEstadoInDb(): boolean {
+  const role = authService.getCurrentUser()?.role;
+  return role === 'Admin' || role === 'Director' || role === 'Supervisor';
+}
+
+async function resolveRecordStatus(
+  record: ArrivalRecord,
+  level?: string | null,
+  syncToDb = false,
+): Promise<ArrivalRecord> {
+  const limits = await fetchArrivalLimits();
+  const status = resolveArrivalStatusForStudent(record.arrivalTime, limits, level);
+  if (status === record.status) return record;
+  const resolved = { ...record, status };
+  if (syncToDb && canSyncArrivalEstadoInDb() && record.id > 0) {
+    const { error } = await supabase
+      .from('registros_llegada')
+      .update({ estado: status })
+      .eq('id_registro', record.id);
+    if (error) console.warn('resolveRecordStatus sync:', error.message);
+  }
+  return resolved;
+}
+
+function buildArrivalLimitsFromConfigs(
+  configs: Record<string, { value?: string } | undefined>,
+): ArrivalLimitsByLevel {
+  const general = normalizeTimeValue(
+    configs[SYSTEM_SETTING_KEYS.arrivalLimit]?.value,
+    '08:00',
+  );
+  return {
+    general,
+    primaria: normalizeTimeValue(
+      configs[SYSTEM_SETTING_KEYS.arrivalLimitPrimary]?.value,
+      general,
+    ),
+    secundaria: normalizeTimeValue(
+      configs[SYSTEM_SETTING_KEYS.arrivalLimitSecondary]?.value,
+      general,
+    ),
+  };
+}
+
 /**
- * Hora límite de llegada según nivel (Primaria / Secundaria).
- * Si no hay clave por nivel, usa hora_limite_llegada global como respaldo.
+ * Hora límite de llegada según nivel (Primaria / Secundaria / general).
  */
 async function getArrivalLimitTime(level?: string): Promise<string> {
-  const configKey = arrivalLimitConfigKey(level);
-  const cacheKey = `config:${configKey}`;
-  const cached = getCached<string>(cacheKey);
-  if (cached) return cached;
-
-  const { config } = await configService.getByKey(configKey);
-  let raw = config?.value;
-  if (!raw && configKey !== 'hora_limite_llegada') {
-    const { config: legacy } = await configService.getByKey('hora_limite_llegada');
-    raw = legacy?.value;
-  }
-  const normalized = normalizeTimeValue(raw, '08:00');
-  setCached(cacheKey, normalized, ARRIVAL_LIMIT_CACHE_TTL);
-  return normalized;
+  const limits = await fetchArrivalLimits();
+  return resolveArrivalLimitForLevel(limits, level);
 }
 
 /** Precarga límites de llegada por nivel. */
 export async function prefetchArrivalConfig(): Promise<void> {
-  await Promise.all([getArrivalLimitTime('Primaria'), getArrivalLimitTime('Secundaria')]);
+  await fetchArrivalLimits();
 }
 
 export async function fetchArrivalLimitTime(level?: string): Promise<string> {
@@ -94,11 +135,55 @@ export async function fetchArrivalLimitTime(level?: string): Promise<string> {
 }
 
 export async function fetchArrivalLimits(): Promise<ArrivalLimitsByLevel> {
-  const [primaria, secundaria] = await Promise.all([
-    getArrivalLimitTime('Primaria'),
-    getArrivalLimitTime('Secundaria'),
-  ]);
-  return { primaria, secundaria };
+  const cached = getCached<ArrivalLimitsByLevel>(ARRIVAL_LIMITS_CACHE_KEY);
+  if (cached) return cached;
+
+  const keys = [
+    SYSTEM_SETTING_KEYS.arrivalLimit,
+    SYSTEM_SETTING_KEYS.arrivalLimitPrimary,
+    SYSTEM_SETTING_KEYS.arrivalLimitSecondary,
+  ];
+  const { configs, error } = await configService.getByKeys(keys);
+  if (error) {
+    const fallback: ArrivalLimitsByLevel = {
+      general: '08:00',
+      primaria: '08:00',
+      secundaria: '08:00',
+    };
+    return fallback;
+  }
+
+  const limits = buildArrivalLimitsFromConfigs(configs);
+  setCached(ARRIVAL_LIMITS_CACHE_KEY, limits, ARRIVAL_LIMIT_CACHE_TTL);
+  for (const key of keys) {
+    if (configs[key]) {
+      setCached(`config:${key}`, configs[key], ARRIVAL_LIMIT_CACHE_TTL);
+    }
+  }
+  return limits;
+}
+
+/** Límites para portal público de padres (sin sesión). */
+export async function fetchPublicArrivalLimits(): Promise<ArrivalLimitsByLevel> {
+  try {
+    const { data, error } = await supabase.rpc('limites_llegada_publicos');
+    if (!error && data && typeof data === 'object') {
+      const payload = data as Record<string, unknown>;
+      const general = normalizeTimeValue(payload.general, '08:00');
+      return {
+        general,
+        primaria: normalizeTimeValue(payload.primaria, general),
+        secundaria: normalizeTimeValue(payload.secundaria, general),
+      };
+    }
+  } catch {
+    /* RPC opcional hasta aplicar PATCH SQL */
+  }
+  return fetchArrivalLimits().catch(() => ({
+    general: '08:00',
+    primaria: '08:00',
+    secundaria: '08:00',
+  }));
 }
 
 function getNowHHMM(): string {
@@ -113,8 +198,8 @@ export type CreateArrivalOptions = {
   date?: string;
   arrivalTime?: string;
   status?: 'A tiempo' | 'Tarde';
-  /** Nivel del estudiante (RPC escáner). Necesario para tutores: RLS bloquea SELECT en estudiantes. */
-  educationalLevel?: string;
+  /** Nivel del estudiante para aplicar hora_limite_llegada_primaria / _secundaria. */
+  studentLevel?: string | null;
 };
 
 export type CreateArrivalResult = {
@@ -160,7 +245,8 @@ function mapArrivalRow(data: {
  */
 export async function getTodayArrivalForStudent(
   studentId: number,
-  date?: string
+  date?: string,
+  studentLevel?: string | null,
 ): Promise<{ record: ArrivalRecord | null; error: string | null }> {
   try {
     const targetDate = date ?? getLimaNow().date;
@@ -182,7 +268,8 @@ export async function getTodayArrivalForStudent(
       return { record: null, error: null };
     }
 
-    return { record: mapArrivalRow(data), error: null };
+    const record = await resolveRecordStatus(mapArrivalRow(data), studentLevel, false);
+    return { record, error: null };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error al consultar llegada';
     return { record: null, error: message };
@@ -200,7 +287,21 @@ async function createArrivalRecordInner(
         ? { date: options.date, time: options.arrivalTime }
         : getLimaNow();
 
-    const { record: existing } = await getTodayArrivalForStudent(studentId, formattedDate);
+    let level = options?.studentLevel ?? null;
+    if (!level) {
+      const { data: estRow } = await supabase
+        .from('estudiantes')
+        .select('nivel_educativo')
+        .eq('id_estudiante', studentId)
+        .maybeSingle();
+      level = estRow?.nivel_educativo ?? null;
+    }
+
+    const { record: existing } = await getTodayArrivalForStudent(
+      studentId,
+      formattedDate,
+      level,
+    );
     if (existing) {
       return { record: existing, error: null, alreadyRegistered: true };
     }
@@ -216,28 +317,13 @@ async function createArrivalRecordInner(
       insertData.registrado_por = registeredBy;
     }
 
-    if (options?.status) {
-      insertData.estado = options.status;
-    } else {
-      let nivelEducativo = options?.educationalLevel ?? null;
-      let nivelFromDb: string | null = null;
-
-      if (!nivelEducativo) {
-        const { data: estRow } = await supabase
-          .from('estudiantes')
-          .select('nivel_educativo')
-          .eq('id_estudiante', studentId)
-          .maybeSingle();
-        nivelFromDb = estRow?.nivel_educativo ?? null;
-        nivelEducativo = nivelFromDb;
-      }
-
-      const limitHHMM = await getArrivalLimitTime(nivelEducativo);
-      insertData.estado = compareArrivalStatus(
-        normalizeTimeValue(formattedTime, '00:00'),
-        limitHHMM,
-      );
-    }
+    invalidateArrivalLimitCache();
+    const limits = await fetchArrivalLimits();
+    insertData.estado = resolveArrivalStatusForStudent(
+      normalizeTimeValue(formattedTime, '00:00'),
+      limits,
+      level,
+    );
 
     const { data, error } = await supabase
       .from('registros_llegada')
@@ -248,7 +334,11 @@ async function createArrivalRecordInner(
     if (error) {
       // Carrera entre dos tutores: el otro insertó primero.
       if (error.code === '23505') {
-        const { record: raced } = await getTodayArrivalForStudent(studentId, formattedDate);
+        const { record: raced } = await getTodayArrivalForStudent(
+          studentId,
+          formattedDate,
+          level,
+        );
         if (raced) {
           return { record: raced, error: null, alreadyRegistered: true };
         }
@@ -257,7 +347,8 @@ async function createArrivalRecordInner(
       return { record: null, error: error.message };
     }
 
-    return { record: mapArrivalRow(data), error: null };
+    const record = await resolveRecordStatus(mapArrivalRow(data), level, false);
+    return { record, error: null };
   } catch (error: any) {
     console.error('Error al registrar llegada:', error);
     return { record: null, error: error.message };
@@ -360,14 +451,16 @@ export async function getArrivals(filters?: {
       return { records: [], error: error.message };
     }
 
-    // Mapear los datos y formatear la hora correctamente
-    const records = (data || []).map(record => {
-      // Si la hora viene en formato HH:MM:SS, tomar solo HH:MM
-      if (record.hora_llegada && record.hora_llegada.length > 5) {
-        record.hora_llegada = record.hora_llegada.substring(0, 5);
-      }
-      return mapArrivalRecord(record);
-    });
+    const records = await Promise.all(
+      (data || []).map(async (row) => {
+        if (row.hora_llegada && row.hora_llegada.length > 5) {
+          row.hora_llegada = row.hora_llegada.substring(0, 5);
+        }
+        const mapped = mapArrivalRecord(row);
+        const nivel = mapped.student?.level ?? row.estudiante?.nivel_educativo ?? null;
+        return resolveRecordStatus(mapped, nivel, true);
+      }),
+    );
     return { records, error: null };
   } catch (error: any) {
     console.error('Error al obtener registros de llegada:', error);
@@ -968,12 +1061,15 @@ function getTodayDate(): string {
 export async function fetchMonthArrivalsForStudent(
   studentId: number,
   year?: number,
-  month?: number
+  month?: number,
+  studentLevel?: string | null,
 ): Promise<ArrivalRecord[]> {
   const bounds =
     year != null && month != null ? getMonthBounds(year, month) : getLimaMonthBounds();
   const y = year ?? bounds.year;
   const m = month ?? bounds.month;
+
+  let rawRecords: ArrivalRecord[] = [];
 
   const { data: rpcData, error: rpcError } = await supabase.rpc('asistencia_mes_por_estudiante', {
     p_student_id: studentId,
@@ -983,27 +1079,33 @@ export async function fetchMonthArrivalsForStudent(
 
   if (!rpcError && rpcData != null) {
     const rows = Array.isArray(rpcData) ? rpcData : [];
-    return rows.map((row) => mapRpcArrival(row as RpcArrivalRow));
+    rawRecords = rows.map((row) => mapRpcArrival(row as RpcArrivalRow));
+  } else {
+    if (rpcError && rpcError.code !== 'PGRST202' && !rpcError.message?.includes('does not exist')) {
+      console.warn('fetchMonthArrivalsForStudent rpc:', rpcError.message);
+    }
+
+    const { start, end } = bounds;
+    const { data, error } = await supabase
+      .from('registros_llegada')
+      .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
+      .eq('id_estudiante', studentId)
+      .gte('fecha', start)
+      .lte('fecha', end)
+      .order('fecha', { ascending: false });
+
+    if (error) {
+      console.warn('fetchMonthArrivalsForStudent:', error.message);
+      return [];
+    }
+    rawRecords = (data || []).map(mapArrivalRow);
   }
 
-  if (rpcError && rpcError.code !== 'PGRST202' && !rpcError.message?.includes('does not exist')) {
-    console.warn('fetchMonthArrivalsForStudent rpc:', rpcError.message);
-  }
-
-  const { start, end } = bounds;
-  const { data, error } = await supabase
-    .from('registros_llegada')
-    .select('id_registro, id_estudiante, fecha, hora_llegada, estado, fecha_creacion, registrado_por')
-    .eq('id_estudiante', studentId)
-    .gte('fecha', start)
-    .lte('fecha', end)
-    .order('fecha', { ascending: false });
-
-  if (error) {
-    console.warn('fetchMonthArrivalsForStudent:', error.message);
-    return [];
-  }
-  return (data || []).map(mapArrivalRow);
+  const limits = await fetchPublicArrivalLimits();
+  return rawRecords.map((record) => {
+    const status = resolveArrivalStatusForStudent(record.arrivalTime, limits, studentLevel);
+    return status === record.status ? record : { ...record, status };
+  });
 }
 
 /**
@@ -1084,9 +1186,27 @@ async function getPublicInfoByDniRpc(dni: string): Promise<{
     faultsLast60Days: 0,
   };
 
+  const limits = await fetchPublicArrivalLimits();
+  const arrival = payload.arrivalToday
+    ? (() => {
+        const mapped = mapRpcArrival(payload.arrivalToday!);
+        const status = resolveArrivalStatusForStudent(
+          mapped.arrivalTime,
+          limits,
+          student.level,
+        );
+        return status === mapped.status ? mapped : { ...mapped, status };
+      })()
+    : null;
+
   return {
-    arrival: payload.arrivalToday ? mapRpcArrival(payload.arrivalToday) : null,
-    recentArrivals: await fetchMonthArrivalsForStudent(student.id),
+    arrival,
+    recentArrivals: await fetchMonthArrivalsForStudent(
+      student.id,
+      undefined,
+      undefined,
+      student.level,
+    ),
     student,
     error: null,
   };
@@ -1110,8 +1230,8 @@ export async function getPublicInfoByDNI(dni: string): Promise<{
     const today = getLimaTodayDate();
 
     const [todayRes, recentArrivals] = await Promise.all([
-      getTodayArrivalForStudent(student.id, today),
-      fetchMonthArrivalsForStudent(student.id),
+      getTodayArrivalForStudent(student.id, today, student.level),
+      fetchMonthArrivalsForStudent(student.id, undefined, undefined, student.level),
     ]);
 
     return {
@@ -1151,9 +1271,18 @@ export async function getPublicArrivalInfo(recordId: number): Promise<{
     if (!data) return { arrival: null, recentArrivals: [], error: 'Registro no encontrado.' };
 
     const arrival = mapArrivalRecord(data as any);
-    const studentId = arrival.studentId;
-    const recentArrivals = await fetchMonthArrivalsForStudent(studentId);
-    return { arrival, recentArrivals, error: null };
+    const level =
+      arrival.student?.level ??
+      (data as { estudiante?: { nivel_educativo?: string } }).estudiante?.nivel_educativo ??
+      null;
+    const resolvedArrival = await resolveRecordStatus(arrival, level, false);
+    const recentArrivals = await fetchMonthArrivalsForStudent(
+      arrival.studentId,
+      undefined,
+      undefined,
+      level,
+    );
+    return { arrival: resolvedArrival, recentArrivals, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error al cargar el registro';
     return { arrival: null, recentArrivals: [], error: message };
@@ -1175,6 +1304,9 @@ export const arrivalService = {
   prefetchArrivalConfig,
   fetchArrivalLimitTime,
   fetchArrivalLimits,
+  invalidateArrivalLimitCache,
+  fetchPublicArrivalLimits,
+  fetchPublicArrivalLimits,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
   fetchMonthArrivalsForStudent,

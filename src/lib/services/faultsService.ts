@@ -2,6 +2,12 @@ import { supabase } from '../supabaseClient';
 import { FaultType, CatalogoFaltaDB, FaultCategory } from '@/types';
 import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
 import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
+import { configService } from './configService';
+import {
+  DEFAULT_FAULT_CATEGORIES,
+  FAULT_CATEGORIES_CONFIG_KEY,
+  mergeFaultCategories,
+} from '@/lib/constants/faultCategories';
 
 const FAULTS_CACHE_KEY = 'faults:active';
 const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
@@ -209,6 +215,75 @@ export const faultsService = {
       console.error('Error en update:', error);
       return { success: false, error: error.message || 'Error al actualizar falta' };
     }
+  },
+
+  /**
+   * Categorías guardadas en configuración (sin fusionar con faltas existentes)
+   */
+  async getStoredCategories(): Promise<{ categories: string[]; error: string | null }> {
+    try {
+      const { config, error } = await configService.getByKey(FAULT_CATEGORIES_CONFIG_KEY);
+      if (error) {
+        return { categories: [...DEFAULT_FAULT_CATEGORIES], error };
+      }
+      if (!config?.value) {
+        return { categories: [...DEFAULT_FAULT_CATEGORIES], error: null };
+      }
+      const parsed = JSON.parse(config.value) as unknown;
+      if (!Array.isArray(parsed)) {
+        return { categories: [...DEFAULT_FAULT_CATEGORIES], error: null };
+      }
+      const categories = parsed.filter(
+        (c): c is string => typeof c === 'string' && c.trim().length > 0,
+      );
+      return { categories: mergeFaultCategories(categories, []), error: null };
+    } catch {
+      return { categories: [...DEFAULT_FAULT_CATEGORIES], error: null };
+    }
+  },
+
+  /**
+   * Lista completa de categorías (config + faltas en catálogo)
+   */
+  async getCategories(faults: FaultType[]): Promise<{ categories: string[]; error: string | null }> {
+    const { categories: stored, error } = await this.getStoredCategories();
+    return { categories: mergeFaultCategories(stored, faults), error };
+  },
+
+  /**
+   * Agregar una categoría personalizada
+   */
+  async addCategory(
+    name: string,
+    faults: FaultType[],
+  ): Promise<{ categories: string[]; error: string | null }> {
+    const trimmed = name.trim();
+    if (trimmed.length < 2) {
+      return { categories: [], error: 'La categoría debe tener al menos 2 caracteres' };
+    }
+    if (trimmed.length > 50) {
+      return { categories: [], error: 'Máximo 50 caracteres' };
+    }
+
+    const { categories: stored } = await this.getStoredCategories();
+    const current = mergeFaultCategories(stored, faults);
+    const normalized = trimmed.toLowerCase();
+    if (current.some((c) => c.toLowerCase() === normalized)) {
+      return { categories: current, error: 'Esa categoría ya existe' };
+    }
+
+    const next = mergeFaultCategories([...stored, trimmed], faults);
+    const { error } = await configService.upsertByKey({
+      key: FAULT_CATEGORIES_CONFIG_KEY,
+      value: JSON.stringify(next),
+      description: 'Categorías del catálogo de faltas',
+    });
+
+    if (error) {
+      return { categories: stored, error };
+    }
+
+    return { categories: next, error: null };
   },
 
   /**

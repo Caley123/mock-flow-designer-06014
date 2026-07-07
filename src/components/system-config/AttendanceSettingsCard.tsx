@@ -63,6 +63,7 @@ export function AttendanceSettingsCard() {
         invalidateCache(`config:${def.key}`);
       }
       invalidateCache('config:hora_limite_llegada');
+      invalidateCache('config:arrival-limits-bundle');
       invalidateSystemConfig();
     } catch {
       toast.error('Error al guardar horarios');

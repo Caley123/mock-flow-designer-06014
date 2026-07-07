@@ -6,6 +6,32 @@ import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
 import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 
 const CONFIG_CACHE_TTL = 15 * 60 * 1000; // 15 minutos
+const CONFIG_TABLES = ['configuracion_sistema'] as const;
+
+async function selectConfigRowsByKeys(
+  keys: string[],
+): Promise<{ rows: ConfiguracionSistemaDB[]; error: string | null }> {
+  const found = new Map<string, ConfiguracionSistemaDB>();
+  let lastError: string | null = null;
+
+  for (const table of CONFIG_TABLES) {
+    const missing = keys.filter((key) => !found.has(key));
+    if (missing.length === 0) break;
+
+    const { data, error } = await supabase.from(table).select('*').in('clave', missing);
+    if (error) {
+      if (/does not exist|schema cache|PGRST205/i.test(error.message)) continue;
+      if (error.code === 'PGRST205') continue;
+      lastError = error.message;
+      break;
+    }
+    for (const row of data ?? []) {
+      found.set(row.clave, row as ConfiguracionSistemaDB);
+    }
+  }
+
+  return { rows: [...found.values()], error: lastError };
+}
 
 /**
  * Servicio para gestionar la configuración del sistema
@@ -77,17 +103,14 @@ export async function getByKeys(
 
   try {
     await ensureSupabaseReady();
-    const { data, error } = await supabase
-      .from('configuracion_sistema')
-      .select('*')
-      .in('clave', missing);
+    const { rows, error } = await selectConfigRowsByKeys(missing);
 
     if (error) {
       console.error('Error al obtener configuraciones:', error);
-      return { configs, error: error.message };
+      return { configs, error };
     }
 
-    for (const row of data ?? []) {
+    for (const row of rows) {
       const config = mapSystemConfig(row);
       configs[config.key] = config;
       setCached(`config:${config.key}`, config, CONFIG_CACHE_TTL);
@@ -112,25 +135,22 @@ export async function getByKey(key: string): Promise<{ config: SystemConfig | nu
   }
 
   try {
-    const { data, error } = await supabase
-      .from('configuracion_sistema')
-      .select('*')
-      .eq('clave', key)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error al obtener configuración:', error);
-      return { config: null, error: error.message };
+    for (const table of CONFIG_TABLES) {
+      const { data, error } = await supabase.from(table).select('*').eq('clave', key).maybeSingle();
+      if (error) {
+        if (/does not exist|schema cache|PGRST205/i.test(error.message)) continue;
+        if (error.code === 'PGRST205') continue;
+        console.error('Error al obtener configuración:', error);
+        return { config: null, error: error.message };
+      }
+      if (data) {
+        const config = mapSystemConfig(data);
+        setCached(cacheKey, config, CONFIG_CACHE_TTL);
+        return { config, error: null };
+      }
     }
 
-    // Si no hay datos, retornar null sin error (configuración no existe)
-    if (!data) {
-      return { config: null, error: null };
-    }
-
-    const config = mapSystemConfig(data);
-    setCached(cacheKey, config, CONFIG_CACHE_TTL);
-    return { config, error: null };
+    return { config: null, error: null };
   } catch (error: any) {
     console.error('Error al obtener configuración:', error);
     return { config: null, error: error.message };

@@ -1,37 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import {
-  arrivalLimitConfigKey,
   compareArrivalStatus,
-  normalizeEducationalLevel,
   resolveArrivalLimitForLevel,
+  resolveArrivalStatusForStudent,
 } from './arrivalLimit';
 
+const limits = {
+  general: '08:00',
+  primaria: '19:21',
+  secundaria: '19:20',
+};
+
 describe('arrivalLimit', () => {
-  it('resuelve clave de config por nivel', () => {
-    expect(arrivalLimitConfigKey('Secundaria')).toBe('hora_limite_llegada_secundaria');
-    expect(arrivalLimitConfigKey('Primaria')).toBe('hora_limite_llegada_primaria');
-    expect(arrivalLimitConfigKey(null)).toBe('hora_limite_llegada');
+  it('usa límite de primaria y secundaria por nivel', () => {
+    expect(resolveArrivalLimitForLevel(limits, 'Primaria')).toBe('19:21');
+    expect(resolveArrivalLimitForLevel(limits, 'Secundaria')).toBe('19:20');
+    expect(resolveArrivalLimitForLevel(limits, null)).toBe('08:00');
   });
 
-  it('normaliza nivel educativo', () => {
-    expect(normalizeEducationalLevel('Secundaria')).toBe('Secundaria');
-    expect(normalizeEducationalLevel('primaria')).toBe('Primaria');
+  it('marca tarde según nivel después del límite', () => {
+    expect(resolveArrivalStatusForStudent('19:34', limits, 'Secundaria')).toBe('Tarde');
+    expect(resolveArrivalStatusForStudent('19:19', limits, 'Secundaria')).toBe('A tiempo');
+    expect(resolveArrivalStatusForStudent('19:22', limits, 'Primaria')).toBe('Tarde');
+    expect(resolveArrivalStatusForStudent('07:55', limits, 'Primaria')).toBe('A tiempo');
   });
 
-  it('marca tarde para secundaria después de 07:30', () => {
-    const limits = { primaria: '08:00', secundaria: '07:30' };
-    const limit = resolveArrivalLimitForLevel(limits, 'Secundaria');
-    expect(compareArrivalStatus('07:29', limit)).toBe('A tiempo');
-    expect(compareArrivalStatus('07:30', limit)).toBe('A tiempo');
-    expect(compareArrivalStatus('07:31', limit)).toBe('Tarde');
-    expect(compareArrivalStatus('07:41', limit)).toBe('Tarde');
-  });
-
-  it('marca a tiempo para primaria antes de 08:00', () => {
-    const limits = { primaria: '08:00', secundaria: '07:30' };
-    const limit = resolveArrivalLimitForLevel(limits, 'Primaria');
-    expect(compareArrivalStatus('07:59', limit)).toBe('A tiempo');
-    expect(compareArrivalStatus('08:00', limit)).toBe('A tiempo');
-    expect(compareArrivalStatus('08:01', limit)).toBe('Tarde');
+  it('compara horas en formato HH:MM', () => {
+    expect(compareArrivalStatus('08:00', '08:00')).toBe('A tiempo');
+    expect(compareArrivalStatus('08:01', '08:00')).toBe('Tarde');
   });
 });

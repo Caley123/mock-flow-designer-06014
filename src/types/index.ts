@@ -15,7 +15,8 @@ export interface BimestreInfo {
   label: string;
 }
 
-export type FaultCategory = 'Conducta' | 'Uniforme' | 'Académica' | 'Puntualidad';
+/** Categoría de falta; valores por defecto en DEFAULT_FAULT_CATEGORIES + personalizadas en configuración */
+export type FaultCategory = string;
 
 export type FaultSeverity = 'Leve' | 'Grave';
 

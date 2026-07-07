@@ -3,6 +3,8 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { arrivalService } from '@/lib/services';
 import type { ArrivalRecord, Student } from '@/types';
+import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
+import { resolveArrivalLimitForLevel } from '@/lib/utils/arrivalLimit';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { getLimaMonthBounds, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import {
@@ -48,11 +50,34 @@ export function ParentAttendanceDashboard({
   const [monthArrivals, setMonthArrivals] = useState<ArrivalRecord[]>(initialMonthArrivals);
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [arrivalLimits, setArrivalLimits] = useState<ArrivalLimitsByLevel>({
+    general: '08:00',
+    primaria: '08:00',
+    secundaria: '08:00',
+  });
+
+  useEffect(() => {
+    void arrivalService.fetchPublicArrivalLimits().then(setArrivalLimits);
+  }, []);
+
+  const calendarCtx = useMemo(
+    () => ({ limits: arrivalLimits, level: student.level }),
+    [arrivalLimits, student.level],
+  );
+  const studentArrivalLimit = useMemo(
+    () => resolveArrivalLimitForLevel(arrivalLimits, student.level),
+    [arrivalLimits, student.level],
+  );
 
   const loadMonth = useCallback(
     async (year: number, month: number) => {
       setLoadingMonth(true);
-      const data = await arrivalService.fetchMonthArrivalsForStudent(student.id, year, month);
+      const data = await arrivalService.fetchMonthArrivalsForStudent(
+        student.id,
+        year,
+        month,
+        student.level,
+      );
       setMonthArrivals(data);
       setLoadingMonth(false);
     },
@@ -80,8 +105,8 @@ export function ParentAttendanceDashboard({
   }, [monthArrivals, todayArrival, viewYear, viewMonth]);
 
   const metrics = useMemo(
-    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey),
-    [viewYear, viewMonth, byDate, todayKey]
+    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey, calendarCtx),
+    [viewYear, viewMonth, byDate, todayKey, calendarCtx]
   );
 
   const stripGradient = topStripGradient(metrics.present, metrics.late, metrics.absent);
@@ -99,7 +124,7 @@ export function ParentAttendanceDashboard({
   };
 
   const selectedStatus = selectedDay
-    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey)
+    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey, calendarCtx)
     : null;
   const selectedRecord = selectedDay ? byDate.get(selectedDay) : undefined;
   const detail =
@@ -137,6 +162,10 @@ export function ParentAttendanceDashboard({
           />
           <h1 className="mt-3 text-xl font-semibold text-[#1A1D23] leading-snug">{student.fullName}</h1>
           {nivel && <p className="mt-1 text-[13px] text-[#6B7280]">{nivel}</p>}
+          <p className="mt-2 text-[11px] font-medium text-[#9095A3]">
+            Hora límite de llegada ({student.level || 'nivel'}):{' '}
+            <span className="font-mono text-[#1A1D23]">{studentArrivalLimit}</span>
+          </p>
         </div>
 
         <div className="my-5 h-px w-full bg-[#E8EAF0]" />
@@ -212,7 +241,7 @@ export function ParentAttendanceDashboard({
                     );
                   }
 
-                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey);
+                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey, calendarCtx);
                   const style = DAY_STYLES[status];
                   const isToday = dayKey === todayKey;
                   const isSelected = selectedDay === dayKey;

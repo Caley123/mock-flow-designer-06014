@@ -1,5 +1,12 @@
 import { format, parseISO } from 'date-fns';
 import type { ArrivalRecord } from '@/types';
+import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
+import { resolveArrivalStatusForStudent } from '@/lib/utils/arrivalLimit';
+
+export type ParentCalendarContext = {
+  limits?: ArrivalLimitsByLevel;
+  level?: string | null;
+};
 
 export type DayStatus = 'present' | 'late' | 'absent' | 'norecord' | 'noclass';
 
@@ -62,17 +69,29 @@ export function isWeekend(dayKey: string): boolean {
   return dow === 0 || dow === 6;
 }
 
+function arrivalKind(
+  record: ArrivalRecord,
+  ctx?: ParentCalendarContext
+): 'present' | 'late' {
+  if (ctx?.limits) {
+    return resolveArrivalStatusForStudent(record.arrivalTime, ctx.limits, ctx.level) === 'A tiempo'
+      ? 'present'
+      : 'late';
+  }
+  return record.status === 'A tiempo' ? 'present' : 'late';
+}
+
 export function resolveDayStatus(
   dayKey: string,
   record: ArrivalRecord | undefined,
-  todayKey: string
+  todayKey: string,
+  ctx?: ParentCalendarContext
 ): DayStatus {
   if (isWeekend(dayKey) || dayKey > todayKey) return 'noclass';
-  if (record?.status === 'A tiempo') return 'present';
-  if (record?.status === 'Tarde') return 'late';
-  // Hoy sin escaneo aún: no contar como falta hasta que pase el día.
+  if (record) {
+    return arrivalKind(record, ctx);
+  }
   if (dayKey === todayKey) return 'norecord';
-  // Día hábil pasado sin entrada registrada = no asistió (o no se escaneó).
   return 'absent';
 }
 
@@ -94,7 +113,8 @@ export function computeMonthMetrics(
   year: number,
   month: number,
   byDate: Map<string, ArrivalRecord>,
-  todayKey: string
+  todayKey: string,
+  ctx?: ParentCalendarContext
 ): { present: number; late: number; absent: number } {
   const lastDay = new Date(year, month, 0).getDate();
   let present = 0;
@@ -103,7 +123,7 @@ export function computeMonthMetrics(
 
   for (let d = 1; d <= lastDay; d++) {
     const key = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const status = resolveDayStatus(key, byDate.get(key), todayKey);
+    const status = resolveDayStatus(key, byDate.get(key), todayKey, ctx);
     if (status === 'present') present++;
     else if (status === 'late') late++;
     else if (status === 'absent') absent++;
