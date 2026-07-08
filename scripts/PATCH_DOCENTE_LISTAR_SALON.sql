@@ -28,9 +28,9 @@ BEGIN
 
   FOR c IN SELECT value FROM jsonb_array_elements(coalesce(v_classrooms->'classrooms', '[]'::jsonb)) AS t(value)
   LOOP
-    IF trim(p_level) = coalesce(c.value->>'level', '')
-       AND trim(p_grade) = coalesce(c.value->>'grade', '')
-       AND trim(p_section) = coalesce(c.value->>'section', '') THEN
+    IF trim(p_level) = coalesce(c->>'level', '')
+       AND trim(p_grade) = coalesce(c->>'grade', '')
+       AND trim(p_section) = coalesce(c->>'section', '') THEN
       v_allowed := true;
       EXIT;
     END IF;
