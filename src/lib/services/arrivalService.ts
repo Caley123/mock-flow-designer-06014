@@ -469,6 +469,84 @@ export async function getArrivals(filters?: {
   }
 }
 
+const CLASSROOM_ARRIVAL_BATCH_SIZE = 100;
+
+type ClassroomArrivalRow = Pick<
+  RegistroLlegadaDB,
+  'id_registro' | 'id_estudiante' | 'fecha' | 'hora_llegada' | 'hora_salida' | 'estado' | 'tipo_salida' | 'registrado_por' | 'fecha_creacion'
+>;
+
+function mapClassroomArrivalRow(row: ClassroomArrivalRow): ArrivalRecord {
+  let arrivalTime = row.hora_llegada;
+  if (arrivalTime && arrivalTime.length > 5) {
+    arrivalTime = arrivalTime.substring(0, 5);
+  }
+  let departureTime = row.hora_salida || null;
+  if (departureTime && departureTime.length > 5) {
+    departureTime = departureTime.substring(0, 5);
+  }
+  return {
+    id: row.id_registro,
+    studentId: row.id_estudiante,
+    date: row.fecha,
+    arrivalTime,
+    status: row.estado,
+    registeredBy: row.registrado_por,
+    createdAt: row.fecha_creacion,
+    departureTime,
+    departureType: row.tipo_salida ?? null,
+  };
+}
+
+/**
+ * Llegadas del día para un conjunto de estudiantes (p. ej. lista de salón docente).
+ */
+export async function getArrivalsForStudents(
+  studentIds: number[],
+  date?: string,
+): Promise<{ records: ArrivalRecord[]; error: string | null }> {
+  const uniqueIds = [...new Set(studentIds)].filter((id) => id > 0);
+  if (uniqueIds.length === 0) {
+    return { records: [], error: null };
+  }
+
+  const dateKey = date ?? getLimaTodayDate();
+
+  try {
+    const rows: ClassroomArrivalRow[] = [];
+
+    for (let i = 0; i < uniqueIds.length; i += CLASSROOM_ARRIVAL_BATCH_SIZE) {
+      const batch = uniqueIds.slice(i, i + CLASSROOM_ARRIVAL_BATCH_SIZE);
+      const { data, error } = await supabase
+        .from('registros_llegada')
+        .select(
+          'id_registro, id_estudiante, fecha, hora_llegada, hora_salida, estado, tipo_salida, registrado_por, fecha_creacion',
+        )
+        .in('id_estudiante', batch)
+        .eq('fecha', dateKey);
+
+      if (error) {
+        console.error('Error al obtener llegadas del salón:', error);
+        return { records: [], error: error.message };
+      }
+      rows.push(...((data ?? []) as ClassroomArrivalRow[]));
+    }
+
+    const limits = await fetchArrivalLimits();
+    const records = rows.map((row) => {
+      const mapped = mapClassroomArrivalRow(row);
+      const status = resolveArrivalStatusForStudent(mapped.arrivalTime, limits, null);
+      return status === mapped.status ? mapped : { ...mapped, status };
+    });
+
+    return { records, error: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error al obtener asistencia';
+    console.error('Error en getArrivalsForStudents:', error);
+    return { records: [], error: message };
+  }
+}
+
 const ARRIVAL_REPORT_BATCH_SIZE = 150;
 
 type ArrivalReportRow = Pick<RegistroLlegadaDB, 'id_estudiante' | 'fecha' | 'hora_llegada' | 'estado'>;
@@ -1318,6 +1396,7 @@ export const arrivalService = {
   createArrivalRecord,
   getTodayArrivalForStudent,
   getArrivals,
+  getArrivalsForStudents,
   getMonthlyAttendance,
   getBimestralAttendance,
   getWeeklyAttendanceTrend,

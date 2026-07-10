@@ -10,12 +10,14 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   authService,
+  arrivalService,
   faultsService,
   incidentsService,
   evidenceService,
   studentsService,
 } from '@/lib/services';
-import type { DocenteClassroom, FaultType, Student } from '@/types';
+import type { ArrivalRecord, DocenteClassroom, FaultType, Student } from '@/types';
+import { getLimaNow, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import { GuardyMark } from '@/components/brand/GuardyMark';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { ReincidenceBadge } from '@/components/shared/ReincidenceBadge';
@@ -52,6 +54,9 @@ export const TeacherIncidentScanner = () => {
   const [selectedClassroom, setSelectedClassroom] = useState<DocenteClassroom | null>(null);
   const [classroomStudents, setClassroomStudents] = useState<Student[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [arrivalByStudentId, setArrivalByStudentId] = useState<Map<number, ArrivalRecord>>(new Map());
+  const [registeringEntryId, setRegisteringEntryId] = useState<number | null>(null);
+  const [registeringDepartureId, setRegisteringDepartureId] = useState<number | null>(null);
 
   const [faults, setFaults] = useState<FaultType[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
@@ -95,10 +100,31 @@ export const TeacherIncidentScanner = () => {
           ? 'Elegir falta'
           : 'Revisar y confirmar';
 
+  const loadClassroomArrivals = useCallback(async (studentIds: number[]) => {
+    const { records, error } = await arrivalService.getArrivalsForStudents(
+      studentIds,
+      getLimaTodayDate(),
+    );
+    if (!isMountedRef.current) return;
+
+    if (error) {
+      toast.error(`No se pudo cargar la asistencia: ${error}`);
+      setArrivalByStudentId(new Map());
+      return;
+    }
+
+    const map = new Map<number, ArrivalRecord>();
+    for (const record of records) {
+      map.set(record.studentId, record);
+    }
+    setArrivalByStudentId(map);
+  }, []);
+
   const loadClassroomStudents = useCallback(async (classroom: DocenteClassroom) => {
     setLoadingStudents(true);
     setSelectedClassroom(classroom);
     setClassroomStudents([]);
+    setArrivalByStudentId(new Map());
     setView('students');
 
     const { students, error } = await studentsService.listForDocenteClassroom(classroom);
@@ -110,8 +136,79 @@ export const TeacherIncidentScanner = () => {
       setSelectedClassroom(null);
     } else {
       setClassroomStudents(students);
+      void loadClassroomArrivals(students.map((s) => s.id));
     }
     setLoadingStudents(false);
+  }, [loadClassroomArrivals]);
+
+  const handleRegisterArrival = useCallback(async (student: Student) => {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Sesión expirada');
+      return;
+    }
+
+    setRegisteringEntryId(student.id);
+    try {
+      const { record, error, alreadyRegistered } = await arrivalService.createArrivalRecord(
+        student.id,
+        currentUser.id,
+      );
+      if (!isMountedRef.current) return;
+
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      if (record) {
+        setArrivalByStudentId((prev) => new Map(prev).set(student.id, record));
+        toast.success(
+          alreadyRegistered
+            ? `Entrada ya registrada · ${student.fullName}`
+            : `Entrada registrada · ${student.fullName}`,
+        );
+      }
+    } finally {
+      if (isMountedRef.current) setRegisteringEntryId(null);
+    }
+  }, []);
+
+  const handleRegisterDeparture = useCallback(async (recordId: number, student: Student) => {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Sesión expirada');
+      return;
+    }
+
+    setRegisteringDepartureId(recordId);
+    try {
+      const { success, error } = await arrivalService.createDepartureRecord(
+        recordId,
+        currentUser.id,
+      );
+      if (!isMountedRef.current) return;
+
+      if (error || !success) {
+        toast.error(error || 'No se pudo registrar la salida');
+        return;
+      }
+
+      const { time } = getLimaNow();
+      setArrivalByStudentId((prev) => {
+        const existing = prev.get(student.id);
+        if (!existing) return prev;
+        const next = new Map(prev);
+        next.set(student.id, {
+          ...existing,
+          departureTime: time,
+          departureType: 'Normal',
+        });
+        return next;
+      });
+      toast.success(`Salida registrada · ${student.fullName}`);
+    } finally {
+      if (isMountedRef.current) setRegisteringDepartureId(null);
+    }
   }, []);
 
   const resetIncidentForm = useCallback(() => {
@@ -136,6 +233,7 @@ export const TeacherIncidentScanner = () => {
     resetIncidentForm();
     setSelectedClassroom(null);
     setClassroomStudents([]);
+    setArrivalByStudentId(new Map());
     setView('classrooms');
   };
 
@@ -295,7 +393,7 @@ export const TeacherIncidentScanner = () => {
                         {formatClassroomLabel(selectedClassroom)}
                       </h2>
                       <p className="text-sm text-muted-foreground">
-                        Seleccione un estudiante para registrar una incidencia.
+                        Registre asistencia o pulse Incidencia para registrar una falta.
                       </p>
                     </div>
                   </div>
@@ -303,7 +401,12 @@ export const TeacherIncidentScanner = () => {
                 <ClassroomStudentList
                   students={classroomStudents}
                   loading={loadingStudents}
+                  arrivalByStudentId={arrivalByStudentId}
                   onSelectStudent={selectStudent}
+                  onRegisterArrival={(s) => void handleRegisterArrival(s)}
+                  onRegisterDeparture={(id, s) => void handleRegisterDeparture(id, s)}
+                  registeringEntryId={registeringEntryId}
+                  registeringDepartureId={registeringDepartureId}
                 />
               </Card>
             )}
