@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, GraduationCap, LogOut, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, GraduationCap, LogOut, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -415,7 +415,7 @@ export const TeacherIncidentScanner = () => {
               <>
                 <Card className="tutor-scan-card">
                   <CardContent className="p-5 sm:p-6">
-                    <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3">
                       <Button
                         type="button"
                         variant="ghost"
@@ -429,17 +429,19 @@ export const TeacherIncidentScanner = () => {
                       <StudentPhoto
                         src={student.profilePhoto}
                         name={student.fullName}
-                        className="h-16 w-16 rounded-2xl shrink-0"
+                        className="h-12 w-12 sm:h-16 sm:w-16 rounded-2xl shrink-0"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-lg font-semibold leading-tight">{student.fullName}</h2>
-                          {(student.reincidenceLevel ?? 0) > 0 && (
+                        <h2 className="text-base sm:text-lg font-semibold leading-tight break-words hyphens-auto">
+                          {student.fullName}
+                        </h2>
+                        {(student.reincidenceLevel ?? 0) > 0 && (
+                          <div className="mt-1">
                             <ReincidenceBadge level={student.reincidenceLevel ?? 0} short />
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {student.level} · {student.grade} — Sección {student.section}
+                          </div>
+                        )}
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                          {student.level} · {student.grade} — {student.section}
                         </p>
                       </div>
                       <Button
@@ -448,6 +450,7 @@ export const TeacherIncidentScanner = () => {
                         size="icon"
                         onClick={goBackToStudents}
                         aria-label="Cambiar estudiante"
+                        className="shrink-0"
                       >
                         <X className="h-5 w-5" />
                       </Button>
@@ -508,6 +511,22 @@ export const TeacherIncidentScanner = () => {
             <IncidentSessionSidebar sessionCount={sessionCount} recentIncidents={recentIncidents} />
           </aside>
         </div>
+
+        {/* Historial de sesión colapsable — visible solo en móvil/tablet */}
+        {(sessionCount > 0 || recentIncidents.length > 0) && (
+          <details className="lg:hidden mt-4" open={false}>
+            <summary className="tutor-mobile-feed__summary">
+              <span className="flex-1 text-sm font-semibold">
+                Sesión actual — {sessionCount} incidencia{sessionCount !== 1 ? 's' : ''}
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform [[open]>&]:rotate-180" />
+            </summary>
+            <div className="tutor-mobile-feed__body">
+              <IncidentSessionSidebar sessionCount={sessionCount} recentIncidents={recentIncidents} />
+            </div>
+          </details>
+        )}
+
       </main>
 
       <IncidentConfirmDialog
