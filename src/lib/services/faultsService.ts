@@ -12,6 +12,20 @@ import {
 const FAULTS_CACHE_KEY = 'faults:active';
 const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
+function mapCategoriaError(error: { code?: string; message?: string } | null): string {
+  const msg = error?.message ?? 'Error al guardar la falta';
+  if (
+    error?.code === '22P02' ||
+    /invalid input value for enum categoria_falta/i.test(msg)
+  ) {
+    return (
+      'La categoría no está permitida en la base de datos. ' +
+      'Ejecute scripts/PATCH_CATEGORIA_FALTA_TEXT.sql en Supabase y reintente.'
+    );
+  }
+  return msg;
+}
+
 /**
  * Servicio de catálogo de faltas
  */
@@ -162,7 +176,7 @@ export const faultsService = {
         .single();
 
       if (error) {
-        return { fault: null, error: error.message };
+        return { fault: null, error: mapCategoriaError(error) };
       }
 
       const newFault: FaultType = {
@@ -206,7 +220,7 @@ export const faultsService = {
         .eq('id_falta', id);
 
       if (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: mapCategoriaError(error) };
       }
 
       invalidateCache(FAULTS_CACHE_KEY);
