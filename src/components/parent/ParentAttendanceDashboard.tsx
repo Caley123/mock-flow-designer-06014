@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { arrivalService, tallerAttendanceService } from '@/lib/services';
+import { arrivalService, incidentsService, tallerAttendanceService } from '@/lib/services';
 import { isTalleresEnabled } from '@/config/features';
-import type { ArrivalRecord, Student, TallerAsistencia } from '@/types';
+import type { ArrivalRecord, Incident, Student, TallerAsistencia } from '@/types';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
-import { getLimaMonthBounds, getLimaTodayDate } from '@/lib/utils/limaDateTime';
+import { getLimaMonthBounds, getLimaTodayDate, getMonthBounds } from '@/lib/utils/limaDateTime';
 import {
   buildMonthGrid,
   computeMonthMetrics,
   DAY_STYLES,
   dayHasTaller,
   dayDetailCopy,
+  formatTallerIncidentDayDetail,
   firstName,
   formatTallerDayDetail,
   parseArrivalTime12h,
@@ -51,6 +52,7 @@ export function ParentAttendanceDashboard({
   const [viewMonth, setViewMonth] = useState(current.month);
   const [monthArrivals, setMonthArrivals] = useState<ArrivalRecord[]>(initialMonthArrivals);
   const [monthTallerAttendance, setMonthTallerAttendance] = useState<TallerAsistencia[]>([]);
+  const [monthTallerIncidents, setMonthTallerIncidents] = useState<Incident[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -58,7 +60,8 @@ export function ParentAttendanceDashboard({
     async (year: number, month: number) => {
       setLoadingMonth(true);
       try {
-        const [arrivals, tallerResponse] = await Promise.all([
+        const { start, end } = getMonthBounds(year, month);
+        const [arrivals, tallerResponse, incidentsResponse] = await Promise.all([
           arrivalService.fetchMonthArrivalsForStudent(student.id, year, month),
           talleresEnabled
             ? tallerAttendanceService.fetchMonthForStudent(student.id, year, month)
@@ -66,10 +69,23 @@ export function ParentAttendanceDashboard({
                 records: [],
                 error: null,
               }),
+          talleresEnabled
+            ? incidentsService.getAll({
+                estudianteId: student.id,
+                fechaDesde: `${start}T00:00:00.000-05:00`,
+                fechaHasta: `${end}T23:59:59.999-05:00`,
+                fetchAll: true,
+              })
+            : Promise.resolve<{ incidents: Incident[]; total: number; error: string | null }>({
+                incidents: [],
+                total: 0,
+                error: null,
+              }),
         ]);
 
         setMonthArrivals(arrivals);
         setMonthTallerAttendance(tallerResponse.records);
+        setMonthTallerIncidents(incidentsResponse.incidents.filter((incident) => Boolean(incident.tallerId)));
       } finally {
         setLoadingMonth(false);
       }
@@ -85,13 +101,27 @@ export function ParentAttendanceDashboard({
     if (isInitial) {
       setMonthArrivals(initialMonthArrivals);
       if (talleresEnabled) {
+        const { start, end } = getMonthBounds(viewYear, viewMonth);
         setLoadingMonth(true);
-        void tallerAttendanceService
-          .fetchMonthForStudent(student.id, viewYear, viewMonth)
-          .then(({ records }) => setMonthTallerAttendance(records))
+        void Promise.all([
+          tallerAttendanceService.fetchMonthForStudent(student.id, viewYear, viewMonth),
+          incidentsService.getAll({
+            estudianteId: student.id,
+            fechaDesde: `${start}T00:00:00.000-05:00`,
+            fechaHasta: `${end}T23:59:59.999-05:00`,
+            fetchAll: true,
+          }),
+        ])
+          .then(([attendanceResponse, incidentsResponse]) => {
+            setMonthTallerAttendance(attendanceResponse.records);
+            setMonthTallerIncidents(
+              incidentsResponse.incidents.filter((incident) => Boolean(incident.tallerId))
+            );
+          })
           .finally(() => setLoadingMonth(false));
       } else {
         setMonthTallerAttendance([]);
+        setMonthTallerIncidents([]);
       }
       return;
     }
@@ -125,6 +155,18 @@ export function ParentAttendanceDashboard({
     return map;
   }, [monthTallerAttendance]);
 
+  const tallerIncidentsByDate = useMemo(() => {
+    const map = new Map<string, Incident[]>();
+    monthTallerIncidents.forEach((incident) => {
+      const dateKey = incident.registeredAt?.slice(0, 10);
+      if (!dateKey) return;
+      const rows = map.get(dateKey) ?? [];
+      rows.push(incident);
+      map.set(dateKey, rows);
+    });
+    return map;
+  }, [monthTallerIncidents]);
+
   const metrics = useMemo(
     () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey),
     [viewYear, viewMonth, byDate, todayKey]
@@ -149,9 +191,14 @@ export function ParentAttendanceDashboard({
     : null;
   const selectedRecord = selectedDay ? byDate.get(selectedDay) : undefined;
   const selectedTallerRows = selectedDay ? tallerByDate.get(selectedDay) ?? [] : [];
+  const selectedTallerIncidentRows = selectedDay ? tallerIncidentsByDate.get(selectedDay) ?? [] : [];
   const selectedTallerLines = useMemo(
     () => formatTallerDayDetail(selectedTallerRows),
     [selectedTallerRows]
+  );
+  const selectedTallerIncidentLines = useMemo(
+    () => formatTallerIncidentDayDetail(selectedTallerIncidentRows),
+    [selectedTallerIncidentRows]
   );
   const detail =
     selectedDay && selectedStatus
@@ -350,7 +397,7 @@ export function ParentAttendanceDashboard({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#475569]">Clase</p>
                 <p className="mt-1.5 text-[13px] leading-[1.65] text-[#6B7280]">{detail.description}</p>
               </div>
-              {selectedTallerLines.length > 0 && (
+              {(selectedTallerLines.length > 0 || selectedTallerIncidentLines.length > 0) && (
                 <div className="mt-3 rounded-[12px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#DBEAFE] px-1.5 text-[10px] font-semibold text-[#1D4ED8]">
@@ -363,6 +410,14 @@ export function ParentAttendanceDashboard({
                   <div className="mt-2 space-y-1.5">
                     {selectedTallerLines.map((line, index) => (
                       <p key={`${selectedDay}-taller-${index}`} className="text-[13px] leading-[1.65] text-[#475569]">
+                        {line}
+                      </p>
+                    ))}
+                    {selectedTallerIncidentLines.map((line, index) => (
+                      <p
+                        key={`${selectedDay}-taller-inc-${index}`}
+                        className="text-[13px] leading-[1.65] text-[#475569]"
+                      >
                         {line}
                       </p>
                     ))}

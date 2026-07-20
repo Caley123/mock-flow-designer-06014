@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import type { ArrivalRecord, TallerAsistencia } from '@/types';
+import type { ArrivalRecord, Incident, TallerAsistencia } from '@/types';
 
 export type DayStatus = 'present' | 'late' | 'absent' | 'norecord' | 'noclass';
 
@@ -98,6 +98,15 @@ export function formatTallerDayDetail(rows: TallerAsistencia[]): string[] {
     const arrival = parseArrivalTime12h(row.arrivalTime ?? '');
     const departure = row.departureTime ? parseArrivalTime12h(row.departureTime) : 'sin registrar';
     return `Taller: ${tallerNombre} · llegada ${arrival} · salida ${departure}`;
+  });
+}
+
+export function formatTallerIncidentDayDetail(rows: Incident[]): string[] {
+  return rows.map((row) => {
+    const tallerNombre = row.tallerNombre?.trim();
+    const faultName = row.faultType?.name?.trim() || 'Incidencia registrada';
+    const tallerLabel = tallerNombre ? `Taller: ${tallerNombre}` : 'Taller';
+    return `Incidencia (${tallerLabel}): ${faultName}`;
   });
 }
 

@@ -30,11 +30,15 @@ const INCIDENT_LIST_SELECT = `
     es_grave,
     puntos_reincidencia,
     descripcion,
+    recomendacion,
     activo
   ),
   usuarios_registro:id_usuario_registro (
     id_usuario,
     nombre_completo
+  ),
+  talleres:taller_id (
+    nombre
   )
 `;
 
@@ -57,11 +61,15 @@ const INCIDENT_FULL_SELECT = `
     es_grave,
     puntos_reincidencia,
     descripcion,
+    recomendacion,
     activo
   ),
   usuarios_registro:id_usuario_registro (
     id_usuario,
     nombre_completo
+  ),
+  talleres:taller_id (
+    nombre
   )
 `;
 
@@ -280,7 +288,9 @@ export const incidentsService = {
       });
 
       if (options?.minimal) {
-        const { data, error } = await insertQuery.select('id_incidencia, taller_id').single();
+        const { data, error } = await insertQuery
+          .select('id_incidencia, fecha_hora_registro, nivel_reincidencia, observaciones, estado, taller_id')
+          .single();
         if (error) {
           console.error('Error al crear incidencia:', error);
           return { incident: null, error: error.message };
@@ -288,8 +298,17 @@ export const incidentsService = {
         return {
           incident: {
             id: data.id_incidencia,
+            studentId: incident.studentId,
+            faultTypeId: incident.faultTypeId,
+            registeredBy: incident.registeredBy,
+            registeredAt: data.fecha_hora_registro,
+            observations: data.observaciones ?? incident.observations ?? null,
+            reincidenceLevel: (data.nivel_reincidencia ?? 0) as Incident['reincidenceLevel'],
+            hasEvidence: false,
+            evidenceCount: 0,
+            status: (data.estado || 'Activa') as Incident['status'],
             tallerId: data.taller_id ?? incident.tallerId ?? null,
-          } as Incident,
+          },
           error: null,
         };
       }
@@ -314,11 +333,15 @@ export const incidentsService = {
             es_grave,
             puntos_reincidencia,
             descripcion,
+            recomendacion,
             activo
           ),
           usuarios_registro:id_usuario_registro (
             id_usuario,
             nombre_completo
+          ),
+          talleres:taller_id (
+            nombre
           )
         `)
         .single();
@@ -596,6 +619,7 @@ export const incidentsService = {
     const estudiante = data.estudiantes || data.id_estudiante;
     const falta = data.catalogos_faltas || data.id_falta;
     const usuario = data.usuarios_registro || data.id_usuario_registro;
+    const taller = data.talleres || data.taller_id;
 
     return {
       id: data.id_incidencia,
@@ -615,6 +639,7 @@ export const incidentsService = {
         id: falta.id_falta,
         name: falta.nombre_falta,
         description: falta.descripcion,
+        recommendation: falta.recomendacion ?? null,
         category: falta.categoria,
         severity: falta.es_grave ? 'Grave' : 'Leve',
         points: falta.puntos_reincidencia,
@@ -639,6 +664,7 @@ export const incidentsService = {
       annulledAt: data.fecha_anulacion,
       annulmentReason: data.motivo_anulacion,
       tallerId: data.taller_id ?? null,
+      tallerNombre: taller && typeof taller === 'object' ? taller.nombre ?? null : null,
     };
   },
 };

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ArrivalRecord, TallerAsistencia } from '@/types';
+import type { ArrivalRecord, Incident, TallerAsistencia } from '@/types';
 import {
   computeMonthMetrics,
   dayHasTaller,
+  formatTallerIncidentDayDetail,
   formatTallerDayDetail,
   resolveDayStatus,
 } from './parentAttendanceCalendar';
@@ -28,6 +29,32 @@ const tallerRecord = (overrides: Partial<TallerAsistencia> = {}): TallerAsistenc
   arrivalStatus: 'A tiempo',
   departureType: 'Normal',
   registeredBy: 1,
+  ...overrides,
+});
+
+const incidentRecord = (overrides: Partial<Incident> = {}): Incident => ({
+  id: 1,
+  studentId: 1,
+  faultTypeId: 10,
+  registeredBy: 1,
+  registeredAt: '2026-06-03T15:45:00-05:00',
+  observations: null,
+  reincidenceLevel: 0,
+  hasEvidence: false,
+  evidenceCount: 0,
+  status: 'Activa',
+  tallerId: 'taller-1',
+  tallerNombre: 'Fútbol',
+  faultType: {
+    id: 10,
+    name: 'Empujó a un compañero',
+    description: null,
+    recommendation: null,
+    category: 'Conducta',
+    severity: 'Leve',
+    points: 1,
+    active: true,
+  },
   ...overrides,
 });
 
@@ -87,6 +114,23 @@ describe('parentAttendanceCalendar', () => {
     ).toEqual([
       'Taller: Fútbol · llegada 3:30 p.m. · salida 5:00 p.m.',
       'Taller: Ajedrez · llegada —:— · salida sin registrar',
+    ]);
+  });
+
+  it('formatea líneas de incidencias de taller para el día seleccionado', () => {
+    expect(
+      formatTallerIncidentDayDetail([
+        incidentRecord(),
+        incidentRecord({
+          id: 2,
+          tallerId: 'taller-2',
+          tallerNombre: null,
+          faultType: undefined,
+        }),
+      ])
+    ).toEqual([
+      'Incidencia (Taller: Fútbol): Empujó a un compañero',
+      'Incidencia (Taller): Incidencia registrada',
     ]);
   });
 });
