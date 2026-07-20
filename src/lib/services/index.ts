@@ -17,3 +17,4 @@ export { sessionService } from './sessionService';
 export { whatsappService } from './whatsappService';
 export { parentPortalService } from './parentPortalService';
 export { scheduleService } from './scheduleService';
+export { talleresService, mapTallerRow } from './talleresService';
