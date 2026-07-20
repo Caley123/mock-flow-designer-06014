@@ -266,6 +266,7 @@ export const incidentsService = {
       faultTypeId: number;
       registeredBy: number;
       observations?: string;
+      tallerId?: string;
     },
     options?: { minimal?: boolean },
   ): Promise<{ incident: Incident | null; error: string | null }> {
@@ -275,16 +276,20 @@ export const incidentsService = {
         id_falta: incident.faultTypeId,
         id_usuario_registro: incident.registeredBy,
         observaciones: incident.observations || null,
+        ...(incident.tallerId ? { taller_id: incident.tallerId } : {}),
       });
 
       if (options?.minimal) {
-        const { data, error } = await insertQuery.select('id_incidencia').single();
+        const { data, error } = await insertQuery.select('id_incidencia, taller_id').single();
         if (error) {
           console.error('Error al crear incidencia:', error);
           return { incident: null, error: error.message };
         }
         return {
-          incident: { id: data.id_incidencia } as Incident,
+          incident: {
+            id: data.id_incidencia,
+            tallerId: data.taller_id ?? incident.tallerId ?? null,
+          } as Incident,
           error: null,
         };
       }
@@ -633,6 +638,7 @@ export const incidentsService = {
       annulledBy: data.id_usuario_anulacion,
       annulledAt: data.fecha_anulacion,
       annulmentReason: data.motivo_anulacion,
+      tallerId: data.taller_id ?? null,
     };
   },
 };
