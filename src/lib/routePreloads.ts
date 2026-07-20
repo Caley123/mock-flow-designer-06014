@@ -11,6 +11,7 @@ const STAFF_ROUTE_IMPORTS: Record<string, PreloadFn> = {
   '/register': () => import('@/pages/RegisterIncident'),
   '/incidents': () => import('@/pages/IncidentsList'),
   '/students': () => import('@/pages/StudentsList'),
+  '/talleres': () => import('@/pages/TalleresAdmin'),
   '/attendance-report': () => import('@/pages/AttendanceReport'),
   '/arrival-control': () => import('@/pages/ArrivalControl'),
   '/departure-control': () => import('@/pages/DepartureControl'),
@@ -29,6 +30,7 @@ const STAFF_PRELOAD_PRIORITY = [
   '/incidents',
   '/register',
   '/students',
+  '/talleres',
   '/reports',
   '/attendance-report',
 ];

@@ -9,6 +9,7 @@ import {
   Clock,
   CalendarDays,
 } from 'lucide-react';
+import { isTalleresEnabled } from '@/config/features';
 
 export interface StaffNavSubItem {
   path: string;
@@ -64,6 +65,12 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
     roles: ['Supervisor', 'Director', 'Admin'],
   },
   {
+    path: '/talleres',
+    label: 'Talleres',
+    icon: BookOpen,
+    roles: ['Supervisor', 'Director', 'Admin'],
+  },
+  {
     path: '/faults',
     label: 'Catálogos',
     icon: BookOpen,
@@ -94,7 +101,11 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
 
 export function getStaffNavItems(role?: string | null): StaffNavItem[] {
   if (!role || role === 'Tutor' || role === 'Padre') return [];
-  return ALL_STAFF_NAV_ITEMS.filter((item) => item.roles.includes(role));
+  return ALL_STAFF_NAV_ITEMS.filter((item) => {
+    if (!item.roles.includes(role)) return false;
+    if (item.path === '/talleres' && !isTalleresEnabled()) return false;
+    return true;
+  });
 }
 
 export function findStaffNavGroup(
