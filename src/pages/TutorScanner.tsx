@@ -54,8 +54,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { getLimaNow } from '@/lib/utils/limaDateTime';
 import {
-  compareArrivalStatus,
   resolveArrivalLimitForLevel,
+  resolveArrivalStatusForStudent,
   type ArrivalLimitsByLevel,
 } from '@/lib/utils/arrivalLimit';
 import { configService } from '@/lib/services';
@@ -67,6 +67,7 @@ import { isDniLikeQuery, TUTOR_NAME_SEARCH_LIMIT } from '@/lib/utils/studentSear
 import { prefersTouchBarcodeInput } from '@/lib/utils/deviceCompat';
 import { useTutorTouchLayout } from '@/hooks/useTutorTouchLayout';
 import { useHardwareBarcodeCapture } from '@/hooks/useHardwareBarcodeCapture';
+import { useTallerScan } from '@/hooks/useTallerScan';
 import { buildStudentLookupVariants } from '@/lib/services/studentsService';
 import { cn } from '@/lib/utils';
 
@@ -112,6 +113,7 @@ export const TutorScanner = () => {
   const [quickFaultId, setQuickFaultId] = useState<number | null>(null);
   const [barcodeKeyboard, setBarcodeKeyboard] = useState(false);
   const isMountedRef = useRef(true);
+  const arrivalLimitsRef = useRef<ArrivalLimitsByLevel>(arrivalLimits);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const hardwareScanInputRef = useRef<HTMLInputElement>(null);
   const studentCardRef = useRef<HTMLDivElement>(null);
@@ -132,6 +134,19 @@ export const TutorScanner = () => {
   const user = authService.getCurrentUser();
   const touchBarcode = useMemo(() => prefersTouchBarcodeInput(), []);
   const touchTablet = useTutorTouchLayout();
+  const {
+    handleTallerScan,
+    isTallerMode,
+    scanMode,
+    selectedTaller,
+    selectedTallerId,
+    setScanMode,
+    setSelectedTallerId,
+    submitTallerIncident,
+    talleres,
+    talleresEnabled,
+    talleresLoading,
+  } = useTallerScan();
   const nameSearchScrollable = touchTablet
     ? nameSearchResults.length > NAME_SEARCH_SCROLL_AFTER
     : nameSearchResults.length > 0;
@@ -340,10 +355,15 @@ export const TutorScanner = () => {
     }
   };
 
+  const applyArrivalLimits = useCallback((limits: ArrivalLimitsByLevel) => {
+    arrivalLimitsRef.current = limits;
+    setArrivalLimits(limits);
+  }, []);
+
   const loadArrivalLimit = async () => {
     try {
-      const limits = await arrivalService.fetchArrivalLimits();
-      setArrivalLimits(limits);
+      const limits = await arrivalService.fetchArrivalLimits({ force: true });
+      applyArrivalLimits(limits);
 
       // Hora de cierre: desde cuándo mostrar "Fuera de jornada"
       const { config: closeCfg } = await configService.getByKey(SYSTEM_SETTING_KEYS.schoolClose);
@@ -383,36 +403,44 @@ export const TutorScanner = () => {
     }
   };
 
-  const computeArrivalSnapshot = useCallback(
-    (studentLevel?: string) => {
-      const { date, time } = getLimaNow();
-      const limit = resolveArrivalLimitForLevel(arrivalLimits, studentLevel);
-      const status = compareArrivalStatus(time, limit);
-      return { date, time, status, limit };
-    },
-    [arrivalLimits]
-  );
+  const resolveArrivalSnapshot = useCallback(async (studentLevel?: string | null) => {
+    const limits = await arrivalService.fetchArrivalLimits({ force: true });
+    arrivalLimitsRef.current = limits;
+    setArrivalLimits(limits);
+    const { date, time } = getLimaNow();
+    const limit = resolveArrivalLimitForLevel(limits, studentLevel);
+    const status = resolveArrivalStatusForStudent(time, limits, studentLevel);
+    return { date, time, status, limit };
+  }, []);
 
   const applyScanSuccess = useCallback(
     (
       studentToShow: Student,
       record: ArrivalRecord,
-      options?: { countInSession?: boolean; duplicate?: boolean }
+      options?: {
+        countInSession?: boolean;
+        duplicate?: boolean;
+        displayStatus?: string;
+        displayTime?: string;
+        statusForTotals?: ArrivalRecord['status'] | null;
+      }
     ) => {
+      // Mostrar siempre el estado de la BD (no recalcular en el cliente).
       showStudentProfileRef.current = true;
       displayedStudentIdRef.current = studentToShow.id;
       setStudent(studentToShow);
       setArrivalRecord(record);
       setShowStudentProfile(true);
 
-      const status = record.status || 'Registrado';
-      const displayTime = record.arrivalTime ?? nowHHMM;
+      const status = options?.displayStatus ?? (record.status || 'Registrado');
+      const countableStatus = options?.statusForTotals ?? record.status;
+      const displayTime = options?.displayTime ?? record.arrivalTime ?? nowHHMM;
 
       if (options?.countInSession !== false) {
         setSessionCount((prev) => ({
           total: prev.total + 1,
-          onTime: prev.onTime + (status === 'A tiempo' ? 1 : 0),
-          late: prev.late + (status === 'Tarde' ? 1 : 0),
+          onTime: prev.onTime + (countableStatus === 'A tiempo' ? 1 : 0),
+          late: prev.late + (countableStatus === 'Tarde' ? 1 : 0),
         }));
         setRecentScans((prev) => {
           const next = [
@@ -519,6 +547,7 @@ export const TutorScanner = () => {
             return;
           }
 
+          // El estado viene de la BD (trigger por nivel); no recalcular en el cliente.
           todayArrivalsRef.current.set(studentToShow.id, record);
 
           if (alreadyRegistered) {
@@ -619,12 +648,34 @@ export const TutorScanner = () => {
   );
 
   const processStudent = useCallback(
-    (foundStudent: Student, scanSeq: number) => {
+    async (foundStudent: Student, scanSeq: number) => {
       if (!isMountedRef.current) return;
 
       const isLatestProfile = scanSeq === latestProfileScanRef.current;
       const shouldUpdateProfile =
         isLatestProfile || foundStudent.id !== displayedStudentIdRef.current;
+
+      if (isTallerMode) {
+        const result = await handleTallerScan(foundStudent, user?.id);
+        if (!isMountedRef.current) return;
+
+        if (!result.ok) {
+          toast.error(result.error, { duration: 3200 });
+          releaseScanFocus();
+          return;
+        }
+
+        if (shouldUpdateProfile) {
+          applyScanSuccess(foundStudent, result.record, {
+            displayStatus: result.displayStatus,
+            displayTime: result.displayTime,
+            statusForTotals: result.statusForTotals,
+          });
+        }
+
+        releaseScanFocus();
+        return;
+      }
 
       const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
       if (cachedToday) {
@@ -647,11 +698,12 @@ export const TutorScanner = () => {
         return;
       }
 
-      const { date, time, status } = computeArrivalSnapshot(foundStudent.level);
+      const { date, time, status } = await resolveArrivalSnapshot(foundStudent.level);
+      if (!isMountedRef.current) return;
+
       const arrivalOpts: CreateArrivalOptions = {
         date,
         arrivalTime: time,
-        status,
         studentLevel: foundStudent.level,
       };
 
@@ -688,9 +740,12 @@ export const TutorScanner = () => {
     },
     [
       applyScanSuccess,
-      computeArrivalSnapshot,
+      handleTallerScan,
+      isTallerMode,
+      resolveArrivalSnapshot,
       persistArrivalInBackground,
       releaseScanFocus,
+      user?.id,
     ]
   );
 
@@ -720,7 +775,7 @@ export const TutorScanner = () => {
         return;
       }
 
-      processStudent(foundStudent, scanSeq);
+      void processStudent(foundStudent, scanSeq);
     },
     [focusBarcodeInput, processStudent, resolveStudentByBarcode, setLookupBusy]
   );
@@ -792,7 +847,7 @@ export const TutorScanner = () => {
       setLookupBusy(false);
     }
 
-    processStudent(studentToRegister, scanSeq);
+    void processStudent(studentToRegister, scanSeq);
   };
 
   const handleNameSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -854,7 +909,7 @@ export const TutorScanner = () => {
           setNameSearch('');
           setNameSearchResults([]);
           setNameSearchEmpty(false);
-          processStudent(student, ++latestProfileScanRef.current);
+          void processStudent(student, ++latestProfileScanRef.current);
         } else if (dniError) {
           toast.error(dniError);
         } else {
@@ -924,18 +979,36 @@ export const TutorScanner = () => {
       return false;
     }
 
-    const { error } = await incidentsService.create({
-      studentId: student.id,
-      faultTypeId,
-      registeredBy: currentUser.id,
-      observations: obs?.trim() || undefined,
-    });
+    if (scanMode === 'taller') {
+      const faultForWa = faults.find((fault) => fault.id === faultTypeId);
+      const result = await submitTallerIncident({
+        student,
+        faultTypeId,
+        registeredBy: currentUser.id,
+        observations: obs?.trim() || undefined,
+        fault: faultForWa,
+      });
 
-    if (!isMountedRef.current) return false;
+      if (!isMountedRef.current) return false;
 
-    if (error) {
-      toast.error(error, { duration: 3200 });
-      return false;
+      if (!result.ok) {
+        toast.error(result.error, { duration: 3200 });
+        return false;
+      }
+    } else {
+      const { error } = await incidentsService.create({
+        studentId: student.id,
+        faultTypeId,
+        registeredBy: currentUser.id,
+        observations: obs?.trim() || undefined,
+      });
+
+      if (!isMountedRef.current) return false;
+
+      if (error) {
+        toast.error(error, { duration: 3200 });
+        return false;
+      }
     }
 
     toast.success('Incidencia registrada');
@@ -1022,11 +1095,15 @@ export const TutorScanner = () => {
     releaseScanFocus();
   };
 
-  const arrivalOnTime = arrivalRecord?.status === 'A tiempo';
   const displayArrivalTime =
-    arrivalRecord?.arrivalTime?.length && arrivalRecord.arrivalTime.length >= 5
-      ? arrivalRecord.arrivalTime.slice(0, 5)
-      : arrivalRecord?.arrivalTime ?? '—:—';
+    isTallerMode && arrivalRecord?.departureTime?.length && arrivalRecord.departureTime.length >= 5
+      ? arrivalRecord.departureTime.slice(0, 5)
+      : arrivalRecord?.arrivalTime?.length && arrivalRecord.arrivalTime.length >= 5
+        ? arrivalRecord.arrivalTime.slice(0, 5)
+        : arrivalRecord?.arrivalTime ?? '—:—';
+  const displayArrivalStatus =
+    isTallerMode && arrivalRecord?.departureTime ? 'Salida registrada' : arrivalRecord?.status;
+  const arrivalOnTime = displayArrivalStatus !== 'Tarde';
   const limitsLabel = `Prim ${arrivalLimits.primaria} · Sec ${arrivalLimits.secundaria}`;
   const activeArrivalLimit = student
     ? resolveArrivalLimitForLevel(arrivalLimits, student.level)
@@ -1158,20 +1235,24 @@ export const TutorScanner = () => {
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-primary">
-                        Registro de llegada
+                        {isTallerMode ? 'Registro de talleres' : 'Registro de llegada'}
                       </p>
                       <Badge variant={limitTone} className="text-[10px]">
                         Límite {limitsLabel}
                       </Badge>
                     </div>
                     <h2 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">
-                      Escanear o buscar estudiante
+                      {isTallerMode ? 'Escanear estudiante inscrito' : 'Escanear o buscar estudiante'}
                     </h2>
                     <p className="text-sm text-muted-foreground leading-relaxed hidden sm:block">
-                      Carnet con lector de barras o búsqueda manual por nombre del estudiante.
+                      {isTallerMode
+                        ? `Seleccione ${selectedTaller?.nombre ?? 'un taller'} y registre llegada o salida del inscrito con el mismo escáner.`
+                        : 'Carnet con lector de barras o búsqueda manual por nombre del estudiante.'}
                     </p>
                     <p className="text-sm text-muted-foreground leading-relaxed sm:hidden">
-                      Conecte el lector por Bluetooth o adaptador: escanee carnets seguidos sin tocar la pantalla.
+                      {isTallerMode
+                        ? 'Elija el taller y escanee inscritos seguidos; el sistema alterna llegada y salida del día.'
+                        : 'Conecte el lector por Bluetooth o adaptador: escanee carnets seguidos sin tocar la pantalla.'}
                     </p>
                   </div>
                 </div>
@@ -1182,8 +1263,65 @@ export const TutorScanner = () => {
                   onSubmit={handleScan}
                   className="space-y-5"
                   aria-busy={lookupPending}
-                  aria-label="Registro de llegada por código de barras o nombre"
+                  aria-label={
+                    isTallerMode
+                      ? 'Registro de talleres por código de barras o nombre'
+                      : 'Registro de llegada por código de barras o nombre'
+                  }
                 >
+                  {talleresEnabled && (
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-foreground">Modo</Label>
+                        <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
+                          <Button
+                            type="button"
+                            variant={scanMode === 'clase' ? 'default' : 'ghost'}
+                            onClick={() => setScanMode('clase')}
+                            className="w-full"
+                          >
+                            Clase
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={scanMode === 'taller' ? 'default' : 'ghost'}
+                            onClick={() => setScanMode('taller')}
+                            className="w-full"
+                          >
+                            Talleres
+                          </Button>
+                        </div>
+                      </div>
+                      {scanMode === 'taller' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="taller-select" className="text-sm font-medium text-foreground">
+                            Taller activo
+                          </Label>
+                          <Select
+                            value={selectedTallerId ?? undefined}
+                            onValueChange={setSelectedTallerId}
+                            disabled={lookupPending || talleresLoading}
+                          >
+                            <SelectTrigger id="taller-select" className="min-h-12 sm:min-h-10">
+                              <SelectValue
+                                placeholder={talleresLoading ? 'Cargando talleres…' : 'Seleccionar taller'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {talleres.map((taller) => (
+                                <SelectItem key={taller.id} value={taller.id}>
+                                  {taller.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            El primer escaneo registra llegada y el siguiente registra salida para el taller elegido.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="barcode-input" className="text-sm font-medium text-foreground">
                       Código de barras
@@ -1363,7 +1501,7 @@ export const TutorScanner = () => {
                     </Button>
                     <Button
                       type="submit"
-                      disabled={lookupPending || !barcode.trim()}
+                      disabled={lookupPending || !barcode.trim() || (isTallerMode && !selectedTallerId)}
                       className="sm:min-w-[180px]"
                     >
                       {lookupPending ? (
@@ -1374,7 +1512,7 @@ export const TutorScanner = () => {
                       ) : (
                         <>
                           <Barcode className="h-4 w-4" />
-                          Registrar llegada
+                          {isTallerMode ? 'Procesar escaneo' : 'Registrar llegada'}
                         </>
                       )}
                     </Button>
@@ -1429,7 +1567,7 @@ export const TutorScanner = () => {
                         variant={arrivalOnTime ? 'success' : 'warning'}
                         className="tutor-student-card__status"
                       >
-                        {arrivalRecord?.status ?? 'Registrado'} · {displayArrivalTime}
+                        {displayArrivalStatus ?? 'Registrado'} · {displayArrivalTime}
                       </Badge>
                       <h3 className="tutor-identity__name">{student.fullName}</h3>
                       <p className="tutor-identity__grade">
