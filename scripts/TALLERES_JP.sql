@@ -48,18 +48,18 @@ ALTER TABLE public.taller_asistencias ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS sie_talleres_staff_all ON public.talleres;
 CREATE POLICY sie_talleres_staff_all ON public.talleres FOR ALL TO anon, authenticated
-  USING (public.sie_es_staff(public.sie_sesion_rol()))
-  WITH CHECK (public.sie_es_staff(public.sie_sesion_rol()));
+  USING (public.sie_es_staff_sesion())
+  WITH CHECK (public.sie_es_staff_sesion());
 
 DROP POLICY IF EXISTS sie_taller_inscritos_staff_all ON public.taller_inscritos;
 CREATE POLICY sie_taller_inscritos_staff_all ON public.taller_inscritos FOR ALL TO anon, authenticated
-  USING (public.sie_es_staff(public.sie_sesion_rol()))
-  WITH CHECK (public.sie_es_staff(public.sie_sesion_rol()));
+  USING (public.sie_es_staff_sesion())
+  WITH CHECK (public.sie_es_staff_sesion());
 
 DROP POLICY IF EXISTS sie_taller_asistencias_staff_all ON public.taller_asistencias;
 CREATE POLICY sie_taller_asistencias_staff_all ON public.taller_asistencias FOR ALL TO anon, authenticated
-  USING (public.sie_es_staff(public.sie_sesion_rol()))
-  WITH CHECK (public.sie_es_staff(public.sie_sesion_rol()));
+  USING (public.sie_es_staff_sesion())
+  WITH CHECK (public.sie_es_staff_sesion());
 
 DROP POLICY IF EXISTS sie_talleres_tutor_select ON public.talleres;
 CREATE POLICY sie_talleres_tutor_select ON public.talleres FOR SELECT TO anon, authenticated
