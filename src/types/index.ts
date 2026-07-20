@@ -67,6 +67,8 @@ export interface CatalogoFaltaDB {
   es_grave: boolean;
   puntos_reincidencia: number;
   descripcion: string | null;
+  /** Recomendación para el apoderado (WhatsApp / comunicado) */
+  recomendacion?: string | null;
   activo: boolean;
   orden_visualizacion: number;
   fecha_creacion: string;
@@ -149,6 +151,8 @@ export interface FaultType {
   id: number;
   name: string;
   description: string | null;
+  /** Recomendación para el apoderado según el tipo de falta */
+  recommendation?: string | null;
   category: FaultCategory;
   severity: FaultSeverity;
   points: number;
@@ -173,6 +177,8 @@ export interface Incident {
   annulledBy?: number | null;
   annulledAt?: string | null;
   annulmentReason?: string | null;
+  tallerId?: string | null;
+  tallerNombre?: string | null;
 }
 
 export interface IncidentEvidence {
@@ -303,6 +309,39 @@ export interface ArrivalRecord {
   departureTime?: string | null;
   departureRegisteredBy?: number | null;
   departureType?: 'Normal' | 'Autorizada' | 'Sin registro' | null;
+}
+
+export interface Taller {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  diaSemana: number[] | null; // 1=Lun … 7=Dom
+  horaInicio: string | null; // HH:mm
+  horaFin: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TallerInscrito {
+  id: string;
+  tallerId: string;
+  studentId: number;
+  activo: boolean;
+  student?: Student;
+}
+
+export interface TallerAsistencia {
+  id: number;
+  tallerId: string;
+  tallerNombre?: string;
+  studentId: number;
+  date: string;
+  arrivalTime: string | null;
+  departureTime: string | null;
+  arrivalStatus: 'A tiempo' | 'Tarde' | null;
+  departureType: 'Normal' | 'Autorizada' | 'Sin registro' | null;
+  registeredBy: number | null;
 }
 
 export interface MonthlyAttendanceDay {
