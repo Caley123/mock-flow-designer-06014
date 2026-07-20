@@ -1,12 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import type { ArrivalRecord } from '@/types';
-import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
-import { resolveArrivalStatusForStudent } from '@/lib/utils/arrivalLimit';
-
-export type ParentCalendarContext = {
-  limits?: ArrivalLimitsByLevel;
-  level?: string | null;
-};
+import type { ArrivalRecord, TallerAsistencia } from '@/types';
 
 export type DayStatus = 'present' | 'late' | 'absent' | 'norecord' | 'noclass';
 
@@ -69,27 +62,18 @@ export function isWeekend(dayKey: string): boolean {
   return dow === 0 || dow === 6;
 }
 
-function arrivalKind(
-  record: ArrivalRecord,
-  ctx?: ParentCalendarContext
-): 'present' | 'late' {
-  if (ctx?.limits) {
-    return resolveArrivalStatusForStudent(record.arrivalTime, ctx.limits, ctx.level) === 'A tiempo'
-      ? 'present'
-      : 'late';
-  }
+function arrivalKind(record: ArrivalRecord): 'present' | 'late' {
   return record.status === 'A tiempo' ? 'present' : 'late';
 }
 
 export function resolveDayStatus(
   dayKey: string,
   record: ArrivalRecord | undefined,
-  todayKey: string,
-  ctx?: ParentCalendarContext
+  todayKey: string
 ): DayStatus {
   if (isWeekend(dayKey) || dayKey > todayKey) return 'noclass';
   if (record) {
-    return arrivalKind(record, ctx);
+    return arrivalKind(record);
   }
   if (dayKey === todayKey) return 'norecord';
   return 'absent';
@@ -104,6 +88,19 @@ export function parseArrivalTime12h(t: string): string {
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
+export function dayHasTaller(byDate: Map<string, TallerAsistencia[]>, dayKey: string): boolean {
+  return (byDate.get(dayKey)?.length ?? 0) > 0;
+}
+
+export function formatTallerDayDetail(rows: TallerAsistencia[]): string[] {
+  return rows.map((row) => {
+    const tallerNombre = row.tallerNombre?.trim() || 'Taller';
+    const arrival = parseArrivalTime12h(row.arrivalTime ?? '');
+    const departure = row.departureTime ? parseArrivalTime12h(row.departureTime) : 'sin registrar';
+    return `Taller: ${tallerNombre} · llegada ${arrival} · salida ${departure}`;
+  });
+}
+
 export function firstName(fullName: string): string {
   const n = fullName.trim().split(/\s+/)[0];
   return n ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : 'El estudiante';
@@ -113,8 +110,7 @@ export function computeMonthMetrics(
   year: number,
   month: number,
   byDate: Map<string, ArrivalRecord>,
-  todayKey: string,
-  ctx?: ParentCalendarContext
+  todayKey: string
 ): { present: number; late: number; absent: number } {
   const lastDay = new Date(year, month, 0).getDate();
   let present = 0;
@@ -123,7 +119,7 @@ export function computeMonthMetrics(
 
   for (let d = 1; d <= lastDay; d++) {
     const key = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const status = resolveDayStatus(key, byDate.get(key), todayKey, ctx);
+    const status = resolveDayStatus(key, byDate.get(key), todayKey);
     if (status === 'present') present++;
     else if (status === 'late') late++;
     else if (status === 'absent') absent++;

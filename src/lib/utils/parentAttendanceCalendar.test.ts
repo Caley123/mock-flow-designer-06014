@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ArrivalRecord } from '@/types';
-import { computeMonthMetrics, resolveDayStatus } from './parentAttendanceCalendar';
-import type { ArrivalLimitsByLevel } from './arrivalLimit';
-
-const limits: ArrivalLimitsByLevel = {
-  general: '08:00',
-  primaria: '08:00',
-  secundaria: '19:20',
-};
-
-const ctx = { limits, level: 'Secundaria' as const };
+import type { ArrivalRecord, TallerAsistencia } from '@/types';
+import {
+  computeMonthMetrics,
+  dayHasTaller,
+  formatTallerDayDetail,
+  resolveDayStatus,
+} from './parentAttendanceCalendar';
 
 const record = (date: string, status: ArrivalRecord['status']): ArrivalRecord => ({
   id: 1,
@@ -21,6 +17,20 @@ const record = (date: string, status: ArrivalRecord['status']): ArrivalRecord =>
   createdAt: date,
 });
 
+const tallerRecord = (overrides: Partial<TallerAsistencia> = {}): TallerAsistencia => ({
+  id: 1,
+  tallerId: 'taller-1',
+  tallerNombre: 'Fútbol',
+  studentId: 1,
+  date: '2026-06-03',
+  arrivalTime: '15:30',
+  departureTime: '17:00',
+  arrivalStatus: 'A tiempo',
+  departureType: 'Normal',
+  registeredBy: 1,
+  ...overrides,
+});
+
 describe('parentAttendanceCalendar', () => {
   it('marca falta en día hábil pasado sin registro', () => {
     expect(resolveDayStatus('2026-06-03', undefined, '2026-06-28')).toBe('absent');
@@ -30,11 +40,11 @@ describe('parentAttendanceCalendar', () => {
     expect(resolveDayStatus('2026-06-25', undefined, '2026-06-25')).toBe('norecord');
   });
 
-  it('recalcula tarde según límite del nivel en el calendario', () => {
-    const lateByLimit = record('2026-06-03', 'A tiempo');
-    lateByLimit.arrivalTime = '19:34';
-    expect(resolveDayStatus('2026-06-03', lateByLimit, '2026-06-28', ctx)).toBe('late');
-    expect(resolveDayStatus('2026-06-03', record('2026-06-03', 'A tiempo'), '2026-06-28', ctx)).toBe(
+  it('usa el estado guardado en el registro de llegada', () => {
+    const lateRecord = record('2026-06-03', 'Tarde');
+    lateRecord.arrivalTime = '19:34';
+    expect(resolveDayStatus('2026-06-03', lateRecord, '2026-06-28')).toBe('late');
+    expect(resolveDayStatus('2026-06-03', record('2026-06-03', 'A tiempo'), '2026-06-28')).toBe(
       'present',
     );
   });
@@ -49,5 +59,34 @@ describe('parentAttendanceCalendar', () => {
     expect(metrics.late).toBe(1);
     // Lun 1 y Vie 5 sin registro = 2 faltas (sáb/dom no cuentan)
     expect(metrics.absent).toBe(2);
+  });
+
+  it('detecta si un día tiene asistencia de taller', () => {
+    const byDate = new Map<string, TallerAsistencia[]>([
+      ['2026-06-03', [tallerRecord()]],
+      ['2026-06-04', []],
+    ]);
+
+    expect(dayHasTaller(byDate, '2026-06-03')).toBe(true);
+    expect(dayHasTaller(byDate, '2026-06-04')).toBe(false);
+    expect(dayHasTaller(byDate, '2026-06-05')).toBe(false);
+  });
+
+  it('formatea líneas de detalle de talleres para el día seleccionado', () => {
+    expect(
+      formatTallerDayDetail([
+        tallerRecord(),
+        tallerRecord({
+          id: 2,
+          tallerId: 'taller-2',
+          tallerNombre: 'Ajedrez',
+          arrivalTime: null,
+          departureTime: null,
+        }),
+      ])
+    ).toEqual([
+      'Taller: Fútbol · llegada 3:30 p.m. · salida 5:00 p.m.',
+      'Taller: Ajedrez · llegada —:— · salida sin registrar',
+    ]);
   });
 });

@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { arrivalService } from '@/lib/services';
-import type { ArrivalRecord, Student } from '@/types';
-import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
-import { resolveArrivalLimitForLevel } from '@/lib/utils/arrivalLimit';
+import { arrivalService, tallerAttendanceService } from '@/lib/services';
+import { isTalleresEnabled } from '@/config/features';
+import type { ArrivalRecord, Student, TallerAsistencia } from '@/types';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
 import { getLimaMonthBounds, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import {
   buildMonthGrid,
   computeMonthMetrics,
   DAY_STYLES,
+  dayHasTaller,
   dayDetailCopy,
   firstName,
+  formatTallerDayDetail,
   parseArrivalTime12h,
   resolveDayStatus,
   topStripGradient,
@@ -44,39 +45,36 @@ export function ParentAttendanceDashboard({
 }: ParentAttendanceDashboardProps) {
   const todayKey = getLimaTodayDate();
   const current = getLimaMonthBounds();
+  const talleresEnabled = isTalleresEnabled();
 
   const [viewYear, setViewYear] = useState(current.year);
   const [viewMonth, setViewMonth] = useState(current.month);
   const [monthArrivals, setMonthArrivals] = useState<ArrivalRecord[]>(initialMonthArrivals);
+  const [monthTallerAttendance, setMonthTallerAttendance] = useState<TallerAsistencia[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [arrivalLimits, setArrivalLimits] = useState<ArrivalLimitsByLevel>({
-    general: '08:00',
-    primaria: '08:00',
-    secundaria: '08:00',
-  });
-
-  useEffect(() => {
-    void arrivalService.fetchPublicArrivalLimits().then(setArrivalLimits);
-  }, []);
-
-  const calendarCtx = useMemo(
-    () => ({ limits: arrivalLimits, level: student.level }),
-    [arrivalLimits, student.level],
-  );
-  const studentArrivalLimit = useMemo(
-    () => resolveArrivalLimitForLevel(arrivalLimits, student.level),
-    [arrivalLimits, student.level],
-  );
 
   const loadMonth = useCallback(
     async (year: number, month: number) => {
       setLoadingMonth(true);
-      const data = await arrivalService.fetchMonthArrivalsForStudent(student.id, year, month);
-      setMonthArrivals(data);
-      setLoadingMonth(false);
+      try {
+        const [arrivals, tallerResponse] = await Promise.all([
+          arrivalService.fetchMonthArrivalsForStudent(student.id, year, month),
+          talleresEnabled
+            ? tallerAttendanceService.fetchMonthForStudent(student.id, year, month)
+            : Promise.resolve<{ records: TallerAsistencia[]; error: string | null }>({
+                records: [],
+                error: null,
+              }),
+        ]);
+
+        setMonthArrivals(arrivals);
+        setMonthTallerAttendance(tallerResponse.records);
+      } finally {
+        setLoadingMonth(false);
+      }
     },
-    [student.id]
+    [student.id, talleresEnabled]
   );
 
   useEffect(() => {
@@ -86,10 +84,28 @@ export function ParentAttendanceDashboard({
       initialMonthArrivals.length > 0;
     if (isInitial) {
       setMonthArrivals(initialMonthArrivals);
+      if (talleresEnabled) {
+        setLoadingMonth(true);
+        void tallerAttendanceService
+          .fetchMonthForStudent(student.id, viewYear, viewMonth)
+          .then(({ records }) => setMonthTallerAttendance(records))
+          .finally(() => setLoadingMonth(false));
+      } else {
+        setMonthTallerAttendance([]);
+      }
       return;
     }
     void loadMonth(viewYear, viewMonth);
-  }, [viewYear, viewMonth, current.year, current.month, initialMonthArrivals, loadMonth]);
+  }, [
+    viewYear,
+    viewMonth,
+    current.year,
+    current.month,
+    initialMonthArrivals,
+    loadMonth,
+    student.id,
+    talleresEnabled,
+  ]);
 
   const byDate = useMemo(() => {
     const map = new Map(monthArrivals.map((a) => [a.date, a]));
@@ -99,9 +115,19 @@ export function ParentAttendanceDashboard({
     return map;
   }, [monthArrivals, todayArrival, viewYear, viewMonth]);
 
+  const tallerByDate = useMemo(() => {
+    const map = new Map<string, TallerAsistencia[]>();
+    monthTallerAttendance.forEach((record) => {
+      const rows = map.get(record.date) ?? [];
+      rows.push(record);
+      map.set(record.date, rows);
+    });
+    return map;
+  }, [monthTallerAttendance]);
+
   const metrics = useMemo(
-    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey, calendarCtx),
-    [viewYear, viewMonth, byDate, todayKey, calendarCtx]
+    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey),
+    [viewYear, viewMonth, byDate, todayKey]
   );
 
   const stripGradient = topStripGradient(metrics.present, metrics.late, metrics.absent);
@@ -119,9 +145,14 @@ export function ParentAttendanceDashboard({
   };
 
   const selectedStatus = selectedDay
-    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey, calendarCtx)
+    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey)
     : null;
   const selectedRecord = selectedDay ? byDate.get(selectedDay) : undefined;
+  const selectedTallerRows = selectedDay ? tallerByDate.get(selectedDay) ?? [] : [];
+  const selectedTallerLines = useMemo(
+    () => formatTallerDayDetail(selectedTallerRows),
+    [selectedTallerRows]
+  );
   const detail =
     selectedDay && selectedStatus
       ? dayDetailCopy(
@@ -157,10 +188,6 @@ export function ParentAttendanceDashboard({
           />
           <h1 className="mt-3 text-xl font-semibold text-[#1A1D23] leading-snug">{student.fullName}</h1>
           {nivel && <p className="mt-1 text-[13px] text-[#6B7280]">{nivel}</p>}
-          <p className="mt-2 text-[11px] font-medium text-[#9095A3]">
-            Hora límite de llegada ({student.level || 'nivel'}):{' '}
-            <span className="font-mono text-[#1A1D23]">{studentArrivalLimit}</span>
-          </p>
         </div>
 
         <div className="my-5 h-px w-full bg-[#E8EAF0]" />
@@ -236,7 +263,7 @@ export function ParentAttendanceDashboard({
                     );
                   }
 
-                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey, calendarCtx);
+                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey);
                   const style = DAY_STYLES[status];
                   const isToday = dayKey === todayKey;
                   const isSelected = selectedDay === dayKey;
@@ -248,7 +275,7 @@ export function ParentAttendanceDashboard({
                       type="button"
                       onClick={() => setSelectedDay(isSelected ? null : dayKey)}
                       className={cn(
-                        'flex min-h-[44px] flex-col items-center justify-center rounded-[10px] border px-0.5 py-1 sm:min-h-[52px]',
+                        'relative flex min-h-[44px] flex-col items-center justify-center rounded-[10px] border px-0.5 py-1 sm:min-h-[52px]',
                         isToday && 'outline outline-2 outline-[#3B82F6] outline-offset-2 bg-white'
                       )}
                       style={{
@@ -259,6 +286,19 @@ export function ParentAttendanceDashboard({
                       aria-label={format(parseISO(dayKey), "d 'de' MMMM", { locale: es })}
                       aria-pressed={isSelected}
                     >
+                      {dayHasTaller(tallerByDate, dayKey) && (
+                        <span
+                          className="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[9px] font-semibold leading-none"
+                          style={{
+                            background: '#EFF6FF',
+                            color: '#1D4ED8',
+                            borderColor: '#BFDBFE',
+                          }}
+                          aria-label="Tiene taller"
+                        >
+                          T
+                        </span>
+                      )}
                       <span
                         className="text-[13px] font-medium leading-none"
                         style={{ color: isToday ? '#1D4ED8' : style.text }}
@@ -306,7 +346,29 @@ export function ParentAttendanceDashboard({
                   {detail.badge}
                 </span>
               </div>
-              <p className="mt-2 text-[13px] leading-[1.65] text-[#6B7280]">{detail.description}</p>
+              <div className="mt-3 rounded-[12px] border border-[#E8EAF0] bg-[#F8FAFC] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#475569]">Clase</p>
+                <p className="mt-1.5 text-[13px] leading-[1.65] text-[#6B7280]">{detail.description}</p>
+              </div>
+              {selectedTallerLines.length > 0 && (
+                <div className="mt-3 rounded-[12px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#DBEAFE] px-1.5 text-[10px] font-semibold text-[#1D4ED8]">
+                      T
+                    </span>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#1D4ED8]">
+                      Talleres
+                    </p>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedTallerLines.map((line, index) => (
+                      <p key={`${selectedDay}-taller-${index}`} className="text-[13px] leading-[1.65] text-[#475569]">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
