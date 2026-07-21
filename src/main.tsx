@@ -3,6 +3,12 @@ import App from "./App.tsx";
 import "./index.css";
 import { preloadCriticalRoutes } from "@/lib/utils/deviceCompat";
 
+/** Branding por colegio (JP: navy/rojo; SR: azul/violeta por defecto). */
+const schoolName = (import.meta.env.VITE_SCHOOL_NAME as string | undefined)?.trim() || "";
+if (/jean\s*piaget/i.test(schoolName)) {
+  document.documentElement.setAttribute("data-school", "jean-piaget");
+}
+
 if (import.meta.env.DEV) {
   void import("./lib/utils/verificarEstudiante");
 }

@@ -86,6 +86,42 @@
     --login-glow: 198 95% 55%;
   }
 
+  /**
+   * Colegio Jean Piaget — navy #1A305E + rojo #B11E2A
+   * (activado con data-school="jean-piaget" desde VITE_SCHOOL_NAME)
+   */
+  :root[data-school='jean-piaget'] {
+    --primary: 221 56% 24%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 221 42% 36%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 355 71% 41%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 221 56% 28%;
+    --info: 221 48% 36%;
+
+    --sidebar-background: 221 56% 18%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 221 45% 72%;
+    --sidebar-primary-foreground: 221 56% 16%;
+    --sidebar-accent: 221 40% 26%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 221 35% 28%;
+    --sidebar-ring: 221 45% 72%;
+
+    --brand-accent: 221 56% 24%;
+    --brand-accent-dark: 221 60% 18%;
+    --brand-accent-light: 221 40% 94%;
+    --brand-link: 221 48% 42%;
+
+    --login-deep: 221 40% 5%;
+    --login-surface: 221 28% 9%;
+    --login-elevated: 221 22% 13%;
+    --login-border: 221 16% 26%;
+    --login-accent: 355 71% 48%;
+    --login-glow: 221 55% 58%;
+  }
+
   .dark {
     --background: 0 0% 10%;
     --foreground: 0 0% 98%;
@@ -115,6 +151,16 @@
     --sidebar-primary: 217 45% 62%;
     --sidebar-accent: 0 0% 14%;
     --sidebar-border: 0 0% 16%;
+  }
+
+  .dark[data-school='jean-piaget'],
+  :root[data-school='jean-piaget'].dark {
+    --primary: 221 45% 52%;
+    --secondary: 221 38% 46%;
+    --accent: 355 65% 52%;
+    --ring: 221 45% 52%;
+    --info: 221 45% 52%;
+    --sidebar-primary: 221 45% 62%;
   }
 }
 
