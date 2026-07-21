@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
 import { toast } from 'sonner';
+import { SCHOOL_NAME } from '@/config/siteSeo';
 
 /** Portal público para padres — solo DNI del estudiante. */
 export function ParentDniPortal() {
@@ -39,7 +40,7 @@ export function ParentDniPortal() {
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[#2E6B1A]">
-              I.E. San Ramón
+              {SCHOOL_NAME}
             </p>
             <p className="text-xs text-[#6B7280]">Portal de padres y apoderados</p>
           </div>
@@ -93,7 +94,7 @@ export function ParentDniPortal() {
         <footer className="mt-8 text-center text-[11px] leading-relaxed text-[#9095A3]">
           <h2 className="sr-only">Acerca del portal familiar</h2>
           <p>
-            Portal de padres y apoderados de la I.E. San Ramón. Consulte la asistencia y llegadas
+            Portal de padres y apoderados de {SCHOOL_NAME}. Consulte la asistencia y llegadas
             del día a través del Sistema de Incidencias Escolares (SIE Asiscole).
           </p>
         </footer>

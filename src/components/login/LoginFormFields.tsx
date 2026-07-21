@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Eye, EyeOff, ArrowRight, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRAND_LOGIN_LOGO } from '@/config/brandAssets';
+import { SCHOOL_NAME } from '@/config/siteSeo';
 import type { useLoginForm } from '@/hooks/useLoginForm';
 
 type LoginFormState = ReturnType<typeof useLoginForm>;
@@ -26,7 +27,7 @@ export function LoginFormFields({ form, lite = false }: LoginFormFieldsProps) {
       <header className="login-form-card__header">
         <h1 className="login-title" {...(lite ? {} : { 'data-login-title': true, 'data-login-anim': true })}>
           <span className="sr-only">
-            Iniciar sesión — Sistema de Incidencias y Asistencia Escolar I.E. San Ramón
+            Iniciar sesión — Sistema de Incidencias y Asistencia Escolar {SCHOOL_NAME}
           </span>
           <span aria-hidden="true">Entrar</span>
         </h1>
@@ -117,8 +118,8 @@ export function LoginFormFields({ form, lite = false }: LoginFormFieldsProps) {
 
       <p className="login-form-card__footer text-center text-[11px] leading-relaxed text-muted-foreground">
         <span className="block mb-2">
-          SIE Asiscole — plataforma de incidencias disciplinarias y control de asistencia de la
-          I.E. San Ramón.
+          SIE Asiscole — plataforma de incidencias disciplinarias y control de asistencia de{' '}
+          {SCHOOL_NAME}.
         </span>
         <img
           src={BRAND_LOGIN_LOGO}
