@@ -210,6 +210,9 @@ export const ArrivalControl = () => {
       .map((student) => ({ kind: 'pending', student }));
 
     return [...registeredRows, ...pendingRows].sort((a, b) => {
+      if (a.kind !== b.kind) {
+        return a.kind === 'pending' ? -1 : 1;
+      }
       const nameA = (a.kind === 'registered' ? a.record.student?.fullName : a.student.fullName) ?? '';
       const nameB = (b.kind === 'registered' ? b.record.student?.fullName : b.student.fullName) ?? '';
       return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
