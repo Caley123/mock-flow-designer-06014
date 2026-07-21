@@ -10,8 +10,11 @@ import {
   buildMonthGrid,
   computeMonthMetrics,
   DAY_STYLES,
+  dayHasIncident,
   dayHasTaller,
   dayDetailCopy,
+  formatClassAttendanceLines,
+  formatClassIncidentDayDetail,
   formatTallerIncidentDayDetail,
   firstName,
   formatTallerDayDetail,
@@ -52,6 +55,7 @@ export function ParentAttendanceDashboard({
   const [viewMonth, setViewMonth] = useState(current.month);
   const [monthArrivals, setMonthArrivals] = useState<ArrivalRecord[]>(initialMonthArrivals);
   const [monthTallerAttendance, setMonthTallerAttendance] = useState<TallerAsistencia[]>([]);
+  const [monthClassIncidents, setMonthClassIncidents] = useState<Incident[]>([]);
   const [monthTallerIncidents, setMonthTallerIncidents] = useState<Incident[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -69,23 +73,19 @@ export function ParentAttendanceDashboard({
                 records: [],
                 error: null,
               }),
-          talleresEnabled
-            ? incidentsService.getAll({
-                estudianteId: student.id,
-                fechaDesde: `${start}T00:00:00.000-05:00`,
-                fechaHasta: `${end}T23:59:59.999-05:00`,
-                fetchAll: true,
-              })
-            : Promise.resolve<{ incidents: Incident[]; total: number; error: string | null }>({
-                incidents: [],
-                total: 0,
-                error: null,
-              }),
+          incidentsService.getAll({
+            estudianteId: student.id,
+            fechaDesde: `${start}T00:00:00.000-05:00`,
+            fechaHasta: `${end}T23:59:59.999-05:00`,
+            fetchAll: true,
+          }),
         ]);
 
         setMonthArrivals(arrivals);
         setMonthTallerAttendance(tallerResponse.records);
-        setMonthTallerIncidents(incidentsResponse.incidents.filter((incident) => Boolean(incident.tallerId)));
+        const incidents = incidentsResponse.incidents;
+        setMonthClassIncidents(incidents.filter((incident) => !incident.tallerId));
+        setMonthTallerIncidents(incidents.filter((incident) => Boolean(incident.tallerId)));
       } finally {
         setLoadingMonth(false);
       }
@@ -100,29 +100,29 @@ export function ParentAttendanceDashboard({
       initialMonthArrivals.length > 0;
     if (isInitial) {
       setMonthArrivals(initialMonthArrivals);
-      if (talleresEnabled) {
-        const { start, end } = getMonthBounds(viewYear, viewMonth);
-        setLoadingMonth(true);
-        void Promise.all([
-          tallerAttendanceService.fetchMonthForStudent(student.id, viewYear, viewMonth),
-          incidentsService.getAll({
-            estudianteId: student.id,
-            fechaDesde: `${start}T00:00:00.000-05:00`,
-            fechaHasta: `${end}T23:59:59.999-05:00`,
-            fetchAll: true,
-          }),
-        ])
-          .then(([attendanceResponse, incidentsResponse]) => {
-            setMonthTallerAttendance(attendanceResponse.records);
-            setMonthTallerIncidents(
-              incidentsResponse.incidents.filter((incident) => Boolean(incident.tallerId))
-            );
-          })
-          .finally(() => setLoadingMonth(false));
-      } else {
-        setMonthTallerAttendance([]);
-        setMonthTallerIncidents([]);
-      }
+      const { start, end } = getMonthBounds(viewYear, viewMonth);
+      setLoadingMonth(true);
+      void Promise.all([
+        talleresEnabled
+          ? tallerAttendanceService.fetchMonthForStudent(student.id, viewYear, viewMonth)
+          : Promise.resolve<{ records: TallerAsistencia[]; error: string | null }>({
+              records: [],
+              error: null,
+            }),
+        incidentsService.getAll({
+          estudianteId: student.id,
+          fechaDesde: `${start}T00:00:00.000-05:00`,
+          fechaHasta: `${end}T23:59:59.999-05:00`,
+          fetchAll: true,
+        }),
+      ])
+        .then(([attendanceResponse, incidentsResponse]) => {
+          setMonthTallerAttendance(attendanceResponse.records);
+          const incidents = incidentsResponse.incidents;
+          setMonthClassIncidents(incidents.filter((incident) => !incident.tallerId));
+          setMonthTallerIncidents(incidents.filter((incident) => Boolean(incident.tallerId)));
+        })
+        .finally(() => setLoadingMonth(false));
       return;
     }
     void loadMonth(viewYear, viewMonth);
@@ -154,6 +154,18 @@ export function ParentAttendanceDashboard({
     });
     return map;
   }, [monthTallerAttendance]);
+
+  const classIncidentsByDate = useMemo(() => {
+    const map = new Map<string, Incident[]>();
+    monthClassIncidents.forEach((incident) => {
+      const dateKey = incident.registeredAt?.slice(0, 10);
+      if (!dateKey) return;
+      const rows = map.get(dateKey) ?? [];
+      rows.push(incident);
+      map.set(dateKey, rows);
+    });
+    return map;
+  }, [monthClassIncidents]);
 
   const tallerIncidentsByDate = useMemo(() => {
     const map = new Map<string, Incident[]>();
@@ -191,7 +203,16 @@ export function ParentAttendanceDashboard({
     : null;
   const selectedRecord = selectedDay ? byDate.get(selectedDay) : undefined;
   const selectedTallerRows = selectedDay ? tallerByDate.get(selectedDay) ?? [] : [];
+  const selectedClassIncidentRows = selectedDay ? classIncidentsByDate.get(selectedDay) ?? [] : [];
   const selectedTallerIncidentRows = selectedDay ? tallerIncidentsByDate.get(selectedDay) ?? [] : [];
+  const selectedClassLines = useMemo(
+    () => formatClassAttendanceLines(selectedRecord),
+    [selectedRecord]
+  );
+  const selectedClassIncidentLines = useMemo(
+    () => formatClassIncidentDayDetail(selectedClassIncidentRows),
+    [selectedClassIncidentRows]
+  );
   const selectedTallerLines = useMemo(
     () => formatTallerDayDetail(selectedTallerRows),
     [selectedTallerRows]
@@ -205,7 +226,8 @@ export function ParentAttendanceDashboard({
       ? dayDetailCopy(
           selectedStatus,
           studentFirst,
-          selectedRecord ? parseArrivalTime12h(selectedRecord.arrivalTime) : undefined
+          selectedRecord ? parseArrivalTime12h(selectedRecord.arrivalTime) : undefined,
+          selectedRecord?.departureTime,
         )
       : null;
 
@@ -346,6 +368,20 @@ export function ParentAttendanceDashboard({
                           T
                         </span>
                       )}
+                      {(dayHasIncident(classIncidentsByDate, dayKey) ||
+                        dayHasIncident(tallerIncidentsByDate, dayKey)) && (
+                        <span
+                          className="absolute left-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[9px] font-semibold leading-none"
+                          style={{
+                            background: '#FEF3C7',
+                            color: '#92400E',
+                            borderColor: '#FCD34D',
+                          }}
+                          aria-label="Tiene incidencia"
+                        >
+                          i
+                        </span>
+                      )}
                       <span
                         className="text-[13px] font-medium leading-none"
                         style={{ color: isToday ? '#1D4ED8' : style.text }}
@@ -396,7 +432,33 @@ export function ParentAttendanceDashboard({
               <div className="mt-3 rounded-[12px] border border-[#E8EAF0] bg-[#F8FAFC] px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#475569]">Clase</p>
                 <p className="mt-1.5 text-[13px] leading-[1.65] text-[#6B7280]">{detail.description}</p>
+                {selectedClassLines.length > 0 && (
+                  <div className="mt-2 space-y-1 border-t border-[#E8EAF0] pt-2">
+                    {selectedClassLines.map((line, index) => (
+                      <p key={`${selectedDay}-clase-${index}`} className="text-[13px] leading-[1.65] text-[#475569]">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
+              {selectedClassIncidentLines.length > 0 && (
+                <div className="mt-3 rounded-[12px] border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#92400E]">
+                    Incidencias
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {selectedClassIncidentLines.map((line, index) => (
+                      <p
+                        key={`${selectedDay}-inc-${index}`}
+                        className="text-[13px] leading-[1.65] text-[#78350F]"
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
               {(selectedTallerLines.length > 0 || selectedTallerIncidentLines.length > 0) && (
                 <div className="mt-3 rounded-[12px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -449,6 +511,16 @@ export function ParentAttendanceDashboard({
                 </span>
               );
             })}
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6B7280]">
+              <span
+                className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[9px] font-semibold"
+                style={{ background: '#FEF3C7', color: '#92400E', borderColor: '#FCD34D' }}
+                aria-hidden
+              >
+                i
+              </span>
+              Incidencia
+            </span>
           </div>
         </div>
       </div>

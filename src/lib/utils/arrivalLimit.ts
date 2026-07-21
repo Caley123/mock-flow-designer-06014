@@ -30,9 +30,11 @@ export function resolveArrivalLimitForLevel(
   level?: string | null
 ): string {
   const nivel = normalizeEducationalLevel(level);
+  // Primaria / Secundaria usan SOLO su clave; la general no interfiere.
   if (nivel === 'Primaria') return limits.primaria;
   if (nivel === 'Secundaria') return limits.secundaria;
-  return limits.general;
+  // Sin nivel: preferir secundaria (más estricto en la mañana) antes que la legada 08:00.
+  return limits.secundaria || limits.primaria || limits.general;
 }
 
 /** Estado según hora de llegada y nivel (primaria / secundaria). */
@@ -45,11 +47,15 @@ export function resolveArrivalStatusForStudent(
   return compareArrivalStatus(arrivalTime, limit);
 }
 
+function timeToMinutes(value: string): number {
+  const normalized = normalizeTimeValue(value, '00:00');
+  const [h, m] = normalized.split(':').map(Number);
+  return h * 60 + m;
+}
+
 export function compareArrivalStatus(
   arrivalTime: string,
   limit: string
 ): 'A tiempo' | 'Tarde' {
-  const t = normalizeTimeValue(arrivalTime, '00:00');
-  const lim = normalizeTimeValue(limit, '08:00');
-  return t <= lim ? 'A tiempo' : 'Tarde';
+  return timeToMinutes(arrivalTime) <= timeToMinutes(limit) ? 'A tiempo' : 'Tarde';
 }

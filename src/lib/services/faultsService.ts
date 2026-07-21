@@ -6,6 +6,20 @@ import { ensureSupabaseReady } from '@/lib/supabaseWarmup';
 const FAULTS_CACHE_KEY = 'faults:active';
 const FAULTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
+function mapFault(falta: CatalogoFaltaDB): FaultType {
+  return {
+    id: falta.id_falta,
+    name: falta.nombre_falta,
+    description: falta.descripcion,
+    recommendation: falta.recomendacion ?? null,
+    category: falta.categoria,
+    severity: falta.es_grave ? 'Grave' : 'Leve',
+    points: falta.puntos_reincidencia,
+    active: falta.activo,
+    ordenVisualizacion: falta.orden_visualizacion,
+  };
+}
+
 /**
  * Servicio de catálogo de faltas
  */
@@ -41,16 +55,7 @@ export const faultsService = {
         return { faults: [], error: error.message };
       }
 
-      const faults: FaultType[] = (data || []).map((falta: CatalogoFaltaDB) => ({
-        id: falta.id_falta,
-        name: falta.nombre_falta,
-        description: falta.descripcion,
-        category: falta.categoria,
-        severity: falta.es_grave ? 'Grave' : 'Leve',
-        points: falta.puntos_reincidencia,
-        active: falta.activo,
-        ordenVisualizacion: falta.orden_visualizacion,
-      }));
+      const faults: FaultType[] = (data || []).map((falta: CatalogoFaltaDB) => mapFault(falta));
 
       if (activeOnly && faults.length > 0) {
         setCached(FAULTS_CACHE_KEY, faults, FAULTS_CACHE_TTL);
@@ -82,16 +87,7 @@ export const faultsService = {
         return { faults: [], error: error.message };
       }
 
-      const faults: FaultType[] = (data || []).map((falta: CatalogoFaltaDB) => ({
-        id: falta.id_falta,
-        name: falta.nombre_falta,
-        description: falta.descripcion,
-        category: falta.categoria,
-        severity: falta.es_grave ? 'Grave' : 'Leve',
-        points: falta.puntos_reincidencia,
-        active: falta.activo,
-        ordenVisualizacion: falta.orden_visualizacion,
-      }));
+      const faults: FaultType[] = (data || []).map((falta: CatalogoFaltaDB) => mapFault(falta));
 
       return { faults, error: null };
     } catch (error: any) {
@@ -115,18 +111,7 @@ export const faultsService = {
         return { fault: null, error: 'Falta no encontrada' };
       }
 
-      const fault: FaultType = {
-        id: data.id_falta,
-        name: data.nombre_falta,
-        description: data.descripcion,
-        category: data.categoria,
-        severity: data.es_grave ? 'Grave' : 'Leve',
-        points: data.puntos_reincidencia,
-        active: data.activo,
-        ordenVisualizacion: data.orden_visualizacion,
-      };
-
-      return { fault, error: null };
+      return { fault: mapFault(data as CatalogoFaltaDB), error: null };
     } catch (error: any) {
       console.error('Error en getById:', error);
       return { fault: null, error: error.message || 'Error al obtener falta' };
@@ -141,7 +126,8 @@ export const faultsService = {
     categoria: FaultCategory;
     es_grave: boolean;
     puntos_reincidencia: number;
-    descripcion?: string;
+    descripcion?: string | null;
+    recomendacion?: string | null;
     orden_visualizacion?: number;
   }): Promise<{ fault: FaultType | null; error: string | null }> {
     try {
@@ -159,19 +145,8 @@ export const faultsService = {
         return { fault: null, error: error.message };
       }
 
-      const newFault: FaultType = {
-        id: data.id_falta,
-        name: data.nombre_falta,
-        description: data.descripcion,
-        category: data.categoria,
-        severity: data.es_grave ? 'Grave' : 'Leve',
-        points: data.puntos_reincidencia,
-        active: data.activo,
-        ordenVisualizacion: data.orden_visualizacion,
-      };
-
       invalidateCache(FAULTS_CACHE_KEY);
-      return { fault: newFault, error: null };
+      return { fault: mapFault(data as CatalogoFaltaDB), error: null };
     } catch (error: any) {
       console.error('Error en create:', error);
       return { fault: null, error: error.message || 'Error al crear falta' };
@@ -188,7 +163,8 @@ export const faultsService = {
       categoria: FaultCategory;
       es_grave: boolean;
       puntos_reincidencia: number;
-      descripcion: string;
+      descripcion: string | null;
+      recomendacion: string | null;
       orden_visualizacion: number;
       activo: boolean;
     }>

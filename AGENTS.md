@@ -23,6 +23,16 @@ Buscar más: `npx skills find <tema>`
 
 Restaurar lockfile: `npx skills experimental_install`
 
+## Dominios (VPS Hetzner)
+
+| URL | Contenido |
+|-----|-----------|
+| `https://asiscole.com` | Landing comercial (`marketing/` → `/opt/asiscole-web`) |
+| `https://sanramon.asiscole.com` | App SIE — I.E. San Ramón (`/opt/sie`) |
+| `https://jeanpiaget.asiscole.com` | App SIE — Jean Piaget (`/opt/sie-jp`) |
+
+DNS: registro `A` `sanramon` → `178.104.115.2`. Skills de diseño: `ui-ux-pro-max`, `emil-design-eng`, etc. en `.agents/skills/`.
+
 ## Despliegue Cloudflare (frontend estático)
 
 Configuración en el **dashboard de Cloudflare** → proyecto `sie` → Builds:

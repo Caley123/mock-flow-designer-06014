@@ -53,7 +53,7 @@ import {
   StaffEmptyState,
 } from '@/components/staff';
 import { Label } from '@/components/ui/label';
-import { arrivalService, authService, studentsService } from '@/lib/services';
+import { arrivalService, authService, studentsService, whatsappService } from '@/lib/services';
 import type { ArrivalRecord, EducationalLevel } from '@/types';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
@@ -61,6 +61,30 @@ import { cn } from '@/lib/utils';
 
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+function enqueueDepartureWhatsApp(
+  records: ArrivalRecord[],
+  updatedIds: number[],
+  departureTime: string | null,
+  tipo: 'Normal' | 'Autorizada',
+) {
+  if (!whatsappService.isEnabled() || updatedIds.length === 0) return;
+  const idSet = new Set(updatedIds);
+  for (const record of records) {
+    if (!idSet.has(record.id) || !record.student) continue;
+    const student = record.student;
+    const notifyRecord: ArrivalRecord = {
+      ...record,
+      departureTime: departureTime || record.departureTime,
+      departureType: tipo,
+    };
+    void whatsappService.notifyParentDeparture(student, notifyRecord).then((wa) => {
+      if (!wa.ok && wa.error) {
+        toast.warning(`WhatsApp salida (${student.fullName}): ${wa.error}`, { duration: 4500 });
+      }
+    });
+  }
+}
 
 function getTodayDate() {
   const nowLima = new Date().toLocaleString('es-PE', {
@@ -270,11 +294,12 @@ export const DepartureControl = () => {
     }
 
     setBulkSubmitting(true);
-    const { successCount, skipped, error } = await arrivalService.createBulkDepartureRecords(
-      target.recordIds,
-      currentUser.id,
-      target.tipo,
-    );
+    const { successCount, skipped, error, updatedIds, departureTime } =
+      await arrivalService.createBulkDepartureRecords(
+        target.recordIds,
+        currentUser.id,
+        target.tipo,
+      );
 
     if (!isMountedRef.current) return;
     setBulkSubmitting(false);
@@ -289,6 +314,8 @@ export const DepartureControl = () => {
       toast.info('No había salidas pendientes en la selección');
       return;
     }
+
+    enqueueDepartureWhatsApp(records, updatedIds, departureTime, target.tipo);
 
     const skippedNote = skipped > 0 ? ` · ${skipped} ya tenían salida` : '';
     staffNotify.success(
@@ -339,16 +366,24 @@ export const DepartureControl = () => {
         return;
       }
 
-      const { successCount, error: bulkError } = await arrivalService.createBulkDepartureRecords(
-        [record.id],
-        currentUser.id,
-        departureType,
-      );
+      const { successCount, error: bulkError, updatedIds, departureTime } =
+        await arrivalService.createBulkDepartureRecords(
+          [record.id],
+          currentUser.id,
+          departureType,
+        );
 
       if (bulkError || successCount === 0) {
         toast.error(bulkError || 'No se pudo registrar la salida');
         return;
       }
+
+      enqueueDepartureWhatsApp(
+        records.map((r) => (r.id === record.id ? { ...r, student } : r)),
+        updatedIds,
+        departureTime,
+        departureType,
+      );
 
       staffNotify.success('Salida registrada', student.fullName);
       setBarcodeInput('');

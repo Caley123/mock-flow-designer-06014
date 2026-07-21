@@ -31,7 +31,10 @@ description: >-
 5. **UI staff** — componentes `StaffToolbar`, `StaffKpiStat`, `StaffDataPanel`, tokens en `index.css`.
 6. **Tokens de color** — fuente única `:root` en `index.css`; login/tutor derivan de `--primary` y `--login-*`.
 7. **Accesibilidad** — `lang="es"`, skip link, regiones `aria-live` en flujos críticos (escaneo).
-8. **WhatsApp** — `whatsappService.notifyParentArrival` en background; variables en `.env.local`.
+8. **WhatsApp** — `notifyParentArrival` / `notifyParentDeparture` / `notifyParentIncident` en background.
+   Con cola WPPConnect: el chip se **autoenvía** (1) número del apoderado (2) mensaje (llegada, salida o incidencia + recomendación).
+   Mapa 6 números/chip: `scripts/wppconnect/set-chip-phones-sr.sh`.
+   Columna `recomendacion` en `catalogo_faltas` (script `AGREGAR_RECOMENDACION_CATALOGO_FALTAS.sql`).
 
 ## Variables de entorno (`.env.local`)
 

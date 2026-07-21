@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ArrivalRecord, Incident, TallerAsistencia } from '@/types';
 import {
   computeMonthMetrics,
+  dayHasIncident,
   dayHasTaller,
+  formatClassAttendanceLines,
+  formatClassIncidentDayDetail,
   formatTallerIncidentDayDetail,
   formatTallerDayDetail,
   resolveDayStatus,
@@ -132,5 +135,34 @@ describe('parentAttendanceCalendar', () => {
       'Incidencia (Taller: Fútbol): Empujó a un compañero',
       'Incidencia (Taller): Incidencia registrada',
     ]);
+  });
+
+  it('formatea llegada y salida de clase', () => {
+    const withExit = record('2026-06-03', 'A tiempo');
+    withExit.departureTime = '14:15';
+    withExit.departureType = 'Normal';
+    expect(formatClassAttendanceLines(withExit)).toEqual([
+      'Llegada: 8:00 a.m. (A tiempo)',
+      'Salida: 2:15 p.m. · Normal',
+    ]);
+    expect(formatClassAttendanceLines(record('2026-06-03', 'Tarde'))).toEqual([
+      'Llegada: 8:00 a.m. (Tarde)',
+      'Salida: sin registrar',
+    ]);
+    expect(formatClassAttendanceLines(undefined)).toEqual([]);
+  });
+
+  it('formatea incidencias de clase y detecta días con incidencia', () => {
+    const classIncident = incidentRecord({
+      tallerId: null,
+      tallerNombre: null,
+      registeredAt: '2026-06-03T10:20:00-05:00',
+    });
+    expect(formatClassIncidentDayDetail([classIncident])).toEqual([
+      'Incidencia: Empujó a un compañero · 10:20 a.m.',
+    ]);
+    const byDate = new Map<string, Incident[]>([['2026-06-03', [classIncident]]]);
+    expect(dayHasIncident(byDate, '2026-06-03')).toBe(true);
+    expect(dayHasIncident(byDate, '2026-06-04')).toBe(false);
   });
 });

@@ -3,7 +3,7 @@ import type { ArrivalRecord, RegistroLlegadaDB, Student, EducationalLevel, Month
 import { configService } from './configService';
 import { studentsService } from './studentsService';
 import { getLimaNow, getLimaTodayDate, getLimaMonthBounds, getMonthBounds } from '@/lib/utils/limaDateTime';
-import { getCached, setCached } from '@/lib/utils/memoryCache';
+import { getCached, invalidateCache, setCached } from '@/lib/utils/memoryCache';
 import type { ArrivalLimitsByLevel } from '@/lib/utils/arrivalLimit';
 import {
   resolveArrivalLimitForLevel,
@@ -43,6 +43,11 @@ function mapArrivalRecord(record: RegistroLlegadaDB & {
       barcode: record.estudiante.codigo_barras,
       profilePhoto: record.estudiante.foto_perfil,
       active: record.estudiante.activo,
+      contactPhone: record.estudiante.telefono_contacto || null,
+      contactEmail: record.estudiante.email_contacto || null,
+      responsibleName: record.estudiante.nombre_responsable || null,
+      responsibleRelationship: record.estudiante.parentesco_responsable || null,
+      emergencyPhone: record.estudiante.telefono_emergencia || null,
     } : undefined,
     date: record.fecha,
     arrivalTime: record.hora_llegada,
@@ -68,19 +73,23 @@ const ARRIVAL_LIMITS_CACHE_KEY = 'config:arrival-limits-bundle';
 function buildArrivalLimitsFromConfigs(
   configs: Record<string, { value?: string } | undefined>,
 ): ArrivalLimitsByLevel {
-  const general = normalizeTimeValue(
-    configs[SYSTEM_SETTING_KEYS.arrivalLimit]?.value,
+  // Primaria y secundaria NUNCA heredan de hora_limite_llegada (general).
+  // Esa clave legada interfería: secundaria 07:40 se evaluaba como 08:00.
+  const primaria = normalizeTimeValue(
+    configs[SYSTEM_SETTING_KEYS.arrivalLimitPrimary]?.value,
+    '08:00',
+  );
+  const secundaria = normalizeTimeValue(
+    configs[SYSTEM_SETTING_KEYS.arrivalLimitSecondary]?.value,
     '08:00',
   );
   return {
-    general,
-    primaria: normalizeTimeValue(
-      configs[SYSTEM_SETTING_KEYS.arrivalLimitPrimary]?.value,
-      general,
-    ),
-    secundaria: normalizeTimeValue(
-      configs[SYSTEM_SETTING_KEYS.arrivalLimitSecondary]?.value,
-      general,
+    primaria,
+    secundaria,
+    // Solo si el estudiante no tiene nivel; no se usa para Primaria/Secundaria.
+    general: normalizeTimeValue(
+      configs[SYSTEM_SETTING_KEYS.arrivalLimit]?.value,
+      secundaria,
     ),
   };
 }
@@ -102,15 +111,25 @@ export async function fetchArrivalLimitTime(level?: string): Promise<string> {
   return getArrivalLimitTime(level);
 }
 
-export async function fetchArrivalLimits(): Promise<ArrivalLimitsByLevel> {
-  const cached = getCached<ArrivalLimitsByLevel>(ARRIVAL_LIMITS_CACHE_KEY);
-  if (cached) return cached;
+export async function fetchArrivalLimits(options?: {
+  force?: boolean;
+}): Promise<ArrivalLimitsByLevel> {
+  if (!options?.force) {
+    const cached = getCached<ArrivalLimitsByLevel>(ARRIVAL_LIMITS_CACHE_KEY);
+    if (cached) return cached;
+  }
 
   const keys = [
     SYSTEM_SETTING_KEYS.arrivalLimit,
     SYSTEM_SETTING_KEYS.arrivalLimitPrimary,
     SYSTEM_SETTING_KEYS.arrivalLimitSecondary,
   ];
+
+  if (options?.force) {
+    invalidateCache(ARRIVAL_LIMITS_CACHE_KEY);
+    for (const key of keys) invalidateCache(`config:${key}`);
+  }
+
   const { configs, error } = await configService.getByKeys(keys);
   if (error) {
     const fallback: ArrivalLimitsByLevel = {
@@ -129,29 +148,6 @@ export async function fetchArrivalLimits(): Promise<ArrivalLimitsByLevel> {
     }
   }
   return limits;
-}
-
-/** Límites para portal público de padres (sin sesión). */
-export async function fetchPublicArrivalLimits(): Promise<ArrivalLimitsByLevel> {
-  try {
-    const { data, error } = await supabase.rpc('limites_llegada_publicos');
-    if (!error && data && typeof data === 'object') {
-      const payload = data as Record<string, unknown>;
-      const general = normalizeTimeValue(payload.general, '08:00');
-      return {
-        general,
-        primaria: normalizeTimeValue(payload.primaria, general),
-        secundaria: normalizeTimeValue(payload.secundaria, general),
-      };
-    }
-  } catch {
-    /* RPC opcional hasta aplicar PATCH SQL */
-  }
-  return fetchArrivalLimits().catch(() => ({
-    general: '08:00',
-    primaria: '08:00',
-    secundaria: '08:00',
-  }));
 }
 
 function getNowHHMM(): string {
@@ -269,25 +265,23 @@ async function createArrivalRecordInner(
       insertData.registrado_por = registeredBy;
     }
 
-    if (options?.status) {
-      insertData.estado = options.status;
-    } else {
-      let level = options?.studentLevel ?? null;
-      if (!level) {
-        const { data: estRow } = await supabase
-          .from('estudiantes')
-          .select('nivel_educativo')
-          .eq('id_estudiante', studentId)
-          .maybeSingle();
-        level = estRow?.nivel_educativo ?? null;
-      }
-      const limits = await fetchArrivalLimits();
-      insertData.estado = resolveArrivalStatusForStudent(
-        normalizeTimeValue(formattedTime, '00:00'),
-        limits,
-        level,
-      );
+    // Nivel: el tutor no puede leer `estudiantes` por RLS; usar el del escaneo.
+    // Staff sí puede leer la fila. El trigger SECURITY DEFINER es la fuente final.
+    let level = options?.studentLevel ?? null;
+    if (!level) {
+      const { data: estRow } = await supabase
+        .from('estudiantes')
+        .select('nivel_educativo')
+        .eq('id_estudiante', studentId)
+        .maybeSingle();
+      level = estRow?.nivel_educativo ?? null;
     }
+    const limits = await fetchArrivalLimits({ force: true });
+    insertData.estado = resolveArrivalStatusForStudent(
+      normalizeTimeValue(formattedTime, '00:00'),
+      limits,
+      level,
+    );
 
     const { data, error } = await supabase
       .from('registros_llegada')
@@ -871,10 +865,16 @@ export async function createBulkDepartureRecords(
   registroIds: number[],
   registeredBy?: number,
   tipoSalida: 'Normal' | 'Autorizada' = 'Normal',
-): Promise<{ successCount: number; skipped: number; error: string | null }> {
+): Promise<{
+  successCount: number;
+  skipped: number;
+  error: string | null;
+  updatedIds: number[];
+  departureTime: string | null;
+}> {
   const uniqueIds = [...new Set(registroIds)].filter((id) => id > 0);
   if (uniqueIds.length === 0) {
-    return { successCount: 0, skipped: 0, error: null };
+    return { successCount: 0, skipped: 0, error: null, updatedIds: [], departureTime: null };
   }
 
   try {
@@ -901,19 +901,33 @@ export async function createBulkDepartureRecords(
       .select('id_registro');
 
     if (error) {
-      return { successCount: 0, skipped: uniqueIds.length, error: error.message };
+      return {
+        successCount: 0,
+        skipped: uniqueIds.length,
+        error: error.message,
+        updatedIds: [],
+        departureTime: null,
+      };
     }
 
-    const successCount = data?.length ?? 0;
+    const updatedIds = (data ?? []).map((row) => Number(row.id_registro)).filter((id) => id > 0);
     return {
-      successCount,
-      skipped: uniqueIds.length - successCount,
+      successCount: updatedIds.length,
+      skipped: uniqueIds.length - updatedIds.length,
       error: null,
+      updatedIds,
+      departureTime: formattedTime,
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error al registrar salidas';
     console.error('Error en createBulkDepartureRecords:', error);
-    return { successCount: 0, skipped: uniqueIds.length, error: message };
+    return {
+      successCount: 0,
+      skipped: uniqueIds.length,
+      error: message,
+      updatedIds: [],
+      departureTime: null,
+    };
   }
 }
 
@@ -1225,7 +1239,6 @@ export const arrivalService = {
   prefetchArrivalConfig,
   fetchArrivalLimitTime,
   fetchArrivalLimits,
-  fetchPublicArrivalLimits,
   getPublicArrivalInfo,
   getPublicInfoByDNI,
   fetchMonthArrivalsForStudent,

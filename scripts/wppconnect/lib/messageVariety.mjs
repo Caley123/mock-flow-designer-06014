@@ -128,9 +128,17 @@ export function buildVariedArrivalMessage(student, record, appUrl) {
 
   lines.push('', pick('closings'));
 
-  return lines
+  let text = lines
     .filter((l) => l !== null && l !== undefined && l !== '')
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  // Marca del colegio (JP u otro) sin duplicar el banco de frases
+  const schoolName = (process.env.WPPCONNECT_SCHOOL_NAME || '').trim();
+  if (schoolName && schoolName !== 'I.E. San Ramón') {
+    text = text.split('I.E. San Ramón').join(schoolName);
+  }
+
+  return text;
 }

@@ -80,7 +80,11 @@ export function coerceTimeConfigValue(raw: unknown, fallback = ''): string {
 /** Normaliza HH:MM o HH:MM:SS a HH:MM para inputs y servicios */
 export function normalizeTimeValue(raw: unknown, fallback: string): string {
   const trimmed = coerceTimeConfigValue(raw, fallback) || fallback;
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+  // "22:01", "22:01:00" o ISO "1970-01-01T22:01:00" (no tomar el mes/día del prefijo).
+  const match =
+    trimmed.match(/^(\d{1,2}):(\d{2})/) ||
+    trimmed.match(/T(\d{1,2}):(\d{2})/) ||
+    trimmed.match(/\s(\d{1,2}):(\d{2})/);
   if (!match) return fallback;
   const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
   const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));

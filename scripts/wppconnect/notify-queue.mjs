@@ -20,7 +20,12 @@ const JITTER_MIN = Number(process.env.WPPCONNECT_JITTER_MIN_MS || 8000);
 const JITTER_MAX = Number(process.env.WPPCONNECT_JITTER_MAX_MS || 15000);
 /** Tope por chip por hora calendario en Lima (se reinicia cada :00 hora Perú). */
 const MAX_PER_HOUR = Number(process.env.WPPCONNECT_MAX_PER_HOUR_PER_CHIP || 250);
-const CHIP_HOURLY_LIMITS = parseChipLimits(process.env.WPPCONNECT_CHIP_HOURLY_LIMITS || 'sie-chip-04=2');
+// Vacío en env = sin topes especiales (JP). Solo si la var no existe, legacy SR 04=2.
+const CHIP_HOURLY_LIMITS = parseChipLimits(
+  process.env.WPPCONNECT_CHIP_HOURLY_LIMITS !== undefined
+    ? process.env.WPPCONNECT_CHIP_HOURLY_LIMITS
+    : 'sie-chip-04=2',
+);
 const TYPING_MIN = Number(process.env.WPPCONNECT_TYPING_MIN_MS || 10_000);
 const TYPING_MAX = Number(process.env.WPPCONNECT_TYPING_MAX_MS || 12_000);
 const RATE_TIMEZONE = process.env.WPPCONNECT_RATE_TIMEZONE || 'America/Lima';
@@ -31,6 +36,195 @@ const SESSIONS = parseSessionList(
   process.env.WPPCONNECT_SESSIONS,
   'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04',
 );
+
+/** Lista blanca global (solo dígitos). Vacía = no aplica (salvo mapa por chip). */
+function parseAllowlist(raw) {
+  const set = new Set();
+  for (const part of String(raw || '').split(/[,;\s]+/)) {
+    let d = part.replace(/\D/g, '');
+    if (!d) continue;
+    if (d.length === 9 && d.startsWith('9')) d = `51${d}`;
+    set.add(d);
+  }
+  return set;
+}
+
+function normalizePhoneDigits(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 9 && d.startsWith('9')) d = `51${d}`;
+  return d;
+}
+
+/**
+ * Mapa chip → teléfonos fijos.
+ * Formato: chip1:tel1,tel2|chip2:tel3,tel4
+ * Ej: jp-chip-01:51900111222,51900333444|jp-chip-02:51900555666,...
+ */
+function parseChipPhoneMap(raw) {
+  /** @type {Map<string, Set<string>>} */
+  const chipToPhones = new Map();
+  /** @type {Map<string, string>} */
+  const phoneToChip = new Map();
+
+  for (const block of String(raw || '').split('|')) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const colon = trimmed.indexOf(':');
+    if (colon <= 0) continue;
+    const chip = trimmed.slice(0, colon).trim();
+    const phones = new Set();
+    for (const part of trimmed.slice(colon + 1).split(/[,;\s]+/)) {
+      const d = normalizePhoneDigits(part);
+      if (!d) continue;
+      phones.add(d);
+      phoneToChip.set(d, chip);
+    }
+    if (phones.size) chipToPhones.set(chip, phones);
+  }
+  return { chipToPhones, phoneToChip };
+}
+
+const ALLOWLIST = parseAllowlist(process.env.WPPCONNECT_ALLOWLIST_PHONES || '');
+const { chipToPhones: CHIP_PHONES, phoneToChip: PHONE_TO_CHIP } = parseChipPhoneMap(
+  process.env.WPPCONNECT_CHIP_PHONES || '',
+);
+const CHIP_ROUTING = PHONE_TO_CHIP.size > 0;
+/**
+ * Notificar al SIM del chip del mapa (staff ve ese WhatsApp).
+ * WA bloquea autoenvío: otro chip conectado envía HACIA ese SIM (relay).
+ * Mensajes: (1) número apoderado (2) texto.
+ */
+const NOTIFY_TO_SELF = process.env.WPPCONNECT_NOTIFY_TO_SELF !== 'false';
+
+/** Chips que envían directo al apoderado (sin relay al SIM). Ej: sie-chip-01 */
+function parseChipSet(raw) {
+  return new Set(
+    String(raw || '')
+      .split(/[,;\s|]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
+const CHIP_DIRECT_SEND = parseChipSet(process.env.WPPCONNECT_CHIP_DIRECT_SEND || '');
+/** Chips que no deben enviar automáticos (solo reciben). Ej: sie-chip-06 */
+const CHIP_NEVER_SEND = parseChipSet(process.env.WPPCONNECT_CHIP_NEVER_SEND || '');
+
+/** SIM por chip si get-phone-number falla. Formato: chip:519…|chip2:519… */
+function parseChipSimFallback(raw) {
+  const map = new Map();
+  for (const block of String(raw || '').split('|')) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const colon = trimmed.indexOf(':');
+    if (colon <= 0) continue;
+    const chip = trimmed.slice(0, colon).trim();
+    const phone = normalizePhoneDigits(trimmed.slice(colon + 1));
+    if (chip && phone) map.set(chip, phone);
+  }
+  return map;
+}
+
+const CHIP_SIM_FALLBACK = parseChipSimFallback(process.env.WPPCONNECT_CHIP_SIM_FALLBACK || '');
+
+function isPhoneAllowed(phone) {
+  const d = normalizePhoneDigits(phone);
+  if (!d) return false;
+  // Self-notify: cualquier apoderado válido; el mapa solo enruta el chip.
+  if (NOTIFY_TO_SELF) {
+    if (ALLOWLIST.size > 0 && !CHIP_ROUTING) return ALLOWLIST.has(d);
+    return true;
+  }
+  if (CHIP_ROUTING) return PHONE_TO_CHIP.has(d);
+  if (ALLOWLIST.size === 0) return true;
+  return ALLOWLIST.has(d);
+}
+
+function chipForPhone(phone) {
+  return PHONE_TO_CHIP.get(normalizePhoneDigits(phone)) || null;
+}
+
+/** Caché corta del número propio de cada sesión (SIM vinculado al chip). */
+const selfPhoneCache = new Map();
+
+async function resolveChipSelfPhone(session) {
+  const cached = selfPhoneCache.get(session);
+  if (cached && cached.expires > Date.now()) return cached.phone;
+  const fallback = CHIP_SIM_FALLBACK.get(session);
+  if (fallback) {
+    selfPhoneCache.set(session, { phone: fallback, expires: Date.now() + 10 * 60 * 1000 });
+    return fallback;
+  }
+  let phone = normalizePhoneDigits(await wpp.getPhoneNumber(session));
+  if (!phone || phone.length < 9) {
+    phone = CHIP_SIM_FALLBACK.get(session) || null;
+  }
+  if (!phone) return null;
+  selfPhoneCache.set(session, { phone, expires: Date.now() + 10 * 60 * 1000 });
+  return phone;
+}
+
+/**
+ * Mapa fijo casa→emisor (WA bloquea autoenvío).
+ * Formato: casa:emisor|casa2:emisor2
+ * Default: 04↔07 y 01↔06
+ */
+function parseChipRelayMap(raw) {
+  const map = new Map();
+  const fallback =
+    'sie-chip-04:sie-chip-07|sie-chip-07:sie-chip-04|sie-chip-01:sie-chip-06|sie-chip-06:sie-chip-01';
+  for (const block of String(raw || fallback).split('|')) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const colon = trimmed.indexOf(':');
+    if (colon <= 0) continue;
+    const home = trimmed.slice(0, colon).trim();
+    const sender = trimmed.slice(colon + 1).trim();
+    if (home && sender) map.set(home, sender);
+  }
+  return map;
+}
+
+const CHIP_RELAY_MAP = parseChipRelayMap(process.env.WPPCONNECT_CHIP_RELAY_MAP || '');
+
+/**
+ * Emisor fijo del mapa. Sin fallback a otro chip arbitrario.
+ * @returns {{ sender: string|null, error: string|null }}
+ */
+async function relaySenderFor(homeSession) {
+  const sender = CHIP_RELAY_MAP.get(homeSession);
+  if (!sender) {
+    return {
+      sender: null,
+      error: `Sin pareja de relay para ${homeSession} (configure WPPCONNECT_CHIP_RELAY_MAP)`,
+    };
+  }
+  if (CHIP_NEVER_SEND.has(sender)) {
+    return {
+      sender: null,
+      error: `Relay ${sender} deshabilitado para envío automático (CHIP_NEVER_SEND)`,
+    };
+  }
+  if (!SESSIONS.includes(sender)) {
+    return {
+      sender: null,
+      error: `Relay ${sender} no está en WPPCONNECT_SESSIONS (casa ${homeSession})`,
+    };
+  }
+  if (!(await wpp.isConnected(sender))) {
+    return {
+      sender: null,
+      error: `Relay ${sender} desconectado (casa ${homeSession})`,
+    };
+  }
+  if (!canSendOnSession(sender)) {
+    return {
+      sender: null,
+      error: `Relay ${sender} al tope horario (casa ${homeSession})`,
+    };
+  }
+  return { sender, error: null };
+}
 
 const wpp = createWppClient({ typingMinMs: TYPING_MIN, typingMaxMs: TYPING_MAX });
 const queues = new Map();
@@ -133,8 +327,9 @@ async function failoverSessions(excludeSession) {
 }
 
 async function deliver(job, session) {
+  // Relay = chip A → SIM de chip B (no es autoenvío; typing normal).
   const typingMs = wpp.typingDelayMs();
-  await wpp.sendMessage(session, job.phone, job.message, { typingMs });
+  await wpp.sendMessage(session, job.phone, job.message, { typingMs, toSelf: false });
   recordSend(session);
   return session;
 }
@@ -149,23 +344,32 @@ async function processQueue(session) {
     try {
       usedSession = await deliver(job, usedSession);
       console.log(
-        `[notify-queue] OK ${usedSession} -> ${job.phone} estudiante=${job.studentId}`,
+        `[notify-queue] OK ${usedSession} -> ${job.phone}` +
+          (job.notifyToSelf && job.homeSession
+            ? ` (relay→${job.homeSession}; apoderado=${job.apoderadoPhone || ''})`
+            : '') +
+          ` estudiante=${job.studentId}`,
       );
     } catch (err) {
       console.error(`[notify-queue] fallo ${usedSession}:`, err.message);
-      const alternates = await failoverSessions(usedSession);
-      let sent = false;
-      for (const alt of alternates) {
-        try {
-          await deliver(job, alt);
-          console.log(`[notify-queue] failover OK ${alt} -> ${job.phone}`);
-          sent = true;
-          break;
-        } catch (e2) {
-          console.error(`[notify-queue] failover fallo ${alt}:`, e2.message);
+      // Con mapa chip→teléfono fijo: no reenviar por otro chip (rompe la regla 6 por chip)
+      if (CHIP_ROUTING || job.lockChip) {
+        console.error(`[notify-queue] sin failover (chip fijado) para ${job.phone}`);
+      } else {
+        const alternates = await failoverSessions(usedSession);
+        let sent = false;
+        for (const alt of alternates) {
+          try {
+            await deliver(job, alt);
+            console.log(`[notify-queue] failover OK ${alt} -> ${job.phone}`);
+            sent = true;
+            break;
+          } catch (e2) {
+            console.error(`[notify-queue] failover fallo ${alt}:`, e2.message);
+          }
         }
+        if (!sent) console.error(`[notify-queue] sin chip disponible para ${job.phone}`);
       }
-      if (!sent) console.error(`[notify-queue] sin chip disponible para ${job.phone}`);
     }
 
     const jitter = randomBetween(JITTER_MIN, JITTER_MAX);
@@ -188,8 +392,72 @@ async function handleEnqueue(body) {
     return { status: 400, json: { error: 'Faltan phone o student.fullName' } };
   }
 
-  const message = buildArrivalMessage(student, record || {}, appUrl || APP_URL);
-  const assignedSession = await pickSession();
+  const apoderadoPhone = normalizePhoneDigits(phone);
+  if (!isPhoneAllowed(apoderadoPhone)) {
+    return {
+      status: 202,
+      json: {
+        queued: false,
+        skipped: true,
+        reason: CHIP_ROUTING ? 'telefono_sin_chip_asignado' : 'telefono_fuera_de_lista_blanca',
+        allowlistSize: ALLOWLIST.size,
+        chipRouting: CHIP_ROUTING,
+        notifyToSelf: NOTIFY_TO_SELF,
+      },
+    };
+  }
+
+  const messages =
+    Array.isArray(body.messages) && body.messages.length > 0
+      ? body.messages.map((m) => String(m || '').trim()).filter(Boolean)
+      : [buildArrivalMessage(student, record || {}, appUrl || APP_URL)];
+
+  if (!messages.length) {
+    return { status: 400, json: { error: 'Sin mensajes para encolar' } };
+  }
+
+  let assignedSession = null;
+  let lockChip = false;
+
+  if (CHIP_ROUTING) {
+    const fixed = chipForPhone(apoderadoPhone);
+    if (fixed) {
+      if (!SESSIONS.includes(fixed)) {
+        return {
+          status: 503,
+          json: { error: `Chip ${fixed} no está en WPPCONNECT_SESSIONS`, queued: false },
+        };
+      }
+      // Con relay al SIM: el chip casa solo recibe; direct-send valida su propia conexión.
+      const needsSenderCheck = !NOTIFY_TO_SELF || CHIP_DIRECT_SEND.has(fixed);
+      if (needsSenderCheck) {
+        if (!(await wpp.isConnected(fixed))) {
+          return {
+            status: 503,
+            json: { error: `Chip ${fixed} desconectado`, queued: false, session: fixed },
+          };
+        }
+        if (!canSendOnSession(fixed)) {
+          return {
+            status: 429,
+            json: { error: `Chip ${fixed} al tope horario`, queued: false, session: fixed },
+          };
+        }
+      }
+      assignedSession = fixed;
+      lockChip = true;
+    } else if (NOTIFY_TO_SELF) {
+      // Apoderado fuera del mapa de 6: round-robin, igual se autoenvía el chip.
+      assignedSession = await pickSession();
+    } else {
+      return {
+        status: 202,
+        json: { queued: false, skipped: true, reason: 'telefono_sin_chip_asignado' },
+      };
+    }
+  } else {
+    assignedSession = await pickSession();
+  }
 
   if (!assignedSession) {
     return {
@@ -198,22 +466,72 @@ async function handleEnqueue(body) {
     };
   }
 
-  const job = {
-    phone: String(phone).replace(/\D/g, ''),
-    message,
-    studentId: student.id || student.fullName,
-    assignedSession,
-    enqueuedAt: Date.now(),
-  };
+  let destPhone = apoderadoPhone;
+  let homeSession = assignedSession;
+  let sendSession = assignedSession;
+  let notifyViaSelfSim = false;
 
-  enqueue(job);
+  if (CHIP_DIRECT_SEND.has(homeSession)) {
+    // Chip tutor: directo al apoderado desde su propia sesión.
+    destPhone = apoderadoPhone;
+    sendSession = homeSession;
+  } else if (NOTIFY_TO_SELF) {
+    destPhone = await resolveChipSelfPhone(homeSession);
+    if (!destPhone) {
+      return {
+        status: 503,
+        json: {
+          error: `No se pudo leer el número propio de ${homeSession}`,
+          queued: false,
+          session: homeSession,
+        },
+      };
+    }
+    // WA bloquea autoenvío: pareja fija del mapa envía al SIM del chip casa.
+    const relay = await relaySenderFor(homeSession);
+    if (!relay.sender) {
+      return {
+        status: 503,
+        json: {
+          error: relay.error || `Relay no disponible para ${homeSession}`,
+          queued: false,
+          session: homeSession,
+          destPhone,
+        },
+      };
+    }
+    sendSession = relay.sender;
+    notifyViaSelfSim = true;
+  }
+
+  for (const message of messages) {
+    enqueue({
+      phone: destPhone,
+      apoderadoPhone,
+      message,
+      studentId: student.id || student.fullName,
+      assignedSession: sendSession,
+      homeSession,
+      lockChip,
+      enqueuedAt: Date.now(),
+      notifyToSelf: notifyViaSelfSim,
+    });
+  }
 
   return {
     status: 202,
     json: {
       queued: true,
-      session: assignedSession,
+      messageCount: messages.length,
+      session: sendSession,
+      homeSession,
+      destPhone,
+      apoderadoPhone,
+      notifyToSelf: notifyViaSelfSim,
+      directToApoderado: CHIP_DIRECT_SEND.has(homeSession),
       sessions: SESSIONS.length,
+      chipRouting: CHIP_ROUTING,
+      phonesOnChip: CHIP_ROUTING ? CHIP_PHONES.get(homeSession)?.size || 0 : null,
     },
   };
 }
@@ -256,6 +574,13 @@ const server = http.createServer((req, res) => {
         jitterMs: [JITTER_MIN, JITTER_MAX],
         sessions: SESSIONS.length,
         sessionOrder: SESSIONS,
+        allowlistSize: ALLOWLIST.size,
+        allowlistEnabled: ALLOWLIST.size > 0,
+        chipRouting: CHIP_ROUTING,
+        notifyToSelf: NOTIFY_TO_SELF,
+        chipPhoneCounts: CHIP_ROUTING
+          ? Object.fromEntries([...CHIP_PHONES.entries()].map(([c, s]) => [c, s.size]))
+          : null,
       },
     };
     for (const s of SESSIONS) {
@@ -308,4 +633,28 @@ server.listen(PORT, '127.0.0.1', () => {
     `[notify-queue] ${SESSIONS.length} chips | default max ${MAX_PER_HOUR}/chip/hora Lima (${RATE_TIMEZONE})${limitsSummary} | typing ${TYPING_MIN}-${TYPING_MAX}ms | jitter ${JITTER_MIN}-${JITTER_MAX}ms | :${PORT}`,
   );
   console.log(`[notify-queue] orden: ${SESSIONS.join(', ')}`);
+  if (ALLOWLIST.size > 0) {
+    console.log(`[notify-queue] lista blanca: ${ALLOWLIST.size} teléfonos (resto se omite)`);
+  }
+  if (CHIP_ROUTING) {
+    console.log(
+      `[notify-queue] mapa chip→teléfonos: ${[...CHIP_PHONES.entries()]
+        .map(([c, s]) => `${c}=${s.size}`)
+        .join(', ')}`,
+    );
+  }
+  console.log(
+    `[notify-queue] destino: ${NOTIFY_TO_SELF ? 'SIM del chip casa vía relay (o directo si CHIP_DIRECT_SEND)' : 'teléfono del apoderado'}`,
+  );
+  if (CHIP_DIRECT_SEND.size) {
+    console.log(`[notify-queue] envío directo apoderado: ${[...CHIP_DIRECT_SEND].join(', ')}`);
+  }
+  if (CHIP_NEVER_SEND.size) {
+    console.log(`[notify-queue] sin envío automático: ${[...CHIP_NEVER_SEND].join(', ')}`);
+  }
+  if (NOTIFY_TO_SELF && CHIP_RELAY_MAP.size) {
+    console.log(
+      `[notify-queue] relay fijo: ${[...CHIP_RELAY_MAP.entries()].map(([h, s]) => `${h}←${s}`).join(', ')}`,
+    );
+  }
 });

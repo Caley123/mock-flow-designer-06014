@@ -54,6 +54,9 @@ const faultFormSchema = z.object({
   descripcion: z.string()
     .max(500, 'Máximo 500 caracteres')
     .optional(),
+  recomendacion: z.string()
+    .max(800, 'Máximo 800 caracteres')
+    .optional(),
   categoria: z.enum(['Conducta', 'Uniforme', 'Académica', 'Puntualidad'] as const, {
     required_error: 'La categoría es requerida',
   }),
@@ -68,6 +71,7 @@ type FaultFormValues = z.infer<typeof faultFormSchema>;
 const faultFormDefaults: FaultFormValues = {
   nombre_falta: '',
   descripcion: '',
+  recomendacion: '',
   categoria: 'Conducta',
   es_grave: false,
   puntos_reincidencia: 1,
@@ -77,6 +81,7 @@ export const FaultsCatalog = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<FaultCategory | 'all'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingFault, setEditingFault] = useState<FaultType | null>(null);
   const { data: faults = [], isLoading, refetch } = useFaultsQuery(false);
   const invalidateFaults = useInvalidateFaults();
   const [submitting, setSubmitting] = useState(false);
@@ -90,7 +95,8 @@ export const FaultsCatalog = () => {
 
   const filteredFaults = faults.filter(fault => {
     const matchesSearch = fault.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         fault.description?.toLowerCase().includes(searchTerm.toLowerCase());
+                         fault.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         fault.recommendation?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'all' || fault.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -103,25 +109,74 @@ export const FaultsCatalog = () => {
     { value: 'Puntualidad', label: 'Puntualidad' },
   ];
 
+  const openCreateDialog = () => {
+    setEditingFault(null);
+    form.reset(faultFormDefaults);
+    setTempCategoria('Conducta');
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (fault: FaultType) => {
+    const categoria = (
+      ['Conducta', 'Uniforme', 'Académica', 'Puntualidad'].includes(fault.category)
+        ? fault.category
+        : 'Conducta'
+    ) as FaultCategory;
+    setEditingFault(fault);
+    form.reset({
+      nombre_falta: fault.name,
+      descripcion: fault.description || '',
+      recomendacion: fault.recommendation || '',
+      categoria,
+      es_grave: fault.severity === 'Grave',
+      puntos_reincidencia: fault.points,
+    });
+    setTempCategoria(categoria);
+    setDialogOpen(true);
+  };
+
   const onSubmit = async (data: FaultFormValues) => {
     setSubmitting(true);
-    const { fault, error } = await faultsService.create({
-      nombre_falta: data.nombre_falta,
-      categoria: data.categoria,
-      es_grave: data.es_grave,
-      puntos_reincidencia: data.puntos_reincidencia,
-      descripcion: data.descripcion || null,
-    });
-
-    if (error) {
-      toast.error(error);
+    if (editingFault) {
+      const { success, error } = await faultsService.update(editingFault.id, {
+        nombre_falta: data.nombre_falta,
+        categoria: data.categoria,
+        es_grave: data.es_grave,
+        puntos_reincidencia: data.puntos_reincidencia,
+        descripcion: data.descripcion || null,
+        recomendacion: data.recomendacion?.trim() || null,
+      });
+      if (error || !success) {
+        toast.error(error || 'No se pudo actualizar la falta');
+      } else {
+        toast.success('Falta actualizada');
+        setDialogOpen(false);
+        setEditingFault(null);
+        form.reset(faultFormDefaults);
+        setTempCategoria(undefined);
+        invalidateFaults();
+        void refetch();
+      }
     } else {
-      toast.success('Falta agregada exitosamente');
-      setDialogOpen(false);
-      form.reset(faultFormDefaults);
-      setTempCategoria('Conducta');
-      invalidateFaults();
-      void refetch();
+      const { error } = await faultsService.create({
+        nombre_falta: data.nombre_falta,
+        categoria: data.categoria,
+        es_grave: data.es_grave,
+        puntos_reincidencia: data.puntos_reincidencia,
+        descripcion: data.descripcion || null,
+        recomendacion: data.recomendacion?.trim() || null,
+      });
+
+      if (error) {
+        toast.error(error);
+      } else {
+        toast.success('Falta agregada exitosamente');
+        setDialogOpen(false);
+        form.reset(faultFormDefaults);
+        setTempCategoria('Conducta');
+        invalidateFaults();
+        void refetch();
+      }
     }
     setSubmitting(false);
   };
@@ -151,26 +206,26 @@ export const FaultsCatalog = () => {
           open={dialogOpen} 
           onOpenChange={(open) => {
             setDialogOpen(open);
-            if (open) {
-              form.reset(faultFormDefaults);
-              setTempCategoria('Conducta');
-            } else {
+            if (!open) {
+              setEditingFault(null);
               form.reset(faultFormDefaults);
               setTempCategoria(undefined);
             }
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="warning">
+            <Button variant="warning" onClick={openCreateDialog}>
               <Plus className="w-4 h-4 mr-2" />
               Nueva Falta
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Agregar Nueva Falta</DialogTitle>
+              <DialogTitle>{editingFault ? 'Editar Falta' : 'Agregar Nueva Falta'}</DialogTitle>
               <DialogDescription>
-                Complete la información de la nueva falta. Todos los campos son obligatorios.
+                {editingFault
+                  ? 'Actualice la información y la recomendación que se enviará por WhatsApp.'
+                  : 'Complete la información de la nueva falta. Incluya una recomendación para el apoderado.'}
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -198,6 +253,25 @@ export const FaultsCatalog = () => {
                       <FormControl>
                         <Textarea 
                           placeholder="Descripción detallada de la falta y su contexto..."
+                          className="min-h-[100px]"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="recomendacion"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Recomendación para apoderado (WhatsApp)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Ej.: Conversar en casa sobre el respeto a las normas del aula y acompañar al estudiante en la reflexión..."
                           className="min-h-[100px]"
                           {...field}
                           value={field.value || ''}
@@ -292,6 +366,8 @@ export const FaultsCatalog = () => {
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Guardando...
                       </span>
+                    ) : editingFault ? (
+                      'Guardar cambios'
                     ) : (
                       'Guardar Falta'
                     )}
@@ -364,13 +440,26 @@ export const FaultsCatalog = () => {
                     <Badge variant="outline">{fault.category}</Badge>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="shrink-0" aria-label="Editar falta">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  aria-label="Editar falta"
+                  type="button"
+                  onClick={() => openEditDialog(fault)}
+                >
                   <Edit className="h-4 w-4" />
                 </Button>
               </div>
               <p className="mt-3 flex-1 text-sm text-muted-foreground line-clamp-3">
                 {fault.description || 'Sin descripción'}
               </p>
+              {fault.recommendation ? (
+                <p className="mt-2 text-xs text-muted-foreground line-clamp-2">
+                  <span className="font-medium text-foreground">Recomendación: </span>
+                  {fault.recommendation}
+                </p>
+              ) : null}
               <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3 text-sm">
                 <Badge variant={fault.active ? 'default' : 'secondary'}>
                   {fault.active ? 'Activa' : 'Inactiva'}

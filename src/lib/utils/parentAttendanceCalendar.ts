@@ -110,6 +110,33 @@ export function formatTallerIncidentDayDetail(rows: Incident[]): string[] {
   });
 }
 
+/** Líneas de asistencia de clase: llegada y salida (si hay). */
+export function formatClassAttendanceLines(record: ArrivalRecord | undefined): string[] {
+  if (!record) return [];
+  const lines = [`Llegada: ${parseArrivalTime12h(record.arrivalTime)} (${record.status})`];
+  if (record.departureTime) {
+    const tipo = record.departureType ? ` · ${record.departureType}` : '';
+    lines.push(`Salida: ${parseArrivalTime12h(record.departureTime)}${tipo}`);
+  } else {
+    lines.push('Salida: sin registrar');
+  }
+  return lines;
+}
+
+/** Incidencias de jornada regular (sin taller). */
+export function formatClassIncidentDayDetail(rows: Incident[]): string[] {
+  return rows.map((row) => {
+    const faultName = row.faultType?.name?.trim() || 'Incidencia registrada';
+    const hora = row.registeredAt?.slice(11, 16);
+    const timePart = hora ? ` · ${parseArrivalTime12h(hora)}` : '';
+    return `Incidencia: ${faultName}${timePart}`;
+  });
+}
+
+export function dayHasIncident(byDate: Map<string, Incident[]>, dayKey: string): boolean {
+  return (byDate.get(dayKey)?.length ?? 0) > 0;
+}
+
 export function firstName(fullName: string): string {
   const n = fullName.trim().split(/\s+/)[0];
   return n ? n.charAt(0).toUpperCase() + n.slice(1).toLowerCase() : 'El estudiante';
@@ -147,19 +174,24 @@ export function topStripGradient(present: number, late: number, absent: number):
 export function dayDetailCopy(
   status: DayStatus,
   studentFirstName: string,
-  time?: string
+  time?: string,
+  departureTime?: string | null,
 ): { badge: string; description: string } {
   const hora = time || '—:—';
+  const salida =
+    departureTime && departureTime.trim()
+      ? ` Salida registrada a las ${parseArrivalTime12h(departureTime)}.`
+      : '';
   switch (status) {
     case 'present':
       return {
         badge: 'A tiempo',
-        description: `${studentFirstName} asistió con normalidad. Entrada registrada a las ${hora}.`,
+        description: `${studentFirstName} asistió con normalidad. Entrada registrada a las ${hora}.${salida}`,
       };
     case 'late':
       return {
         badge: 'Tardanza',
-        description: `${studentFirstName} llegó tarde. Entrada registrada a las ${hora}. Se recomienda reforzar la puntualidad.`,
+        description: `${studentFirstName} llegó tarde. Entrada registrada a las ${hora}.${salida} Se recomienda reforzar la puntualidad.`,
       };
     case 'absent':
       return {
