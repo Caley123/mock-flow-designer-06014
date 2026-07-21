@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2, LogOut, AlertTriangle } from 'lucide-react';
+import { Clock, Search, Users, CheckCircle, AlertCircle, Loader2, LogOut, LogIn } from 'lucide-react';
 import {
   StaffKpiStat,
   StaffToolbar,
@@ -35,8 +35,9 @@ import { staffNotify } from '@/lib/utils/staffNotify';
 
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const PAGE_SIZE = 15;
 
-type ArrivalStatusFilter = 'all' | 'A tiempo' | 'Tarde' | 'Sin entrada';
+type ArrivalStatusFilter = 'all' | 'A tiempo' | 'Tarde' | 'Sin registrar';
 
 type DayRow =
   | { kind: 'registered'; record: ArrivalRecord }
@@ -51,6 +52,8 @@ export const ArrivalControl = () => {
   const [levelFilter, setLevelFilter] = useState<'all' | EducationalLevel>('all');
   const [gradeFilter, setGradeFilter] = useState<'all' | string>('all');
   const [sectionFilter, setSectionFilter] = useState<'all' | string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [registeringStudentId, setRegisteringStudentId] = useState<number | null>(null);
   const isMountedRef = useRef(true);
   
   // Obtener fecha actual en formato YYYY-MM-DD
@@ -115,6 +118,52 @@ export const ArrivalControl = () => {
     }
   };
 
+  const handleRegisterArrival = async (student: Student) => {
+    if (!isMountedRef.current) return;
+
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      toast.error('Debe estar autenticado para registrar entradas');
+      return;
+    }
+
+    setRegisteringStudentId(student.id);
+    try {
+      const { record, error, alreadyRegistered } = await arrivalService.createArrivalRecord(
+        student.id,
+        currentUser.id,
+        { date: selectedDate, studentLevel: student.level },
+      );
+
+      if (!isMountedRef.current) return;
+
+      if (error || !record) {
+        toast.error(error || 'No se pudo registrar la entrada');
+        return;
+      }
+
+      if (alreadyRegistered) {
+        toast.info(`${student.fullName} ya tenía entrada registrada hoy`);
+      } else {
+        if (whatsappService.isEnabled()) {
+          void whatsappService.notifyParentArrival(student, record).then((wa) => {
+            if (!isMountedRef.current) return;
+            if (!wa.ok && wa.error) {
+              toast.warning(`WhatsApp: ${wa.error}`, { duration: 4500 });
+            }
+          });
+        }
+        staffNotify.success('¡Entrada registrada!', `${student.fullName} quedó registrado`);
+      }
+
+      loadArrivals();
+    } finally {
+      if (isMountedRef.current) {
+        setRegisteringStudentId(null);
+      }
+    }
+  };
+
   const handleRegisterDeparture = async (recordId: number) => {
     if (!isMountedRef.current) return;
     
@@ -160,11 +209,11 @@ export const ArrivalControl = () => {
       .filter((student) => !registeredIds.has(student.id))
       .map((student) => ({ kind: 'pending', student }));
 
-    pendingRows.sort((a, b) =>
-      a.student.fullName.localeCompare(b.student.fullName, 'es', { sensitivity: 'base' }),
-    );
-
-    return [...registeredRows, ...pendingRows];
+    return [...registeredRows, ...pendingRows].sort((a, b) => {
+      const nameA = (a.kind === 'registered' ? a.record.student?.fullName : a.student.fullName) ?? '';
+      const nameB = (b.kind === 'registered' ? b.record.student?.fullName : b.student.fullName) ?? '';
+      return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+    });
   }, [records, activeStudents]);
 
   const filteredRows = useMemo(
@@ -178,7 +227,7 @@ export const ArrivalControl = () => {
         const matchesSection = sectionFilter === 'all' || student?.section === sectionFilter;
 
         let matchesStatus = true;
-        if (statusFilter === 'Sin entrada') {
+        if (statusFilter === 'Sin registrar') {
           matchesStatus = row.kind === 'pending';
         } else if (statusFilter !== 'all') {
           matchesStatus = row.kind === 'registered' && row.record.status === statusFilter;
@@ -197,15 +246,32 @@ export const ArrivalControl = () => {
     return { total: registered.length, pending, onTime, late };
   }, [filteredRows]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, levelFilter, gradeFilter, sectionFilter, selectedDate]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, currentPage]);
+
   const onTimePct =
     filteredStats.total > 0
       ? Math.round((filteredStats.onTime / filteredStats.total) * 100)
       : 0;
 
   const visibleSummary =
-    statusFilter === 'Sin entrada'
-      ? `${filteredStats.pending} sin entrada`
-      : `${filteredRows.length} visibles (${filteredStats.total} con entrada, ${filteredStats.pending} sin entrada)`;
+    filteredRows.length > PAGE_SIZE
+      ? `${filteredRows.length} visibles · página ${currentPage} de ${totalPages} · ${PAGE_SIZE} por página`
+      : `${filteredRows.length} visibles · ${PAGE_SIZE} por página`;
 
   return (
     <div className="app-page app-page-shell">
@@ -225,11 +291,11 @@ export const ArrivalControl = () => {
           tone="primary"
         />
         <StaffKpiStat
-          label="Sin entrada"
+          label="Sin registrar"
           value={filteredStats.pending}
           hint="Aún no registran llegada"
-          hintIcon={AlertTriangle}
-          icon={AlertTriangle}
+          hintIcon={AlertCircle}
+          icon={AlertCircle}
           tone="warning"
         />
         <StaffKpiStat
@@ -328,7 +394,7 @@ export const ArrivalControl = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Sin entrada">Sin entrada</SelectItem>
+              <SelectItem value="Sin registrar">Sin registrar</SelectItem>
               <SelectItem value="A tiempo">A tiempo</SelectItem>
               <SelectItem value="Tarde">Tarde</SelectItem>
             </SelectContent>
@@ -374,11 +440,12 @@ export const ArrivalControl = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRows.map((row) => {
+                {paginatedRows.map((row) => {
                   if (row.kind === 'pending') {
                     const student = row.student;
+                    const isRegistering = registeringStudentId === student.id;
                     return (
-                      <TableRow key={`pending-${student.id}`} className="bg-amber-50/40 dark:bg-amber-950/20">
+                      <TableRow key={`pending-${student.id}`}>
                         <TableCell className="font-medium">{student.fullName}</TableCell>
                         <TableCell>
                           <div className="flex flex-col text-sm">
@@ -388,23 +455,29 @@ export const ArrivalControl = () => {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                            <AlertTriangle className="h-4 w-4 shrink-0" />
-                            <span className="text-sm font-medium">Sin entrada</span>
-                          </div>
-                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">—</TableCell>
                         <TableCell className="text-muted-foreground text-sm">—</TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className="border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
-                          >
-                            Sin registro
+                          <Badge variant="secondary" className="font-normal">
+                            Sin registrar
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">—</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">Pendiente</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            onClick={() => void handleRegisterArrival(student)}
+                            disabled={isRegistering}
+                            className="gap-2"
+                          >
+                            {isRegistering ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <LogIn className="h-4 w-4" />
+                            )}
+                            Registrar Entrada
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   }
@@ -439,10 +512,7 @@ export const ArrivalControl = () => {
                           )}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 text-amber-600">
-                          <AlertTriangle className="h-4 w-4" />
-                          <span className="text-sm">Sin salida</span>
-                        </div>
+                        <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -478,6 +548,29 @@ export const ArrivalControl = () => {
                 })}
               </TableBody>
             </Table>
+            {totalPages > 1 && (
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <span className="text-sm text-muted-foreground px-2">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            )}
             </div>
           )}
         </div>
