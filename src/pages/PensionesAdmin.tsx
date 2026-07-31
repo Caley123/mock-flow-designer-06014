@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Wallet, Loader2, RefreshCw, MessageCircle, FileSpreadsheet } from 'lucide-react';
+import { Wallet, Loader2, RefreshCw, MessageCircle, FileSpreadsheet, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PageLoader } from '@/components/ui/page-loader';
 import { Button } from '@/components/ui/button';
@@ -149,10 +149,34 @@ export const PensionesAdmin = () => {
       />
 
       <div className="app-kpi-grid !grid-cols-2 sm:!grid-cols-4">
-        <StaffKpiStat label="Registros" value={kpis.total} hint={periodo} tone="info" />
-        <StaffKpiStat label="Pagados" value={kpis.pagados} hint="pagado=1" tone="success" />
-        <StaffKpiStat label="Pendientes" value={kpis.pendientes} hint="antes del vencimiento" tone="warning" />
-        <StaffKpiStat label="Morosos" value={kpis.morosos} hint="día siguiente al vencimiento" tone="warning" />
+        <StaffKpiStat
+          label="Registros"
+          value={kpis.total}
+          hint={periodo}
+          icon={Wallet}
+          tone="info"
+        />
+        <StaffKpiStat
+          label="Pagados"
+          value={kpis.pagados}
+          hint="pagado=1"
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StaffKpiStat
+          label="Pendientes"
+          value={kpis.pendientes}
+          hint="antes del vencimiento"
+          icon={Clock}
+          tone="warning"
+        />
+        <StaffKpiStat
+          label="Morosos"
+          value={kpis.morosos}
+          hint="día siguiente al vencimiento"
+          icon={AlertTriangle}
+          tone="warning"
+        />
       </div>
 
       <StaffToolbar>
