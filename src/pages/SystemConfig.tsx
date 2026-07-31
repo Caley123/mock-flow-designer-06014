@@ -3,7 +3,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { StaffKpiStat } from '@/components/staff';
 import { AttendanceSettingsCard } from '@/components/system-config/AttendanceSettingsCard';
 import { ReincidenceSettingsCard } from '@/components/system-config/ReincidenceSettingsCard';
+import { PensionesSettingsCard } from '@/components/system-config/PensionesSettingsCard';
 import { SYSTEM_SETTINGS } from '@/config/systemSettings';
+import { isPensionesEnabled } from '@/config/features';
 
 export const SystemConfig = () => {
   return (
@@ -12,7 +14,7 @@ export const SystemConfig = () => {
         icon={Settings}
         eyebrow="Administración"
         title="Configuración del Sistema"
-        description="Horarios de asistencia y reglas de reincidencia que aplican a todo el colegio"
+        description="Horarios de asistencia, reincidencia y pensiones que aplican a todo el colegio"
         accent="secondary"
       />
 
@@ -35,6 +37,7 @@ export const SystemConfig = () => {
 
       <AttendanceSettingsCard />
       <ReincidenceSettingsCard />
+      {isPensionesEnabled() && <PensionesSettingsCard />}
     </div>
   );
 };

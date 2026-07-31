@@ -1,0 +1,309 @@
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import type { PensionImportModo, PensionImportPreviewRow } from '@/types';
+import { pensionesService, studentsService, whatsappService } from '@/lib/services';
+import {
+  parsePensionesExcelBuffer,
+  PENSIONES_EXCEL_MAX_BYTES,
+} from '@/lib/utils/pensionesExcelParser';
+import { matchPensionCandidate } from '@/lib/utils/pensionesMatch';
+import { fechaVencimientoForPeriodo, resolveEstadoPension } from '@/lib/utils/pensionPeriod';
+import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
+
+type Props = {
+  periodo: string;
+  diaVencimiento: number;
+  montoMensual: number | null;
+  onImported: () => void;
+};
+
+export function PensionImportPanel({
+  periodo,
+  diaVencimiento,
+  montoMensual,
+  onImported,
+}: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [modo, setModo] = useState<PensionImportModo>('pagaron');
+  const [preview, setPreview] = useState<PensionImportPreviewRow[]>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [notifyOnImport, setNotifyOnImport] = useState(true);
+
+  const resetFile = () => {
+    setPreview([]);
+    setFileName(null);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    if (file.size > PENSIONES_EXCEL_MAX_BYTES) {
+      toast.error('El archivo supera 8 MB');
+      return;
+    }
+    if (!/\.xlsx?$/i.test(file.name)) {
+      toast.error('Solo se admiten .xlsx o .xls');
+      return;
+    }
+
+    setParsing(true);
+    setFileName(file.name);
+    try {
+      const buffer = await file.arrayBuffer();
+      const parsed = await parsePensionesExcelBuffer(buffer);
+      if (!parsed.rows.length) {
+        toast.error('No se detectaron filas con DNI/nombre en el Excel');
+        resetFile();
+        return;
+      }
+
+      const { students, error } = await studentsService.getAll({ active: true, fetchAll: true });
+      if (error) {
+        toast.error(error);
+        resetFile();
+        return;
+      }
+
+      const index = students.map((s) => ({
+        id: s.id,
+        barcode: s.barcode,
+        fullName: s.fullName,
+      }));
+
+      const rows: PensionImportPreviewRow[] = parsed.rows.map((row) => {
+        const match = matchPensionCandidate(
+          { rawDni: row.rawDni, rawNombre: row.rawNombre },
+          index,
+        );
+        return {
+          rowIndex: row.rowIndex,
+          rawDni: row.rawDni,
+          rawNombre: row.rawNombre,
+          monto: row.monto,
+          fechaPago: row.fechaPago,
+          matchStatus: match.status,
+          idEstudiante: match.idEstudiante,
+          nombreMatched: match.nombreMatched,
+        };
+      });
+
+      setPreview(rows);
+      toast.success(`Vista previa: ${rows.length} filas (el archivo no se guarda)`);
+    } catch (err) {
+      console.error(err);
+      toast.error('No se pudo leer el Excel');
+      resetFile();
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const counts = {
+    ok: preview.filter((r) => r.matchStatus === 'ok').length,
+    sin: preview.filter((r) => r.matchStatus === 'sin_match').length,
+    amb: preview.filter((r) => r.matchStatus === 'ambiguo').length,
+  };
+
+  const confirmImport = async () => {
+    const okRows = preview.filter((r) => r.matchStatus === 'ok' && r.idEstudiante != null);
+    if (!okRows.length) {
+      toast.error('No hay filas con match para importar');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const hoy = getLimaTodayDate();
+      const venc = fechaVencimientoForPeriodo(periodo, diaVencimiento);
+      const filas = okRows.map((r) => {
+        if (modo === 'pagaron') {
+          return {
+            id_estudiante: r.idEstudiante!,
+            pagado: 1 as const,
+            estado: 'pagado' as const,
+            monto: r.monto ?? montoMensual,
+            fecha_pago: r.fechaPago,
+          };
+        }
+        const estado = resolveEstadoPension({ pagado: 0, fechaVencimiento: venc, hoyLima: hoy });
+        return {
+          id_estudiante: r.idEstudiante!,
+          pagado: 0 as const,
+          estado,
+          monto: r.monto ?? montoMensual,
+          fecha_pago: null as string | null,
+        };
+      });
+
+      const result = await pensionesService.importLote({
+        periodo,
+        modo,
+        nombreArchivo: fileName,
+        filas,
+        filasSinMatch: counts.sin,
+        filasAmbiguas: counts.amb,
+      });
+
+      if (!result.ok) {
+        toast.error(result.error || 'Error al importar');
+        return;
+      }
+
+      toast.success(`Importadas ${result.filasOk ?? okRows.length} filas (archivo descartado)`);
+
+      if (modo === 'no_pagaron' && notifyOnImport && whatsappService.isEnabled()) {
+        let sent = 0;
+        for (const r of okRows) {
+          const student = {
+            id: r.idEstudiante!,
+            fullName: r.nombreMatched || r.rawNombre || 'Estudiante',
+            grade: '',
+            section: '',
+            level: 'Secundaria' as const,
+            barcode: r.rawDni || '',
+            active: true,
+            contactPhone: null,
+            emergencyPhone: null,
+          };
+          // Enriquecer teléfono desde listado si hace falta
+          const { student: full } = await studentsService.getById(r.idEstudiante!);
+          const target = full || student;
+          const wa = await whatsappService.notifyParentPensionPending(target, {
+            periodo,
+            monto: r.monto ?? montoMensual,
+          });
+          if (wa.ok && !wa.skipped) sent += 1;
+        }
+        toast.message(`WhatsApp: ${sent} avisos de pensión enviados`);
+      }
+
+      resetFile();
+      onImported();
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <Label>Modo de importación</Label>
+        <RadioGroup
+          value={modo}
+          onValueChange={(v) => setModo(v as PensionImportModo)}
+          className="flex flex-wrap gap-4"
+        >
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="pagaron" id="modo-pagaron" />
+            <Label htmlFor="modo-pagaron">Pagaron</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="no_pagaron" id="modo-no" />
+            <Label htmlFor="modo-no">No pagaron</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      {modo === 'no_pagaron' && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={notifyOnImport}
+            onChange={(e) => setNotifyOnImport(e.target.checked)}
+          />
+          Notificar por WhatsApp a padres (tras confirmar)
+        </label>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={parsing}
+          onClick={() => inputRef.current?.click()}
+        >
+          {parsing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="mr-2 h-4 w-4" />
+          )}
+          Elegir Excel
+        </Button>
+        <Button type="button" variant="ghost" disabled title="Fase 2">
+          <FileSpreadsheet className="mr-2 h-4 w-4" />
+          PDF (próximamente)
+        </Button>
+        {fileName && (
+          <span className="text-sm text-muted-foreground">
+            {fileName} — solo en memoria, no se sube a Storage
+          </span>
+        )}
+      </div>
+
+      {preview.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-2 text-sm">
+            <Badge variant="default">OK: {counts.ok}</Badge>
+            <Badge variant="secondary">Sin match: {counts.sin}</Badge>
+            <Badge variant="outline">Ambiguos: {counts.amb}</Badge>
+          </div>
+          <div className="max-h-72 overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>DNI</TableHead>
+                  <TableHead>Nombre Excel</TableHead>
+                  <TableHead>Match</TableHead>
+                  <TableHead>Estado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {preview.slice(0, 100).map((r) => (
+                  <TableRow key={r.rowIndex}>
+                    <TableCell>{r.rowIndex}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.rawDni || '—'}</TableCell>
+                    <TableCell>{r.rawNombre || '—'}</TableCell>
+                    <TableCell>{r.nombreMatched || '—'}</TableCell>
+                    <TableCell>{r.matchStatus}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => void confirmImport()} disabled={importing || counts.ok === 0}>
+              {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirmar importación ({counts.ok})
+            </Button>
+            <Button type="button" variant="outline" onClick={resetFile} disabled={importing}>
+              Cancelar
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

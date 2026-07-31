@@ -8,9 +8,9 @@ import {
   Settings,
   Clock,
   CalendarDays,
+  Wallet,
 } from 'lucide-react';
-import { isTalleresEnabled } from '@/config/features';
-
+import { isPensionesEnabled } from '@/config/features';
 export interface StaffNavSubItem {
   path: string;
   label: string;
@@ -65,12 +65,6 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
     roles: ['Supervisor', 'Director', 'Admin'],
   },
   {
-    path: '/talleres',
-    label: 'Talleres',
-    icon: BookOpen,
-    roles: ['Supervisor', 'Director', 'Admin'],
-  },
-  {
     path: '/faults',
     label: 'Catálogos',
     icon: BookOpen,
@@ -88,6 +82,12 @@ const ALL_STAFF_NAV_ITEMS: StaffNavItem[] = [
     ],
   },
   {
+    path: '/pensiones',
+    label: 'Pensiones',
+    icon: Wallet,
+    roles: ['Director', 'Admin'],
+  },
+  {
     path: '/system-config',
     label: 'Administración',
     icon: Settings,
@@ -103,7 +103,7 @@ export function getStaffNavItems(role?: string | null): StaffNavItem[] {
   if (!role || role === 'Tutor' || role === 'Padre') return [];
   return ALL_STAFF_NAV_ITEMS.filter((item) => {
     if (!item.roles.includes(role)) return false;
-    if (item.path === '/talleres' && !isTalleresEnabled()) return false;
+    if (item.path === '/pensiones' && !isPensionesEnabled()) return false;
     return true;
   });
 }

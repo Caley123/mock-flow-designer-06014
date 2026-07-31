@@ -19,3 +19,4 @@ export { parentPortalService } from './parentPortalService';
 export { scheduleService } from './scheduleService';
 export { talleresService, mapTallerRow } from './talleresService';
 export { tallerAttendanceService, mapTallerAsistenciaRow } from './tallerAttendanceService';
+export { pensionesService } from './pensionesService';

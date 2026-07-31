@@ -37,6 +37,8 @@ import { ParentBottomNav, type ParentTab } from '@/components/parent/ParentBotto
 import { ParentChildrenSwitcher } from '@/components/parent/ParentChildrenSwitcher';
 import { cn } from '@/lib/utils';
 import { useParentPortalAnimations } from '@/hooks/useParentPortalAnimations';
+import { isPensionesEnabled } from '@/config/features';
+import { PensionYearGrid } from '@/components/pensiones/PensionYearGrid';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -309,6 +311,18 @@ export const ParentPortal = () => {
             <ParentStat label="Tardanzas" value={monthlyReport.late} tone="warn" />
             <ParentStat label="Incidencias activas" shortLabel="Incidencias" value={activeIncidents.length} tone="alert" />
           </div>
+
+          {isPensionesEnabled() && student && (
+            <Card className="parent-surface-card shadow-sm" data-parent-card data-parent-anim>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Pensiones</CardTitle>
+                <CardDescription>Estado mensual de la pensión de su hijo</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <PensionYearGrid idEstudiante={student.id} />
+              </CardContent>
+            </Card>
+          )}
 
           {activeIncidents.length > 0 && (
             <Card className="parent-surface-card" data-parent-card data-parent-anim>

@@ -29,9 +29,11 @@ import {
 } from '@/components/staff';
 import { Label } from '@/components/ui/label';
 import { arrivalService, authService, studentsService, whatsappService } from '@/lib/services';
-import type { ArrivalRecord, EducationalLevel, Student } from '@/types';
+import type { ArrivalRecord, EducationalLevel, EstudianteEstadoPension, Student } from '@/types';
 import { toast } from 'sonner';
 import { staffNotify } from '@/lib/utils/staffNotify';
+import { isPensionesEnabled } from '@/config/features';
+import { playPensionMorosoBeep } from '@/lib/utils/pensionBeep';
 
 const GRADES = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -42,6 +44,25 @@ type ArrivalStatusFilter = 'all' | 'A tiempo' | 'Tarde' | 'Sin registrar';
 type DayRow =
   | { kind: 'registered'; record: ArrivalRecord }
   | { kind: 'pending'; student: Student };
+
+/** «sí» = no pagó / moroso; «no» = al día; null = sin dato */
+function deudaLabelFromEstado(
+  estado: EstudianteEstadoPension | undefined | null,
+): 'sí' | 'no' | null {
+  if (!estado || estado === 'sin_dato') return null;
+  if (estado === 'al_dia') return 'no';
+  // pendiente (pagado=0 antes de mora) o moroso
+  return 'sí';
+}
+
+function resolveStudentEstadoPension(
+  student: Student | undefined | null,
+  byId: Map<number, Student>,
+): EstudianteEstadoPension | undefined {
+  if (!student) return undefined;
+  if (student.estadoPension) return student.estadoPension;
+  return byId.get(student.id)?.estadoPension;
+}
 
 export const ArrivalControl = () => {
   const [records, setRecords] = useState<ArrivalRecord[]>([]);
@@ -55,6 +76,13 @@ export const ArrivalControl = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [registeringStudentId, setRegisteringStudentId] = useState<number | null>(null);
   const isMountedRef = useRef(true);
+  const pensionesEnabled = isPensionesEnabled();
+
+  const studentsById = useMemo(() => {
+    const map = new Map<number, Student>();
+    for (const s of activeStudents) map.set(s.id, s);
+    return map;
+  }, [activeStudents]);
   
   // Obtener fecha actual en formato YYYY-MM-DD
   const getTodayDate = () => {
@@ -80,14 +108,44 @@ export const ArrivalControl = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
+  const loadActiveStudents = async (): Promise<{ students: Student[]; error: string | null }> => {
+    const first = await studentsService.getAll({ active: true, fetchAll: true });
+    if (!first.error && first.students.length > 0) {
+      return { students: first.students, error: null };
+    }
+
+    // Fallback: paginar si fetchAll no está soportado o devolvió vacío con error
+    const pageSize = 100;
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+    const all: Student[] = [];
+    let lastError: string | null = first.error;
+
+    while (all.length < total) {
+      const res = await studentsService.getAll({ active: true, page, pageSize });
+      if (res.error) {
+        lastError = res.error;
+        break;
+      }
+      all.push(...res.students);
+      total = res.total || all.length;
+      if (res.students.length === 0) break;
+      page += 1;
+      if (page > 50) break;
+    }
+
+    if (all.length > 0) return { students: all, error: null };
+    return { students: [], error: lastError };
+  };
+
   const loadArrivals = async () => {
     if (!isMountedRef.current) return;
 
     setLoading(true);
     try {
-      const [{ records: arrivals, error }, { students, error: studentsError }] = await Promise.all([
+      const [{ records: arrivals, error }, studentsResult] = await Promise.all([
         arrivalService.getArrivals({ date: selectedDate }),
-        studentsService.getAll({ active: true, fetchAll: true }),
+        loadActiveStudents(),
       ]);
 
       if (!isMountedRef.current) return;
@@ -99,11 +157,11 @@ export const ArrivalControl = () => {
         setRecords(arrivals);
       }
 
-      if (studentsError) {
-        toast.error('Error al cargar estudiantes activos');
+      if (studentsResult.error) {
+        toast.error(`Error al cargar estudiantes activos: ${studentsResult.error}`);
         setActiveStudents([]);
       } else {
-        setActiveStudents(students);
+        setActiveStudents(studentsResult.students);
       }
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -125,6 +183,17 @@ export const ArrivalControl = () => {
     if (!currentUser) {
       toast.error('Debe estar autenticado para registrar entradas');
       return;
+    }
+
+    const estado =
+      resolveStudentEstadoPension(student, studentsById) ?? student.estadoPension;
+    const deuda = pensionesEnabled ? deudaLabelFromEstado(estado) : null;
+    if (deuda === 'sí') {
+      playPensionMorosoBeep();
+      toast.warning('Pensión: estudiante no pagó', {
+        description: student.fullName,
+        duration: 3200,
+      });
     }
 
     setRegisteringStudentId(student.id);
@@ -438,8 +507,9 @@ export const ArrivalControl = () => {
                   <TableHead>Hora de Llegada</TableHead>
                   <TableHead>Hora de Salida</TableHead>
                   <TableHead>Estado</TableHead>
+                  {pensionesEnabled && <TableHead>¿Tiene deuda?</TableHead>}
                   <TableHead>Registrado por</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead className="min-w-[10rem]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -447,6 +517,9 @@ export const ArrivalControl = () => {
                   if (row.kind === 'pending') {
                     const student = row.student;
                     const isRegistering = registeringStudentId === student.id;
+                    const deuda = pensionesEnabled
+                      ? deudaLabelFromEstado(resolveStudentEstadoPension(student, studentsById))
+                      : null;
                     return (
                       <TableRow key={`pending-${student.id}`}>
                         <TableCell className="font-medium">{student.fullName}</TableCell>
@@ -465,8 +538,20 @@ export const ArrivalControl = () => {
                             Sin registrar
                           </Badge>
                         </TableCell>
+                        {pensionesEnabled && (
+                          <TableCell>
+                            {deuda === 'sí' ? (
+                              <Badge variant="destructive" className="font-normal">sí</Badge>
+                            ) : deuda === 'no' ? (
+                              <span className="text-sm text-muted-foreground">no</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell className="text-muted-foreground text-sm">—</TableCell>
                         <TableCell>
+                          {/* Sin llegada → Registrar Entrada */}
                           <Button
                             size="sm"
                             onClick={() => void handleRegisterArrival(student)}
@@ -486,6 +571,12 @@ export const ArrivalControl = () => {
                   }
 
                   const record = row.record;
+                  const hasDeparture = Boolean(record.departureTime);
+                  const deuda = pensionesEnabled
+                    ? deudaLabelFromEstado(
+                        resolveStudentEstadoPension(record.student, studentsById),
+                      )
+                    : null;
                   return (
                   <TableRow key={record.id}>
                     <TableCell className="font-medium">
@@ -506,7 +597,7 @@ export const ArrivalControl = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {record.departureTime ? (
+                      {hasDeparture ? (
                         <div className="flex items-center gap-2">
                           <LogOut className="h-4 w-4 text-green-600" />
                           <span className="font-medium">{record.departureTime}</span>
@@ -530,21 +621,33 @@ export const ArrivalControl = () => {
                         {record.status}
                       </Badge>
                     </TableCell>
+                    {pensionesEnabled && (
+                      <TableCell>
+                        {deuda === 'sí' ? (
+                          <Badge variant="destructive" className="font-normal">sí</Badge>
+                        ) : deuda === 'no' ? (
+                          <span className="text-sm text-muted-foreground">no</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell className="text-muted-foreground text-sm">
                       {record.registeredByUser?.fullName || 'Sistema'}
                     </TableCell>
                     <TableCell>
-                      {!record.departureTime && (
+                      {/* Con llegada y sin salida → Registrar Salida; con salida → vacío */}
+                      {!hasDeparture ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleRegisterDeparture(record.id)}
+                          onClick={() => void handleRegisterDeparture(record.id)}
                           className="gap-2"
                         >
                           <LogOut className="h-4 w-4" />
                           Registrar Salida
                         </Button>
-                      )}
+                      ) : null}
                     </TableCell>
                   </TableRow>
                   );

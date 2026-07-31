@@ -70,6 +70,8 @@ import { toast } from 'sonner';
 import { studentsService } from '@/lib/services';
 import { prefetchSignedProfilePhotos } from '@/lib/utils/profilePhoto';
 import { Student, EducationalLevel } from '@/types';
+import { isPensionesEnabled } from '@/config/features';
+import { PensionYearGrid } from '@/components/pensiones/PensionYearGrid';
 import { useStudentsQuery, useInvalidateStudents, STUDENTS_PAGE_SIZE } from '@/hooks/queries/useStudentsQuery';
 import {
   Pagination,
@@ -750,6 +752,9 @@ export const StudentsList = () => {
                       </p>
                     </div>
                   </div>
+                  {isPensionesEnabled() && (
+                    <PensionYearGrid idEstudiante={selectedStudent.id} />
+                  )}
                 </div>
               )}
               <DialogFooter>

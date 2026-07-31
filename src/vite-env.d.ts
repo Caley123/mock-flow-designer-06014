@@ -18,6 +18,11 @@ interface ImportMetaEnv {
   readonly VITE_META_WA_ENABLED?: string;
   readonly VITE_META_WA_API_URL?: string;
   readonly VITE_META_WA_NOTIFY_KEY?: string;
+  /** App móvil Asiscole — POST /v0.1/ingesta/eventos (prueba JP) */
+  readonly VITE_MOBILE_INGEST_ENABLED?: string;
+  readonly VITE_MOBILE_INGEST_URL?: string;
+  readonly VITE_MOBILE_INGEST_KEY?: string;
+  readonly VITE_MOBILE_INGEST_TENANT?: string;
   /** Nombre del colegio en mensajes WhatsApp (ej. Colegio Jean Piaget) */
   readonly VITE_SCHOOL_NAME?: string;
   /** Carnet foto en login (JP: /Carnet-JeanPiaget.png) */
@@ -27,6 +32,8 @@ interface ImportMetaEnv {
   readonly VITE_GA_MEASUREMENT_ID?: string;
   readonly VITE_BUILD_ID?: string;
   readonly VITE_TALLERES_ENABLED?: string;
+  /** Módulo pensiones (JP: true) */
+  readonly VITE_PENSIONES_ENABLED?: string;
 }
 
 interface ImportMeta {

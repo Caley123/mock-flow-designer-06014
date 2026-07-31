@@ -14,9 +14,7 @@ import { useDeployVersionCheck } from "./hooks/useDeployVersionCheck";
 import { PageMetaManager } from "./components/seo/PageMetaManager";
 import { SiteAnalytics } from "./components/seo/SiteAnalytics";
 import { StaffLayoutShell } from "./components/layout/StaffLayoutShell";
-import { RouteSuspenseFallback } from "./components/layout/RouteSuspenseFallback";
 import { lazyPage } from "./lib/lazyPage";
-import { isTalleresEnabled } from "./config/features";
 import { Dashboard } from "./pages/Dashboard";
 import { RegisterIncident } from "./pages/RegisterIncident";
 import { IncidentsList } from "./pages/IncidentsList";
@@ -25,18 +23,19 @@ import { AttendanceReport } from "./pages/AttendanceReport";
 import { ArrivalControl } from "./pages/ArrivalControl";
 import { DepartureControl } from "./pages/DepartureControl";
 import { ParentMeetings } from "./pages/ParentMeetings";
+import { JustifyFaults } from "./pages/JustifyFaults";
 import { FaultsCatalog } from "./pages/FaultsCatalog";
 import { Reports } from "./pages/Reports";
 import { AuditLogs } from "./pages/AuditLogs";
 import { SystemConfig } from "./pages/SystemConfig";
+import { PensionesAdmin } from "./pages/PensionesAdmin";
+import { isPensionesEnabled } from "./config/features";
 
 const Login = lazyPage(() => import("./pages/Login").then(m => ({ default: m.Login })));
 const TutorScanner = lazyPage(() => import("./pages/TutorScanner").then(m => ({ default: m.TutorScanner })));
 const ParentPortalRoute = lazyPage(() =>
   import("./components/parent/ParentPortalRoute").then((m) => ({ default: m.ParentPortalRoute }))
 );
-const JustifyFaultsPage = lazyPage(() => import("./pages/JustifyFaults").then(m => ({ default: m.JustifyFaults })));
-const TalleresAdminPage = lazyPage(() => import("./pages/TalleresAdmin").then(m => ({ default: m.TalleresAdmin })));
 const ArrivalView = lazyPage(() => import("./pages/ArrivalView").then(m => ({ default: m.ArrivalView })));
 const ParentDniPortal = lazyPage(() => import("./pages/ParentDniPortal").then(m => ({ default: m.ParentDniPortal })));
 const ChangePassword = lazyPage(() => import("./pages/ChangePassword").then(m => ({ default: m.ChangePassword })));
@@ -87,10 +86,6 @@ const LazyFullScreen = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<FullScreenLoading />}>{children}</Suspense>
 );
 
-const LazyStaffPage = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<RouteSuspenseFallback />}>{children}</Suspense>
-);
-
 const AppContent = () => {
   return (
     <Routes>
@@ -122,24 +117,7 @@ const AppContent = () => {
         <Route path="/arrival-control" element={<ArrivalControl />} />
         <Route path="/departure-control" element={<DepartureControl />} />
         <Route path="/parent-meetings" element={<ParentMeetings />} />
-        <Route
-          path="/justify-faults"
-          element={
-            <LazyStaffPage>
-              <JustifyFaultsPage />
-            </LazyStaffPage>
-          }
-        />
-        {isTalleresEnabled() && (
-          <Route
-            path="/talleres"
-            element={
-              <LazyStaffPage>
-                <TalleresAdminPage />
-              </LazyStaffPage>
-            }
-          />
-        )}
+        <Route path="/justify-faults" element={<JustifyFaults />} />
         <Route
           path="/faults"
           element={
@@ -172,6 +150,16 @@ const AppContent = () => {
             </ProtectedRoute>
           }
         />
+        {isPensionesEnabled() && (
+          <Route
+            path="/pensiones"
+            element={
+              <ProtectedRoute requiredRole={['Director', 'Admin']}>
+                <PensionesAdmin />
+              </ProtectedRoute>
+            }
+          />
+        )}
       </Route>
 
       <Route
