@@ -904,22 +904,17 @@ export function buildPensionPendingMessage(
 }
 
 /**
- * Notifica al apoderado que la pensión del periodo no está pagada.
- * Mismo patrón de canales que llegadas (mobile ingest / WPP / OpenWA / Meta).
+ * Aviso de pensión vía app móvil (canal / mobile ingest). No usa WhatsApp.
  */
 export async function notifyParentPensionPending(
   student: Student,
   input: { periodo: string; monto?: number | null; pensionId?: number },
 ): Promise<{ ok: boolean; error: string | null; chatId?: string; skipped?: boolean }> {
-  if (!WHATSAPP_ENABLED) {
-    return { ok: false, error: 'WhatsApp desactivado' };
+  if (!MOBILE_INGEST_ENABLED) {
+    return { ok: false, error: 'Notificaciones por aplicación no habilitadas' };
   }
 
   const apoderadoPhone = student.contactPhone?.trim() || student.emergencyPhone?.trim() || '';
-  if (!MOBILE_INGEST_ENABLED && !apoderadoPhone) {
-    return { ok: false, error: 'El estudiante no tiene teléfono de contacto' };
-  }
-
   const dedupKey = buildNotifyDedupKey('pension', student.id, input.periodo);
 
   if (shouldSkipDuplicateNotify(dedupKey)) {
@@ -931,45 +926,14 @@ export async function notifyParentPensionPending(
     };
   }
 
-  if (MOBILE_INGEST_ENABLED) {
-    const result = await sendViaMobileIngest(
-      buildPensionIngestBody(MOBILE_INGEST_TENANT, student, {
-        periodo: input.periodo,
-        monto: input.monto,
-        idRegistro: input.pensionId,
-      }),
-    );
-    return { ...result, chatId: toWhatsAppChatId(apoderadoPhone) || undefined };
-  }
-
-  const chatId = toWhatsAppChatId(apoderadoPhone);
-  const wppPhone = toWhatsAppPhone(apoderadoPhone);
-  if (!chatId || !wppPhone) {
-    return { ok: false, error: 'Teléfono de contacto no válido para WhatsApp' };
-  }
-
-  const messages = [
-    buildApoderadoPhoneMessage(apoderadoPhone, student),
-    buildPensionPendingMessage(student, input),
-  ];
-
-  const stubRecord = {
-    id: input.pensionId ?? 0,
-    studentId: student.id,
-    date: `${input.periodo}-01`,
-    arrivalTime: '',
-    status: 'Pensión pendiente',
-  } as ArrivalRecord;
-
-  const result = META_WA_ENABLED
-    ? await sendTextsViaMetaWa(wppPhone, student, stubRecord, messages)
-    : WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
-      ? await sendViaNotifyQueue(wppPhone, student, stubRecord, messages, 'incident')
-      : WPPCONNECT_ENABLED
-        ? await sendTextsViaWppConnect(wppPhone, messages)
-        : await sendTextsViaOpenwa(chatId, messages);
-
-  return { ...result, chatId };
+  const result = await sendViaMobileIngest(
+    buildPensionIngestBody(MOBILE_INGEST_TENANT, student, {
+      periodo: input.periodo,
+      monto: input.monto,
+      idRegistro: input.pensionId,
+    }),
+  );
+  return { ...result, chatId: toWhatsAppChatId(apoderadoPhone) || undefined };
 }
 
 async function notifyParentEvent(
@@ -1036,6 +1000,8 @@ async function notifyParentEvent(
 
 export const whatsappService = {
   isEnabled: () => WHATSAPP_ENABLED,
+  /** Push/aviso por backend de la app móvil (canal), no WhatsApp. */
+  isAppNotificationsEnabled: () => MOBILE_INGEST_ENABLED,
   provider: () =>
     MOBILE_INGEST_ENABLED
       ? 'mobile-ingest'

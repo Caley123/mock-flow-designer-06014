@@ -13,7 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { PensionImportModo, PensionImportPreviewRow } from '@/types';
+import type { PensionImportModo, PensionImportPreviewRow, Student } from '@/types';
 import { pensionesService, studentsService, whatsappService } from '@/lib/services';
 import {
   parsePensionesExcelBuffer,
@@ -29,6 +29,37 @@ type Props = {
   montoMensual: number | null;
   onImported: () => void;
 };
+
+async function loadAllActiveStudents(): Promise<{ students: Student[]; error: string | null }> {
+  const first = await studentsService.getAll({ active: true, fetchAll: true });
+  if (!first.error && first.students.length >= 20) {
+    return { students: first.students, error: null };
+  }
+
+  const pageSize = 100;
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+  const all: Student[] = [];
+  let lastError: string | null = first.error;
+
+  while (all.length < total && page <= 50) {
+    const res = await studentsService.getAll({ active: true, page, pageSize });
+    if (res.error) {
+      lastError = res.error;
+      break;
+    }
+    all.push(...res.students);
+    total = res.total || all.length;
+    if (res.students.length === 0) break;
+    page += 1;
+  }
+
+  if (all.length > 0) return { students: all, error: null };
+  if (!first.error && first.students.length > 0) {
+    return { students: first.students, error: null };
+  }
+  return { students: [], error: lastError || 'Nómina vacía' };
+}
 
 export function PensionImportPanel({
   periodo,
@@ -72,14 +103,20 @@ export function PensionImportPanel({
         return;
       }
 
-      const { students, error } = await studentsService.getAll({ active: true, fetchAll: true });
+      const { students: indexStudents, error } = await loadAllActiveStudents();
       if (error) {
         toast.error(error);
         resetFile();
         return;
       }
 
-      const index = students.map((s) => ({
+      if (indexStudents.length === 0) {
+        toast.error('No se pudo cargar la nómina de estudiantes para hacer match');
+        resetFile();
+        return;
+      }
+
+      const index = indexStudents.map((s) => ({
         id: s.id,
         barcode: s.barcode,
         fullName: s.fullName,
@@ -103,7 +140,19 @@ export function PensionImportPanel({
       });
 
       setPreview(rows);
-      toast.success(`Vista previa: ${rows.length} filas (el archivo no se guarda)`);
+      const ok = rows.filter((r) => r.matchStatus === 'ok').length;
+      const sin = rows.length - ok;
+      if (ok === 0) {
+        toast.error(
+          `El Excel se leyó (${rows.length} filas), pero ningún DNI/nombre coincide con los ${indexStudents.length} alumnos de SIE. Revisa que sean alumnos de este colegio.`,
+        );
+      } else if (sin > 0) {
+        toast.success(
+          `Vista previa: ${ok} listos para importar · ${sin} sin match (se omiten al confirmar)`,
+        );
+      } else {
+        toast.success(`Vista previa: ${rows.length} filas · todas coinciden`);
+      }
     } catch (err) {
       console.error(err);
       toast.error('No se pudo leer el Excel');
@@ -166,30 +215,42 @@ export function PensionImportPanel({
 
       toast.success(`Importadas ${result.filasOk ?? okRows.length} filas (archivo descartado)`);
 
-      if (modo === 'no_pagaron' && notifyOnImport && whatsappService.isEnabled()) {
-        let sent = 0;
-        for (const r of okRows) {
-          const student = {
-            id: r.idEstudiante!,
-            fullName: r.nombreMatched || r.rawNombre || 'Estudiante',
-            grade: '',
-            section: '',
-            level: 'Secundaria' as const,
-            barcode: r.rawDni || '',
-            active: true,
-            contactPhone: null,
-            emergencyPhone: null,
-          };
-          // Enriquecer teléfono desde listado si hace falta
-          const { student: full } = await studentsService.getById(r.idEstudiante!);
-          const target = full || student;
-          const wa = await whatsappService.notifyParentPensionPending(target, {
-            periodo,
-            monto: r.monto ?? montoMensual,
-          });
-          if (wa.ok && !wa.skipped) sent += 1;
+      if (modo === 'no_pagaron' && notifyOnImport) {
+        if (!whatsappService.isAppNotificationsEnabled()) {
+          toast.message('Avisos por aplicación no habilitados en este entorno');
+        } else {
+          let sent = 0;
+          let failed = 0;
+          for (const r of okRows) {
+            const { student: full } = await studentsService.getById(r.idEstudiante!);
+            const target =
+              full ||
+              ({
+                id: r.idEstudiante!,
+                fullName: r.nombreMatched || r.rawNombre || 'Estudiante',
+                grade: '',
+                section: '',
+                level: 'Secundaria' as const,
+                barcode: r.rawDni || '',
+                active: true,
+                contactPhone: null,
+                emergencyPhone: null,
+              } satisfies Student);
+            const app = await whatsappService.notifyParentPensionPending(target, {
+              periodo,
+              monto: r.monto ?? montoMensual,
+            });
+            if (app.ok && !app.skipped) sent += 1;
+            else if (!app.ok) failed += 1;
+          }
+          if (sent > 0) {
+            toast.success(`Aplicación: ${sent} avisos de pensión enviados`);
+          } else if (failed > 0) {
+            toast.error(`No se pudieron enviar ${failed} avisos por la aplicación`);
+          } else {
+            toast.message('Sin avisos nuevos por la aplicación (ya notificados o sin destino)');
+          }
         }
-        toast.message(`WhatsApp: ${sent} avisos de pensión enviados`);
       }
 
       resetFile();
@@ -226,7 +287,7 @@ export function PensionImportPanel({
             checked={notifyOnImport}
             onChange={(e) => setNotifyOnImport(e.target.checked)}
           />
-          Notificar por WhatsApp a padres (tras confirmar)
+          Notificar por la aplicación a padres (tras confirmar)
         </label>
       )}
 
@@ -261,6 +322,11 @@ export function PensionImportPanel({
           </span>
         )}
       </div>
+      <p className="text-xs text-muted-foreground">
+        Sube el Excel del banco (pagaron o no pagaron). El sistema detecta columnas (DNI, nombre,
+        monto, fecha) y cruza cada fila con la nómina de SIE. Solo se importan las filas con match;
+        las «Sin match» se omiten.
+      </p>
 
       {preview.length > 0 && (
         <>

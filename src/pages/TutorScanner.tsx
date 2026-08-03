@@ -71,7 +71,11 @@ import { useTallerScan } from '@/hooks/useTallerScan';
 import { buildStudentLookupVariants } from '@/lib/services/studentsService';
 import { cn } from '@/lib/utils';
 import { isPensionesEnabled } from '@/config/features';
-import { playPensionMorosoBeep, shouldAlertPensionMorosa } from '@/lib/utils/pensionBeep';
+import {
+  playPensionMorosoBeep,
+  shouldAlertPensionMorosa,
+  unlockPensionAudio,
+} from '@/lib/utils/pensionBeep';
 import { pensionesService } from '@/lib/services/pensionesService';
 
 const NAME_SEARCH_SCROLL_AFTER = 8;
@@ -236,6 +240,11 @@ export const TutorScanner = () => {
       void pensionesService.getConfig().then(({ config }) => {
         if (config) avisoPensionRef.current = config.avisoSonoroActivo && config.activo;
       });
+      const unlock = () => {
+        void unlockPensionAudio();
+      };
+      window.addEventListener('pointerdown', unlock, { once: true });
+      window.addEventListener('keydown', unlock, { once: true });
     }
     const stopClock = startClock();
     if (!touchBarcode) {
@@ -777,7 +786,10 @@ export const TutorScanner = () => {
         return;
       }
 
-      let foundStudent = studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, raw);
+      // Con pensiones: siempre RPC fresco (el índice puede quedar con estado_pension viejo tras un import).
+      let foundStudent = pensionesEnabled
+        ? null
+        : studentsService.lookupBarcodeInIndex(barcodeIndexRef.current, raw);
 
       if (!foundStudent) {
         setLookupBusy(true);
@@ -797,7 +809,7 @@ export const TutorScanner = () => {
 
       void processStudent(foundStudent, scanSeq);
     },
-    [focusBarcodeInput, processStudent, resolveStudentByBarcode, setLookupBusy]
+    [focusBarcodeInput, pensionesEnabled, processStudent, resolveStudentByBarcode, setLookupBusy]
   );
 
   const startScan = useCallback(
