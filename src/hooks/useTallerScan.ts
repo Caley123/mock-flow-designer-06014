@@ -1,21 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { isTalleresEnabled } from '@/config/features';
-import {
-  incidentsService,
-  tallerAttendanceService,
-  talleresService,
-  whatsappService,
-} from '@/lib/services';
+import { tallerAttendanceService, whatsappService } from '@/lib/services';
 import { getLimaTodayDate } from '@/lib/utils/limaDateTime';
-import type { ArrivalRecord, FaultType, Incident, Student, Taller, TallerAsistencia } from '@/types';
+import type { ArrivalRecord, Student, TallerAsistencia } from '@/types';
 
 export type ScanMode = 'clase' | 'taller';
+/** En clase y talleres el tutor elige Llegada o Salida (como Control de Llegadas / Salidas). */
+export type TallerPhase = 'llegada' | 'salida';
+/** Misma semántica que talleres; alias explícito para modo clase. */
+export type ClasePhase = TallerPhase;
 export type TallerScanAction = 'arrival' | 'departure' | 'complete';
 
-type TallerNotifyOpts = {
-  tallerId: string;
-  tallerNombre: string;
-};
+const TALLER_NOTIFY = { tallerId: 'taller', tallerNombre: 'Taller' } as const;
 
 type TallerScanSuccess = {
   ok: true;
@@ -33,44 +29,17 @@ type TallerScanFailure = {
 
 export type TallerScanResult = TallerScanSuccess | TallerScanFailure;
 
-type TallerIncidentSuccess = {
-  ok: true;
-  incident: Incident;
-};
-
-type TallerIncidentFailure = {
-  ok: false;
-  error: string;
-};
-
-export type TallerIncidentResult = TallerIncidentSuccess | TallerIncidentFailure;
-
-type SubmitTallerIncidentInput = {
-  student: Student;
-  faultTypeId: number;
-  registeredBy: number;
-  observations?: string;
-  fault?: FaultType;
-};
-
 function mapTallerRecordToArrivalRecord(record: TallerAsistencia): ArrivalRecord {
   return {
     id: record.id,
     studentId: record.studentId,
     date: record.date,
     arrivalTime: record.arrivalTime ?? '00:00',
-    status: (record.arrivalStatus ?? 'A tiempo') as ArrivalRecord['status'],
+    status: 'A tiempo',
     registeredBy: record.registeredBy,
     createdAt: record.date,
     departureTime: record.departureTime,
     departureType: record.departureType,
-  };
-}
-
-function buildNotifyOpts(taller: Taller): TallerNotifyOpts {
-  return {
-    tallerId: taller.id,
-    tallerNombre: taller.nombre,
   };
 }
 
@@ -81,10 +50,9 @@ function getYearMonth(date: string): { year: number; month: number } {
 
 export function findTodayTallerAttendance(
   records: TallerAsistencia[],
-  tallerId: string,
   date: string,
 ): TallerAsistencia | null {
-  return records.find((record) => record.tallerId === tallerId && record.date === date) ?? null;
+  return records.find((record) => record.date === date) ?? null;
 }
 
 export function resolveTallerScanAction(
@@ -98,94 +66,27 @@ export function resolveTallerScanAction(
 export function useTallerScan() {
   const talleresEnabled = isTalleresEnabled();
   const [scanMode, setScanMode] = useState<ScanMode>('clase');
-  const [selectedTallerId, setSelectedTallerId] = useState<string | null>(null);
-  const [talleres, setTalleres] = useState<Taller[]>([]);
-  const [talleresLoading, setTalleresLoading] = useState(false);
-
-  useEffect(() => {
-    if (!talleresEnabled) {
-      setScanMode('clase');
-      setSelectedTallerId(null);
-      setTalleres([]);
-      setTalleresLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setTalleresLoading(true);
-
-    void talleresService
-      .listActive()
-      .then(({ talleres: activeTalleres, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error('Error al cargar talleres activos:', error);
-          setTalleres([]);
-          setSelectedTallerId(null);
-          return;
-        }
-
-        setTalleres(activeTalleres);
-        setSelectedTallerId((current) =>
-          current && activeTalleres.some((taller) => taller.id === current) ? current : null,
-        );
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setTalleresLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [talleresEnabled]);
+  const [tallerPhase, setTallerPhase] = useState<TallerPhase>('llegada');
+  const [clasePhase, setClasePhase] = useState<ClasePhase>('llegada');
 
   const isTallerMode = talleresEnabled && scanMode === 'taller';
 
-  const selectedTaller = useMemo(
-    () => talleres.find((taller) => taller.id === selectedTallerId) ?? null,
-    [selectedTallerId, talleres],
-  );
-
-  const ensureTallerContext = useCallback(
-    (registeredBy?: number): { taller: Taller } | { error: string } => {
-      if (!talleresEnabled || scanMode !== 'taller') {
-        return { error: 'El modo Talleres no está activo.' };
-      }
-      if (!registeredBy) {
-        return { error: 'Usuario no autenticado' };
-      }
-      if (!selectedTaller) {
-        return { error: 'Seleccione un taller antes de escanear.' };
-      }
-      return { taller: selectedTaller };
-    },
-    [scanMode, selectedTaller, talleresEnabled],
-  );
+  const handleSetScanMode = useCallback((mode: ScanMode) => {
+    setScanMode(mode);
+    if (mode === 'taller') {
+      setTallerPhase('llegada');
+    } else {
+      setClasePhase('llegada');
+    }
+  }, []);
 
   const handleTallerScan = useCallback(
     async (student: Student, registeredBy?: number): Promise<TallerScanResult> => {
-      const context = ensureTallerContext(registeredBy);
-      if ('error' in context) {
-        return { ok: false, error: context.error };
+      if (!talleresEnabled || scanMode !== 'taller') {
+        return { ok: false, error: 'El modo Talleres no está activo.' };
       }
-
-      const { taller } = context;
-      const notifyOpts = buildNotifyOpts(taller);
-
-      const { inscrito, error: inscripcionError } = await talleresService.isStudentInscrito(
-        taller.id,
-        student.id,
-      );
-      if (inscripcionError) {
-        return { ok: false, error: inscripcionError };
-      }
-      if (!inscrito) {
-        return {
-          ok: false,
-          error: `${student.fullName} no está inscrito en el taller ${taller.nombre}.`,
-        };
+      if (!registeredBy) {
+        return { ok: false, error: 'Usuario no autenticado' };
       }
 
       const today = getLimaTodayDate();
@@ -199,54 +100,60 @@ export function useTallerScan() {
         return { ok: false, error: recordsError };
       }
 
-      const todayRecord = findTodayTallerAttendance(records, taller.id, today);
-      const action = resolveTallerScanAction(todayRecord);
+      const todayRecord = findTodayTallerAttendance(records, today);
+      const state = resolveTallerScanAction(todayRecord);
 
-      if (action === 'complete') {
-        return {
-          ok: false,
-          error: `${student.fullName} ya tiene llegada y salida registradas hoy en ${taller.nombre}.`,
-        };
-      }
+      if (tallerPhase === 'salida') {
+        if (state === 'arrival') {
+          return {
+            ok: false,
+            error: `${student.fullName} aún no tiene llegada a taller. Cambie a Llegada y escanee primero.`,
+          };
+        }
+        if (state === 'complete') {
+          return {
+            ok: false,
+            error: `${student.fullName} ya tiene salida de taller registrada hoy.`,
+          };
+        }
 
-      if (action === 'departure' && todayRecord) {
-        const { success, error, departureTime } = await tallerAttendanceService.recordDeparture(
-          taller.id,
-          student.id,
-          registeredBy,
-          'Normal',
-          today,
-        );
+        const { success, error, departureTime, record: updated } =
+          await tallerAttendanceService.recordDeparture(student.id, registeredBy, today);
 
-        if (!success || !departureTime) {
+        if (!success || !departureTime || !updated) {
           return { ok: false, error: error || 'No se pudo registrar la salida del taller.' };
         }
 
-        const record = mapTallerRecordToArrivalRecord({
-          ...todayRecord,
-          departureTime,
-          departureType: 'Normal',
-        });
+        const record = mapTallerRecordToArrivalRecord(updated);
 
         if (whatsappService.isEnabled()) {
-          void whatsappService.notifyParentDeparture(student, record, notifyOpts);
+          void whatsappService.notifyParentDeparture(student, record, TALLER_NOTIFY);
         }
 
         return {
           ok: true,
           action: 'departure',
           record,
-          displayStatus: 'Salida registrada',
+          displayStatus: 'Salió del taller',
           displayTime: departureTime,
           statusForTotals: null,
         };
       }
 
+      // Fase llegada
+      if (state !== 'arrival') {
+        return {
+          ok: false,
+          error: `${student.fullName} ya tiene llegada de taller hoy${
+            todayRecord?.arrivalTime ? ` (${todayRecord.arrivalTime})` : ''
+          }. Para salida, elija Salida.`,
+        };
+      }
+
       const { record: arrivalRecord, error: arrivalError } = await tallerAttendanceService.recordArrival(
-        taller.id,
+        undefined,
         student.id,
         registeredBy,
-        { tallerHoraInicio: taller.horaInicio },
       );
 
       if (arrivalError || !arrivalRecord) {
@@ -254,91 +161,33 @@ export function useTallerScan() {
       }
 
       const record = mapTallerRecordToArrivalRecord(arrivalRecord);
+      const displayTime = arrivalRecord.arrivalTime ?? '—:—';
 
       if (whatsappService.isEnabled()) {
-        void whatsappService.notifyParentArrival(student, record, notifyOpts);
+        void whatsappService.notifyParentArrival(student, record, TALLER_NOTIFY);
       }
 
       return {
         ok: true,
         action: 'arrival',
         record,
-        displayStatus: arrivalRecord.arrivalStatus ?? 'Registrado',
-        displayTime: arrivalRecord.arrivalTime ?? '—:—',
-        statusForTotals: record.status,
+        displayStatus: 'Llegó a taller',
+        displayTime,
+        statusForTotals: null,
       };
     },
-    [ensureTallerContext],
-  );
-
-  const submitTallerIncident = useCallback(
-    async (input: SubmitTallerIncidentInput): Promise<TallerIncidentResult> => {
-      const context = ensureTallerContext(input.registeredBy);
-      if ('error' in context) {
-        return { ok: false, error: context.error };
-      }
-
-      const { taller } = context;
-      const notifyOpts = buildNotifyOpts(taller);
-
-      const { inscrito, error: inscripcionError } = await talleresService.isStudentInscrito(
-        taller.id,
-        input.student.id,
-      );
-      if (inscripcionError) {
-        return { ok: false, error: inscripcionError };
-      }
-      if (!inscrito) {
-        return {
-          ok: false,
-          error: `${input.student.fullName} no está inscrito en el taller ${taller.nombre}.`,
-        };
-      }
-
-      const { incident, error } = await incidentsService.create(
-        {
-          studentId: input.student.id,
-          faultTypeId: input.faultTypeId,
-          registeredBy: input.registeredBy,
-          observations: input.observations,
-          tallerId: taller.id,
-        },
-        { minimal: true },
-      );
-
-      if (error || !incident) {
-        return { ok: false, error: error || 'No se pudo registrar la incidencia.' };
-      }
-
-      if (whatsappService.isEnabled() && input.fault) {
-        void whatsappService.notifyParentIncident(
-          input.student,
-          {
-            ...incident,
-            student: input.student,
-            faultType: input.fault,
-          },
-          input.fault,
-          notifyOpts,
-        );
-      }
-
-      return { ok: true, incident };
-    },
-    [ensureTallerContext],
+    [scanMode, tallerPhase, talleresEnabled],
   );
 
   return {
     handleTallerScan,
     isTallerMode,
     scanMode,
-    selectedTaller,
-    selectedTallerId,
-    setScanMode,
-    setSelectedTallerId,
-    submitTallerIncident,
-    talleres,
+    setScanMode: handleSetScanMode,
+    tallerPhase,
+    setTallerPhase,
+    clasePhase,
+    setClasePhase,
     talleresEnabled,
-    talleresLoading,
   };
 }

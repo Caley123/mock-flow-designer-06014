@@ -94,10 +94,12 @@ export function dayHasTaller(byDate: Map<string, TallerAsistencia[]>, dayKey: st
 
 export function formatTallerDayDetail(rows: TallerAsistencia[]): string[] {
   return rows.map((row) => {
-    const tallerNombre = row.tallerNombre?.trim() || 'Taller';
     const arrival = parseArrivalTime12h(row.arrivalTime ?? '');
-    const departure = row.departureTime ? parseArrivalTime12h(row.departureTime) : 'sin registrar';
-    return `Taller: ${tallerNombre} · llegada ${arrival} · salida ${departure}`;
+    if (row.departureTime) {
+      const departure = parseArrivalTime12h(row.departureTime);
+      return `Taller · llegó ${arrival} · salió ${departure}`;
+    }
+    return `Taller · llegó a las ${arrival} · salida pendiente`;
   });
 }
 

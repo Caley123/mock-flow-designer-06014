@@ -114,10 +114,7 @@ describe('parentAttendanceCalendar', () => {
           departureTime: null,
         }),
       ])
-    ).toEqual([
-      'Taller: Fútbol · llegada 3:30 p.m. · salida 5:00 p.m.',
-      'Taller: Ajedrez · llegada —:— · salida sin registrar',
-    ]);
+    ).toEqual(['Taller · llegó 3:30 p.m. · salió 5:00 p.m.', 'Taller · llegó a las —:— · salida pendiente']);
   });
 
   it('formatea líneas de incidencias de taller para el día seleccionado', () => {

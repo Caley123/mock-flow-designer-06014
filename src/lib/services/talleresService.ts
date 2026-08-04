@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import type { EducationalLevel, Taller, TallerInscrito } from '@/types';
+import { setTallerSchemaAvailable } from './incidentSelect';
 
 type TallerRow = {
   id: string;
@@ -101,13 +102,16 @@ export const talleresService = {
         .order('nombre', { ascending: true });
 
       if (error) {
+        setTallerSchemaAvailable(false);
         return { talleres: [], error: error.message };
       }
 
+      setTallerSchemaAvailable(true);
       return { talleres: (data || []).map(mapTallerRow), error: null };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al listar talleres activos';
       console.error('Error en listActive:', error);
+      setTallerSchemaAvailable(false);
       return { talleres: [], error: message };
     }
   },
@@ -120,13 +124,16 @@ export const talleresService = {
         .order('nombre', { ascending: true });
 
       if (error) {
+        setTallerSchemaAvailable(false);
         return { talleres: [], error: error.message };
       }
 
+      setTallerSchemaAvailable(true);
       return { talleres: (data || []).map(mapTallerRow), error: null };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al listar talleres';
       console.error('Error en listAll:', error);
+      setTallerSchemaAvailable(false);
       return { talleres: [], error: message };
     }
   },

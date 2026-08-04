@@ -31,30 +31,37 @@ export function resetPensionBeepThrottleForTests(): void {
   lastBeepAt = 0;
 }
 
-function tone(
+/** Pulso corto y agresivo (cuadrada = sonido de alarma electrónica). */
+function alarmPulse(
   ctx: AudioContext,
   startAt: number,
   duration: number,
   frequency: number,
   volume: number,
-  type: OscillatorType = 'square',
 ): void {
   const osc = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = type;
+  osc.type = 'square';
+  osc2.type = 'square';
   osc.frequency.setValueAtTime(frequency, startAt);
+  // Ligero desafinado → timbre más “antirrobo”
+  osc2.frequency.setValueAtTime(frequency * 1.01, startAt);
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.008);
-  gain.gain.setValueAtTime(volume, startAt + Math.max(0.01, duration - 0.03));
+  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.004);
+  gain.gain.setValueAtTime(volume, startAt + Math.max(0.01, duration - 0.015));
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
   osc.connect(gain);
+  osc2.connect(gain);
   gain.connect(ctx.destination);
   osc.start(startAt);
-  osc.stop(startAt + duration + 0.02);
+  osc2.start(startAt);
+  osc.stop(startAt + duration + 0.01);
+  osc2.stop(startAt + duration + 0.01);
 }
 
-/** Sirena corta: sube y baja de frecuencia (estilo alarma). */
-function sirenSweep(
+/** Barrido tipo sirena de pánico (auto / casa). */
+function panicWhoop(
   ctx: AudioContext,
   startAt: number,
   duration: number,
@@ -68,8 +75,8 @@ function sirenSweep(
   osc.frequency.setValueAtTime(freqFrom, startAt);
   osc.frequency.linearRampToValueAtTime(freqTo, startAt + duration);
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.02);
-  gain.gain.setValueAtTime(volume, startAt + duration - 0.04);
+  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.01);
+  gain.gain.setValueAtTime(volume, startAt + duration - 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
   osc.connect(gain);
   gain.connect(ctx.destination);
@@ -78,11 +85,11 @@ function sirenSweep(
 }
 
 /**
- * Alarma de mora: sirena + pitidos urgentes. No bloquea asistencia.
+ * Alarma antirrobo para mora (pánico hi-lo + whoops). No bloquea asistencia.
  */
 export function playPensionMorosoBeep(now = Date.now()): void {
-  // Evitar solapar alarmas completas (~1.2s)
-  if (now - lastBeepAt < 1400) return;
+  // Evitar solapar alarmas (~2.4s)
+  if (now - lastBeepAt < 2500) return;
   lastBeepAt = now;
 
   const ctx = getAudioContext();
@@ -91,17 +98,30 @@ export function playPensionMorosoBeep(now = Date.now()): void {
   const run = () => {
     try {
       const t0 = ctx.currentTime;
-      const vol = 0.38;
+      const vol = 0.45;
+      const hi = 1650;
+      const lo = 880;
+      const pulse = 0.09;
+      const gap = 0.02;
 
-      // Sirena ida y vuelta (alarma)
-      sirenSweep(ctx, t0, 0.28, 780, 1400, vol);
-      sirenSweep(ctx, t0 + 0.28, 0.28, 1400, 780, vol);
-      sirenSweep(ctx, t0 + 0.56, 0.28, 780, 1400, vol);
+      // Ráfaga hi-lo rápida (estilo alarma de auto)
+      let t = t0;
+      for (let i = 0; i < 10; i++) {
+        alarmPulse(ctx, t, pulse, i % 2 === 0 ? hi : lo, vol);
+        t += pulse + gap;
+      }
 
-      // Tres pitidos cortos y agudos al final
-      tone(ctx, t0 + 0.92, 0.09, 1600, vol, 'square');
-      tone(ctx, t0 + 1.05, 0.09, 1600, vol, 'square');
-      tone(ctx, t0 + 1.18, 0.12, 1800, vol, 'square');
+      // Sirenas de pánico (whoop up / whoop down)
+      panicWhoop(ctx, t, 0.22, 700, 1900, vol);
+      panicWhoop(ctx, t + 0.22, 0.22, 1900, 700, vol);
+      panicWhoop(ctx, t + 0.44, 0.22, 700, 1900, vol);
+      panicWhoop(ctx, t + 0.66, 0.22, 1900, 700, vol);
+
+      // Cierre: 4 pitidos agudos cortos
+      const end = t + 0.9;
+      for (let i = 0; i < 4; i++) {
+        alarmPulse(ctx, end + i * 0.12, 0.08, 2000, vol);
+      }
     } catch {
       /* tablet sin audio — solo UI */
     }

@@ -42,6 +42,11 @@ CREATE INDEX IF NOT EXISTS idx_taller_inscritos_estudiante
 ALTER TABLE public.incidencias
   ADD COLUMN IF NOT EXISTS taller_id uuid NULL REFERENCES public.talleres(id) ON DELETE SET NULL;
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.talleres TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.taller_inscritos TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.taller_asistencias TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.taller_asistencias_id_registro_seq TO anon, authenticated;
+
 ALTER TABLE public.talleres ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.taller_inscritos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.taller_asistencias ENABLE ROW LEVEL SECURITY;

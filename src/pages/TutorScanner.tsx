@@ -52,7 +52,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { getLimaNow } from '@/lib/utils/limaDateTime';
+import { getLimaNow, getLimaTodayDate } from '@/lib/utils/limaDateTime';
 import {
   resolveArrivalLimitForLevel,
   resolveArrivalStatusForStudent,
@@ -150,8 +150,11 @@ export const TutorScanner = () => {
     setScanMode,
     tallerPhase,
     setTallerPhase,
+    clasePhase,
+    setClasePhase,
     talleresEnabled,
   } = useTallerScan();
+  const isClaseSalida = !isTallerMode && clasePhase === 'salida';
   const nameSearchScrollable = touchTablet
     ? nameSearchResults.length > NAME_SEARCH_SCROLL_AFTER
     : nameSearchResults.length > 0;
@@ -705,13 +708,119 @@ export const TutorScanner = () => {
         return;
       }
 
+      // Modo clase — salida (misma regla que talleres: requiere llegada previa)
+      if (clasePhase === 'salida') {
+        let todayRecord = todayArrivalsRef.current.get(foundStudent.id) ?? null;
+        if (!todayRecord) {
+          const today = getLimaTodayDate();
+          const { record, error } = await arrivalService.getTodayArrivalForStudent(
+            foundStudent.id,
+            today,
+          );
+          if (!isMountedRef.current) return;
+          if (error) {
+            toast.error(error, { duration: 3200 });
+            releaseScanFocus();
+            return;
+          }
+          todayRecord = record;
+          if (record) todayArrivalsRef.current.set(foundStudent.id, record);
+        }
+
+        if (!todayRecord) {
+          toast.error(
+            `${foundStudent.fullName} aún no tiene llegada. Cambie a Llegada y escanee primero.`,
+            { duration: 3200 },
+          );
+          releaseScanFocus();
+          return;
+        }
+
+        if (todayRecord.departureTime) {
+          if (shouldUpdateProfile) {
+            applyScanSuccess(foundStudent, todayRecord, {
+              countInSession: false,
+              duplicate: true,
+              displayStatus: 'Salida',
+              displayTime: todayRecord.departureTime.slice(0, 5),
+              statusForTotals: null,
+            });
+          }
+          toast.info(
+            `${foundStudent.fullName} ya tiene salida registrada hoy (${todayRecord.departureTime.slice(0, 5)}).`,
+            { duration: 2800 },
+          );
+          releaseScanFocus();
+          return;
+        }
+
+        if (!todayRecord.id || todayRecord.id <= 0) {
+          toast.error('No se pudo registrar la salida. Vuelva a escanear la llegada.', {
+            duration: 3200,
+          });
+          releaseScanFocus();
+          return;
+        }
+
+        const {
+          successCount,
+          error: depError,
+          departureTime,
+        } = await arrivalService.createBulkDepartureRecords(
+          [todayRecord.id],
+          user?.id,
+          'Normal',
+        );
+        if (!isMountedRef.current) return;
+
+        if (successCount <= 0 || !departureTime || depError) {
+          toast.error(depError || 'No se pudo registrar la salida.', { duration: 3200 });
+          releaseScanFocus();
+          return;
+        }
+
+        const updated: ArrivalRecord = {
+          ...todayRecord,
+          departureTime,
+          departureType: 'Normal',
+          departureRegisteredBy: user?.id ?? null,
+        };
+        todayArrivalsRef.current.set(foundStudent.id, updated);
+
+        if (shouldUpdateProfile) {
+          applyScanSuccess(foundStudent, updated, {
+            displayStatus: 'Salida',
+            displayTime: departureTime,
+            statusForTotals: null,
+          });
+        }
+
+        if (whatsappService.isEnabled()) {
+          void whatsappService.notifyParentDeparture(foundStudent, updated).then((wa) => {
+            if (!isMountedRef.current) return;
+            if (!wa.ok && wa.error) {
+              toast.warning(`WhatsApp: ${wa.error}`, { duration: 4500 });
+            } else if (wa.skipped) {
+              toast.info('WhatsApp: aviso ya enviado hace poco (sin reenvío)', {
+                duration: 2200,
+              });
+            }
+          });
+        }
+
+        releaseScanFocus();
+        return;
+      }
+
       const cachedToday = todayArrivalsRef.current.get(foundStudent.id);
       if (cachedToday) {
         if (shouldUpdateProfile) {
           applyScanSuccess(foundStudent, cachedToday, { countInSession: false, duplicate: true });
         }
         toast.info(
-          `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}`,
+          cachedToday.departureTime
+            ? `${foundStudent.fullName} ya tiene llegada y salida hoy.`
+            : `${foundStudent.fullName} ya fue registrado hoy a las ${cachedToday.arrivalTime ?? '—'}. Para salida, elija Salida.`,
           { duration: 2800 }
         );
         releaseScanFocus();
@@ -768,6 +877,7 @@ export const TutorScanner = () => {
     },
     [
       applyScanSuccess,
+      clasePhase,
       handleTallerScan,
       isTallerMode,
       resolveArrivalSnapshot,
@@ -1143,7 +1253,9 @@ export const TutorScanner = () => {
   };
 
   const displayArrivalTime =
-    isTallerMode && arrivalRecord?.departureTime?.length && arrivalRecord.departureTime.length >= 5
+    (isTallerMode || isClaseSalida || Boolean(arrivalRecord?.departureTime)) &&
+    arrivalRecord?.departureTime?.length &&
+    arrivalRecord.departureTime.length >= 5
       ? arrivalRecord.departureTime.slice(0, 5)
       : arrivalRecord?.arrivalTime?.length && arrivalRecord.arrivalTime.length >= 5
         ? arrivalRecord.arrivalTime.slice(0, 5)
@@ -1154,7 +1266,9 @@ export const TutorScanner = () => {
       : arrivalRecord
         ? 'Llegó a taller'
         : undefined
-    : arrivalRecord?.status;
+    : arrivalRecord?.departureTime
+      ? 'Salida'
+      : arrivalRecord?.status;
   const arrivalOnTime = displayArrivalStatus !== 'Tarde';
   const limitsLabel = `Prim ${arrivalLimits.primaria} · Sec ${arrivalLimits.secundaria}`;
   const activeArrivalLimit = student
@@ -1287,7 +1401,11 @@ export const TutorScanner = () => {
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-primary">
-                        {isTallerMode ? 'Registro de talleres' : 'Registro de llegada'}
+                        {isTallerMode
+                          ? 'Registro de talleres'
+                          : isClaseSalida
+                            ? 'Registro de salida'
+                            : 'Registro de llegada'}
                       </p>
                       <Badge variant={limitTone} className="text-[10px]">
                         Límite {limitsLabel}
@@ -1298,21 +1416,27 @@ export const TutorScanner = () => {
                         ? tallerPhase === 'salida'
                           ? 'Escanear salida de taller'
                           : 'Escanear llegada a taller'
-                        : 'Escanear o buscar estudiante'}
+                        : isClaseSalida
+                          ? 'Escanear salida de clase'
+                          : 'Escanear o buscar estudiante'}
                     </h2>
                     <p className="text-sm text-muted-foreground leading-relaxed hidden sm:block">
                       {isTallerMode
                         ? tallerPhase === 'salida'
                           ? 'Elija Salida y escanee el carnet. Se avisa a los padres con la hora de salida.'
                           : 'Elija Llegada y escanee el carnet. Se avisa a los padres con la hora de llegada.'
-                        : 'Carnet con lector de barras o búsqueda manual por nombre del estudiante.'}
+                        : isClaseSalida
+                          ? 'Elija Salida y escanee el carnet. Debe existir llegada del día.'
+                          : 'Elija Llegada o Salida, luego carnet con lector o búsqueda por nombre.'}
                     </p>
                     <p className="text-sm text-muted-foreground leading-relaxed sm:hidden">
                       {isTallerMode
                         ? tallerPhase === 'salida'
                           ? 'Modo Salida: escanee para registrar la hora de salida.'
                           : 'Modo Llegada: escanee para registrar la hora de llegada.'
-                        : 'Conecte el lector por Bluetooth o adaptador: escanee carnets seguidos sin tocar la pantalla.'}
+                        : isClaseSalida
+                          ? 'Modo Salida: escanee para registrar la hora de salida.'
+                          : 'Modo Llegada: escanee el carnet o busque por nombre.'}
                     </p>
                   </div>
                 </div>
@@ -1326,62 +1450,91 @@ export const TutorScanner = () => {
                   aria-label={
                     isTallerMode
                       ? 'Registro de talleres por código de barras o nombre'
-                      : 'Registro de llegada por código de barras o nombre'
+                      : isClaseSalida
+                        ? 'Registro de salida por código de barras o nombre'
+                        : 'Registro de llegada por código de barras o nombre'
                   }
                 >
                   {talleresEnabled && (
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-foreground">Modo</Label>
-                        <div className="grid max-w-sm grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
-                          <Button
-                            type="button"
-                            variant={scanMode === 'clase' ? 'default' : 'ghost'}
-                            onClick={() => setScanMode('clase')}
-                            className="w-full"
-                          >
-                            Clase
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={scanMode === 'taller' ? 'default' : 'ghost'}
-                            onClick={() => setScanMode('taller')}
-                            className="w-full"
-                          >
-                            Talleres
-                          </Button>
-                        </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-foreground">Modo</Label>
+                      <div className="grid max-w-sm grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
+                        <Button
+                          type="button"
+                          variant={scanMode === 'clase' ? 'default' : 'ghost'}
+                          onClick={() => setScanMode('clase')}
+                          className="w-full"
+                        >
+                          Clase
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={scanMode === 'taller' ? 'default' : 'ghost'}
+                          onClick={() => setScanMode('taller')}
+                          className="w-full"
+                        >
+                          Talleres
+                        </Button>
                       </div>
-                      {scanMode === 'taller' && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium text-foreground">
-                            Registro de taller
-                          </Label>
-                          <div className="grid max-w-sm grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
-                            <Button
-                              type="button"
-                              variant={tallerPhase === 'llegada' ? 'default' : 'ghost'}
-                              onClick={() => setTallerPhase('llegada')}
-                              className="w-full"
-                            >
-                              Llegada
-                            </Button>
-                            <Button
-                              type="button"
-                              variant={tallerPhase === 'salida' ? 'default' : 'ghost'}
-                              onClick={() => setTallerPhase('salida')}
-                              className="w-full"
-                            >
-                              Salida
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {tallerPhase === 'llegada'
-                              ? 'Escanee para registrar la hora de llegada al taller.'
-                              : 'Escanee para registrar la hora de salida del taller (debe haber llegada primero).'}
-                          </p>
-                        </div>
-                      )}
+                    </div>
+                  )}
+                  {scanMode === 'taller' && talleresEnabled ? (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-foreground">
+                        Registro de taller
+                      </Label>
+                      <div className="grid max-w-sm grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
+                        <Button
+                          type="button"
+                          variant={tallerPhase === 'llegada' ? 'default' : 'ghost'}
+                          onClick={() => setTallerPhase('llegada')}
+                          className="w-full"
+                        >
+                          Llegada
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={tallerPhase === 'salida' ? 'default' : 'ghost'}
+                          onClick={() => setTallerPhase('salida')}
+                          className="w-full"
+                        >
+                          Salida
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {tallerPhase === 'llegada'
+                          ? 'Escanee para registrar la hora de llegada al taller.'
+                          : 'Escanee para registrar la hora de salida del taller (debe haber llegada primero).'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-foreground">
+                        Registro de clase
+                      </Label>
+                      <div className="grid max-w-sm grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-1">
+                        <Button
+                          type="button"
+                          variant={clasePhase === 'llegada' ? 'default' : 'ghost'}
+                          onClick={() => setClasePhase('llegada')}
+                          className="w-full"
+                        >
+                          Llegada
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={clasePhase === 'salida' ? 'default' : 'ghost'}
+                          onClick={() => setClasePhase('salida')}
+                          className="w-full"
+                        >
+                          Salida
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {clasePhase === 'llegada'
+                          ? 'Escanee para registrar la hora de llegada a clase.'
+                          : 'Escanee para registrar la hora de salida (debe haber llegada primero).'}
+                      </p>
                     </div>
                   )}
                   <div className="space-y-2">
@@ -1578,7 +1731,9 @@ export const TutorScanner = () => {
                             ? tallerPhase === 'salida'
                               ? 'Registrar salida'
                               : 'Registrar llegada'
-                            : 'Registrar llegada'}
+                            : isClaseSalida
+                              ? 'Registrar salida'
+                              : 'Registrar llegada'}
                         </>
                       )}
                     </Button>
@@ -1837,23 +1992,29 @@ export const TutorScanner = () => {
                       <li>
                         <span className="tutor-instructions__step">1</span>
                         <span>
-                          Escanee el código de barras del carnet o busque al estudiante por nombre.
+                          Elija <strong className="text-foreground font-medium">Llegada</strong> o{' '}
+                          <strong className="text-foreground font-medium">Salida</strong> de clase.
                         </span>
                       </li>
                       <li>
                         <span className="tutor-instructions__step">2</span>
-                        <span>El sistema registrará automáticamente la hora de llegada.</span>
+                        <span>
+                          Escanee el carnet o busque por nombre: se guarda la hora y se avisa a los padres.
+                        </span>
                       </li>
                       <li>
                         <span className="tutor-instructions__step">3</span>
                         <span>
-                          Si detecta una falta (uniforme, conducta, etc.), use{' '}
-                          <strong className="text-foreground font-medium">Registrar incidencia</strong>.
+                          Para la salida, cambie a <strong className="text-foreground font-medium">Salida</strong> y
+                          vuelva a escanear (debe existir llegada del día).
                         </span>
                       </li>
                       <li>
                         <span className="tutor-instructions__step">4</span>
-                        <span>Complete el tipo de falta y guarde el registro.</span>
+                        <span>
+                          Si detecta una falta, use{' '}
+                          <strong className="text-foreground font-medium">Registrar incidencia</strong>.
+                        </span>
                       </li>
                     </>
                   )}

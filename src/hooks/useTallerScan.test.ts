@@ -5,7 +5,7 @@ import { findTodayTallerAttendance, resolveTallerScanAction } from './useTallerS
 function buildRecord(partial: Partial<TallerAsistencia>): TallerAsistencia {
   return {
     id: 1,
-    tallerId: 'taller-1',
+    tallerId: 'taller',
     studentId: 10,
     date: '2026-07-20',
     arrivalTime: null,
@@ -18,18 +18,15 @@ function buildRecord(partial: Partial<TallerAsistencia>): TallerAsistencia {
 }
 
 describe('findTodayTallerAttendance', () => {
-  it('encuentra el registro del taller y fecha actual', () => {
+  it('encuentra el registro de la fecha actual', () => {
     const otherDay = buildRecord({ date: '2026-07-19' });
-    const target = buildRecord({ tallerId: 'taller-2', date: '2026-07-20', arrivalTime: '15:00' });
-    const otherTaller = buildRecord({ tallerId: 'taller-3', date: '2026-07-20' });
+    const target = buildRecord({ date: '2026-07-20', arrivalTime: '15:00' });
 
-    expect(findTodayTallerAttendance([otherDay, target, otherTaller], 'taller-2', '2026-07-20')).toEqual(
-      target,
-    );
+    expect(findTodayTallerAttendance([otherDay, target], '2026-07-20')).toEqual(target);
   });
 
-  it('devuelve null si no existe registro del día para ese taller', () => {
-    expect(findTodayTallerAttendance([], 'taller-9', '2026-07-20')).toBeNull();
+  it('devuelve null si no existe registro del día', () => {
+    expect(findTodayTallerAttendance([], '2026-07-20')).toBeNull();
   });
 });
 
@@ -38,13 +35,13 @@ describe('resolveTallerScanAction', () => {
     expect(resolveTallerScanAction(null)).toBe('arrival');
   });
 
-  it('registra salida cuando ya existe llegada sin salida', () => {
+  it('registra salida cuando ya hay llegada sin salida', () => {
     expect(resolveTallerScanAction(buildRecord({ arrivalTime: '15:05', departureTime: null }))).toBe(
       'departure',
     );
   });
 
-  it('bloquea un tercer escaneo si ya tiene llegada y salida', () => {
+  it('marca completo si ya tiene llegada y salida', () => {
     expect(
       resolveTallerScanAction(buildRecord({ arrivalTime: '15:05', departureTime: '17:10' })),
     ).toBe('complete');

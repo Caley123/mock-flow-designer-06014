@@ -30,3 +30,6 @@ scripts/load/reports/
 *.njsproj
 *.sln
 *.sw?
+
+backups/
+

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { writeFileSync } from "fs";
@@ -32,6 +32,9 @@ function buildVersionPlugin() {
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const buildId = resolveBuildId();
+  const env = loadEnv(mode, process.cwd(), "");
+  const mobileIngestTarget =
+    env.VITE_MOBILE_INGEST_PROXY_TARGET || "http://127.0.0.1:8000";
 
   return {
   base: "/",
@@ -48,6 +51,12 @@ export default defineConfig(({ mode }) => {
         target: "http://127.0.0.1:3101",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/meta-wa/, "") || "/",
+      },
+      // App móvil Asiscole (LAN del amigo) — prueba JP local
+      "/mobile-ingest": {
+        target: mobileIngestTarget,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/mobile-ingest/, "") || "/",
       },
     },
   },
