@@ -44,6 +44,11 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/sc-proxy/, "/api"),
       },
+      "/meta-wa": {
+        target: "http://127.0.0.1:3101",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/meta-wa/, "") || "/",
+      },
     },
   },
   plugins: [react(), cspConnectSrcPlugin(), buildVersionPlugin(), mode === "development" && componentTagger()].filter(Boolean),

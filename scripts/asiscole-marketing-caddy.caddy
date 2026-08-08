@@ -1,0 +1,33 @@
+# Landing comercial Asiscole (asiscole.com)
+# App del colegio San Ramón → sanramon.asiscole.com (01-sanramon.caddy)
+
+asiscole.com, www.asiscole.com {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		X-Frame-Options "DENY"
+		-Server
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests"
+	}
+
+	# Rutas del sistema escolar → subdominio San Ramón
+	@app_paths path /login* /dashboard* /tutor-scanner* /parent* /incidents* /students* /reports* /arrival* /departure* /audit* /config* /teachers* /faults* /justify* /register* /change-password* /wpp-api* /wpp-notify* /api/*
+	redir @app_paths https://sanramon.asiscole.com{uri} permanent
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	@html path / /index.html
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	handle {
+		root * /opt/asiscole-web/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

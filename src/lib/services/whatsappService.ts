@@ -1,8 +1,14 @@
 import type { ArrivalRecord, Student } from '@/types';
 import { toWhatsAppChatId, toWhatsAppPhone } from '@/lib/utils/phoneUtils';
 
+/** Meta Cloud API — proxy en VPS (/meta-wa), token solo en servidor */
+const META_WA_ENABLED = import.meta.env.VITE_META_WA_ENABLED === 'true';
+const META_WA_API_URL = (import.meta.env.VITE_META_WA_API_URL || '/meta-wa').replace(/\/$/, '');
+const META_WA_NOTIFY_KEY = import.meta.env.VITE_META_WA_NOTIFY_KEY || '';
+
 /** WPPConnect Server — sesiones persistentes en VPS */
-const WPPCONNECT_ENABLED = import.meta.env.VITE_WPPCONNECT_ENABLED === 'true';
+const WPPCONNECT_ENABLED =
+  !META_WA_ENABLED && import.meta.env.VITE_WPPCONNECT_ENABLED === 'true';
 
 const WPPCONNECT_API_URL = (
   import.meta.env.VITE_WPPCONNECT_API_URL || '/wpp-api'
@@ -34,12 +40,13 @@ const CLOSING_VARIANTS = [
 
 /** OpenWA — legacy */
 const OPENWA_ENABLED =
+  !META_WA_ENABLED &&
   !WPPCONNECT_ENABLED &&
   (import.meta.env.VITE_OPENWA_ENABLED === 'true' ||
     import.meta.env.VITE_WHATSAPP_ENABLED === 'true' ||
     import.meta.env.VITE_WAHA_ENABLED === 'true');
 
-const WHATSAPP_ENABLED = WPPCONNECT_ENABLED || OPENWA_ENABLED;
+const WHATSAPP_ENABLED = META_WA_ENABLED || WPPCONNECT_ENABLED || OPENWA_ENABLED;
 
 const OPENWA_API_URL = (
   import.meta.env.VITE_OPENWA_API_URL ||
@@ -210,6 +217,57 @@ async function wppconnectPost(
   }
 }
 
+async function sendViaMetaWa(
+  phone: string,
+  student: Student,
+  record: ArrivalRecord,
+  text: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (META_WA_NOTIFY_KEY) headers['X-SIE-Notify-Key'] = META_WA_NOTIFY_KEY;
+
+    const response = await fetch(`${META_WA_API_URL}/notify`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        phone,
+        text,
+        student: {
+          id: student.id,
+          fullName: student.fullName,
+          level: student.level,
+          grade: student.grade,
+          section: student.section,
+          barcode: student.barcode,
+        },
+        record: {
+          date: record.date,
+          arrivalTime: record.arrivalTime,
+          status: record.status,
+          id: record.id,
+        },
+      }),
+    });
+
+    const raw = await response.text().catch(() => response.statusText);
+    if (!response.ok) {
+      let detail = raw;
+      try {
+        const parsed = JSON.parse(raw) as { error?: string };
+        if (parsed.error) detail = parsed.error;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, error: friendlyWaError(detail, response.status, 'Meta WhatsApp') };
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo conectar con Meta WhatsApp';
+    return { ok: false, error: friendlyWaError(message, undefined, 'Meta WhatsApp') };
+  }
+}
+
 async function sendViaNotifyQueue(
   phone: string,
   student: Student,
@@ -351,8 +409,9 @@ export async function notifyParentArrival(
     return { ok: false, error: 'Teléfono de contacto no válido para WhatsApp' };
   }
 
-  const result =
-    WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
+  const result = META_WA_ENABLED
+    ? await sendViaMetaWa(wppPhone, student, record, buildArrivalMessage(student, record))
+    : WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
       ? await sendViaNotifyQueue(wppPhone, student, record)
       : WPPCONNECT_ENABLED
         ? await sendViaWppConnect(wppPhone, buildArrivalMessage(student, record))
@@ -364,12 +423,14 @@ export async function notifyParentArrival(
 export const whatsappService = {
   isEnabled: () => WHATSAPP_ENABLED,
   provider: () =>
-    WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
-      ? 'wppconnect-queue'
-      : WPPCONNECT_ENABLED
-        ? 'wppconnect'
-        : OPENWA_ENABLED
-          ? 'openwa'
-          : 'none',
+    META_WA_ENABLED
+      ? 'meta'
+      : WPPCONNECT_ENABLED && WPPCONNECT_ROTATION
+        ? 'wppconnect-queue'
+        : WPPCONNECT_ENABLED
+          ? 'wppconnect'
+          : OPENWA_ENABLED
+            ? 'openwa'
+            : 'none',
   notifyParentArrival,
 };

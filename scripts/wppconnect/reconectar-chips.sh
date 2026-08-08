@@ -7,7 +7,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/sie/app}"
 CHIPS=("$@")
 if [[ ${#CHIPS[@]} -eq 0 ]]; then
-  CHIPS=(sie-chip-02 sie-chip-03 sie-chip-05 sie-chip-07)
+  CHIPS=(sie-chip-02 sie-chip-03 sie-chip-05 sie-chip-10)
 fi
 
 OUT_DIR="/tmp/sie-wpp-qr"

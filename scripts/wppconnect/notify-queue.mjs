@@ -29,7 +29,7 @@ const APP_URL = process.env.VITE_APP_URL || 'https://asiscole.com';
 /** Chip 04 al final: solo si los demás están al tope (máx. 2/hora). */
 const SESSIONS = parseSessionList(
   process.env.WPPCONNECT_SESSIONS,
-  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04',
+  'sie-chip-11,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-10,sie-chip-04',
 );
 
 const wpp = createWppClient({ typingMinMs: TYPING_MIN, typingMaxMs: TYPING_MAX });

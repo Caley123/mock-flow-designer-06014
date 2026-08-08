@@ -12,9 +12,29 @@ fi
 
 SECRET="${WPPCONNECT_SECRET_KEY:-}"
 
+# Usa WPPCONNECT_SESSIONS; si no hay, lista 02–06, 08–11, 04 (01→11, 07→10).
+CHIPS=()
+if [[ -n "${WPPCONNECT_SESSIONS:-}" ]]; then
+  IFS=',' read -ra CHIPS <<< "$WPPCONNECT_SESSIONS"
+fi
+if [[ ${#CHIPS[@]} -eq 0 ]]; then
+  for i in 11 02 03 05 06 10 04 08 09; do
+    CHIPS+=("sie-chip-$i")
+  done
+fi
+# Deduplicar y normalizar
+declare -A SEEN=()
+ORDERED=()
+for raw in "${CHIPS[@]}"; do
+  S=$(echo "$raw" | xargs)
+  [[ -z "$S" ]] && continue
+  [[ -n "${SEEN[$S]:-}" ]] && continue
+  SEEN[$S]=1
+  ORDERED+=("$S")
+done
+
 echo "=== Estado chips WPPConnect ==="
-for i in 01 02 03 04 05 06 07; do
-  S="sie-chip-$i"
+for S in "${ORDERED[@]}"; do
   TOKEN=$(curl -sf -X POST "$API/$S/$SECRET/generate-token" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true)
   if [[ -z "$TOKEN" ]]; then
     echo "$S | ERROR token"

@@ -12,7 +12,7 @@ loadEnvFileSync(ENV_FILE);
 
 const SESSIONS = parseSessionList(
   process.env.WPPCONNECT_WARMUP_CHIPS || process.env.WPPCONNECT_SESSIONS,
-  'sie-chip-01,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-07,sie-chip-04',
+  'sie-chip-11,sie-chip-02,sie-chip-03,sie-chip-05,sie-chip-06,sie-chip-10,sie-chip-04',
 );
 const WARMUP_SEND_LIMITS = parseChipLimits(
   process.env.WPPCONNECT_WARMUP_SEND_LIMITS || process.env.WPPCONNECT_CHIP_HOURLY_LIMITS || 'sie-chip-04=2',

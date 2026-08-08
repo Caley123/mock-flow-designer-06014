@@ -30,7 +30,7 @@ const API_BASE = (process.env.WPPCONNECT_INTERNAL_API || 'http://127.0.0.1:21465
   /\/$/,
   '',
 );
-const SESSION = process.env.WPPCONNECT_SESSION || 'sie-chip-01';
+const SESSION = process.env.WPPCONNECT_SESSION || 'sie-chip-11';
 const TOKEN = process.env.WPPCONNECT_BEARER_TOKEN || '';
 
 function extractPhone(payload) {
