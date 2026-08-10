@@ -13,3 +13,11 @@ export function parsePensionesEnabled(raw: string | undefined): boolean {
 export function isPensionesEnabled(): boolean {
   return parsePensionesEnabled(import.meta.env.VITE_PENSIONES_ENABLED);
 }
+
+export function parseNotasEnabled(raw: string | undefined): boolean {
+  return raw === 'true';
+}
+
+export function isNotasEnabled(): boolean {
+  return parseNotasEnabled(import.meta.env.VITE_NOTAS_ENABLED);
+}

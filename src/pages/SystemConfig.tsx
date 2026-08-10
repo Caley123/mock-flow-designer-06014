@@ -4,8 +4,9 @@ import { StaffKpiStat } from '@/components/staff';
 import { AttendanceSettingsCard } from '@/components/system-config/AttendanceSettingsCard';
 import { ReincidenceSettingsCard } from '@/components/system-config/ReincidenceSettingsCard';
 import { PensionesSettingsCard } from '@/components/system-config/PensionesSettingsCard';
+import { NotasSettingsCard } from '@/components/system-config/NotasSettingsCard';
 import { SYSTEM_SETTINGS } from '@/config/systemSettings';
-import { isPensionesEnabled } from '@/config/features';
+import { isNotasEnabled, isPensionesEnabled } from '@/config/features';
 
 export const SystemConfig = () => {
   return (
@@ -38,6 +39,7 @@ export const SystemConfig = () => {
       <AttendanceSettingsCard />
       <ReincidenceSettingsCard />
       {isPensionesEnabled() && <PensionesSettingsCard />}
+      {isNotasEnabled() && <NotasSettingsCard />}
     </div>
   );
 };

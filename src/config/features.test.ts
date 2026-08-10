@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePensionesEnabled, parseTalleresEnabled } from './features';
+import { parseNotasEnabled, parsePensionesEnabled, parseTalleresEnabled } from './features';
 
 describe('parseTalleresEnabled', () => {
   it('es true solo con "true"', () => {
@@ -19,5 +19,15 @@ describe('parsePensionesEnabled', () => {
   it('es false por defecto', () => {
     expect(parsePensionesEnabled(undefined)).toBe(false);
     expect(parsePensionesEnabled('false')).toBe(false);
+  });
+});
+
+describe('parseNotasEnabled', () => {
+  it('es true solo con "true"', () => {
+    expect(parseNotasEnabled('true')).toBe(true);
+  });
+  it('es false por defecto', () => {
+    expect(parseNotasEnabled(undefined)).toBe(false);
+    expect(parseNotasEnabled('false')).toBe(false);
   });
 });
