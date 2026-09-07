@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { arrivalService, incidentsService, tallerAttendanceService } from '@/lib/services';
+import { arrivalService, holidaysService, incidentsService, tallerAttendanceService } from '@/lib/services';
 import { isTalleresEnabled } from '@/config/features';
 import type { ArrivalRecord, Incident, Student, TallerAsistencia } from '@/types';
 import { StudentPhoto } from '@/components/shared/StudentPhoto';
@@ -57,6 +57,7 @@ export function ParentAttendanceDashboard({
   const [monthTallerAttendance, setMonthTallerAttendance] = useState<TallerAsistencia[]>([]);
   const [monthClassIncidents, setMonthClassIncidents] = useState<Incident[]>([]);
   const [monthTallerIncidents, setMonthTallerIncidents] = useState<Incident[]>([]);
+  const [holidayNames, setHolidayNames] = useState<Map<string, string>>(new Map());
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -65,7 +66,7 @@ export function ParentAttendanceDashboard({
       setLoadingMonth(true);
       try {
         const { start, end } = getMonthBounds(year, month);
-        const [arrivals, tallerResponse, incidentsResponse] = await Promise.all([
+        const [arrivals, tallerResponse, incidentsResponse, holidaysResponse] = await Promise.all([
           arrivalService.fetchMonthArrivalsForStudent(student.id, year, month),
           talleresEnabled
             ? tallerAttendanceService.fetchMonthForStudent(student.id, year, month)
@@ -79,6 +80,7 @@ export function ParentAttendanceDashboard({
             fechaHasta: `${end}T23:59:59.999-05:00`,
             fetchAll: true,
           }),
+          holidaysService.listActiveInRange(start, end),
         ]);
 
         setMonthArrivals(arrivals);
@@ -86,6 +88,7 @@ export function ParentAttendanceDashboard({
         const incidents = incidentsResponse.incidents;
         setMonthClassIncidents(incidents.filter((incident) => !incident.tallerId));
         setMonthTallerIncidents(incidents.filter((incident) => Boolean(incident.tallerId)));
+        setHolidayNames(new Map(holidaysResponse.items.map((h) => [h.fecha, h.nombre])));
       } finally {
         setLoadingMonth(false);
       }
@@ -115,12 +118,14 @@ export function ParentAttendanceDashboard({
           fechaHasta: `${end}T23:59:59.999-05:00`,
           fetchAll: true,
         }),
+        holidaysService.listActiveInRange(start, end),
       ])
-        .then(([attendanceResponse, incidentsResponse]) => {
+        .then(([attendanceResponse, incidentsResponse, holidaysResponse]) => {
           setMonthTallerAttendance(attendanceResponse.records);
           const incidents = incidentsResponse.incidents;
           setMonthClassIncidents(incidents.filter((incident) => !incident.tallerId));
           setMonthTallerIncidents(incidents.filter((incident) => Boolean(incident.tallerId)));
+          setHolidayNames(new Map(holidaysResponse.items.map((h) => [h.fecha, h.nombre])));
         })
         .finally(() => setLoadingMonth(false));
       return;
@@ -180,8 +185,8 @@ export function ParentAttendanceDashboard({
   }, [monthTallerIncidents]);
 
   const metrics = useMemo(
-    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey),
-    [viewYear, viewMonth, byDate, todayKey]
+    () => computeMonthMetrics(viewYear, viewMonth, byDate, todayKey, holidayNames),
+    [viewYear, viewMonth, byDate, todayKey, holidayNames]
   );
 
   const stripGradient = topStripGradient(metrics.present, metrics.late, metrics.absent);
@@ -199,9 +204,10 @@ export function ParentAttendanceDashboard({
   };
 
   const selectedStatus = selectedDay
-    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey)
+    ? resolveDayStatus(selectedDay, byDate.get(selectedDay), todayKey, holidayNames)
     : null;
   const selectedRecord = selectedDay ? byDate.get(selectedDay) : undefined;
+  const selectedHolidayName = selectedDay ? holidayNames.get(selectedDay) : undefined;
   const selectedTallerRows = selectedDay ? tallerByDate.get(selectedDay) ?? [] : [];
   const selectedClassIncidentRows = selectedDay ? classIncidentsByDate.get(selectedDay) ?? [] : [];
   const selectedTallerIncidentRows = selectedDay ? tallerIncidentsByDate.get(selectedDay) ?? [] : [];
@@ -228,13 +234,19 @@ export function ParentAttendanceDashboard({
           studentFirst,
           selectedRecord ? parseArrivalTime12h(selectedRecord.arrivalTime) : undefined,
           selectedRecord?.departureTime,
+          selectedHolidayName,
         )
       : null;
+
+  const hideAbsent = import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD === 'true';
 
   const metricCards = [
     { key: 'present' as const, label: 'Días presentes', value: metrics.present },
     { key: 'late' as const, label: 'Tardanzas', value: metrics.late },
-    { key: 'absent' as const, label: 'Faltas', value: metrics.absent },
+    // Con flag blank: ocultar KPI solo si no hay faltas reales (estado Falta en BD)
+    ...(hideAbsent && metrics.absent === 0
+      ? []
+      : [{ key: 'absent' as const, label: 'Faltas', value: metrics.absent }]),
   ];
 
   return (
@@ -262,7 +274,7 @@ export function ParentAttendanceDashboard({
         <div className="my-5 h-px w-full bg-[#E8EAF0]" />
 
         {/* Métricas */}
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className={`grid gap-2.5 ${hideAbsent ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {metricCards.map(({ key, label, value }) => {
             const s = DAY_STYLES[key === 'present' ? 'present' : key === 'late' ? 'late' : 'absent'];
             return (
@@ -332,7 +344,7 @@ export function ParentAttendanceDashboard({
                     );
                   }
 
-                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey);
+                  const status = resolveDayStatus(dayKey, byDate.get(dayKey), todayKey, holidayNames);
                   const style = DAY_STYLES[status];
                   const isToday = dayKey === todayKey;
                   const isSelected = selectedDay === dayKey;
@@ -495,8 +507,9 @@ export function ParentAttendanceDashboard({
               [
                 ['present', 'A tiempo'],
                 ['late', 'Tardanza'],
-                ['absent', 'Falta'],
+                ...(hideAbsent ? [] : ([['absent', 'Falta']] as const)),
                 ['noclass', 'Sin clase'],
+                ['norecord', 'Sin registro'],
               ] as const
             ).map(([key, label]) => {
               const s = DAY_STYLES[key];

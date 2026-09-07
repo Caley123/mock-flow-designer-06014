@@ -301,10 +301,32 @@ async function createArrivalRecordInner(
       return { record: null, error: error.message };
     }
 
-    return { record: mapArrivalRow(data), error: null };
+    const record = mapArrivalRow(data);
+    if (record.status === 'Tarde') {
+      void maybeCreateTardanzaReiterada(studentId, formattedDate);
+    }
+    return { record, error: null };
   } catch (error: any) {
     console.error('Error al registrar llegada:', error);
     return { record: null, error: error.message };
+  }
+}
+
+/** JP: 3+ tardanzas en el mes → incidencia «Tardanza reiterada» (idempotente). */
+async function maybeCreateTardanzaReiterada(studentId: number, date: string): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('sie_jp_check_tardanza_reiterada', {
+      p_id_estudiante: studentId,
+      p_fecha: date,
+    });
+    if (error) {
+      // Otros colegios sin la función: ignorar en silencio
+      if (!/sie_jp_check_tardanza_reiterada|does not exist|404/i.test(error.message)) {
+        console.warn('tardanza reiterada:', error.message);
+      }
+    }
+  } catch (e) {
+    console.warn('tardanza reiterada:', e);
   }
 }
 

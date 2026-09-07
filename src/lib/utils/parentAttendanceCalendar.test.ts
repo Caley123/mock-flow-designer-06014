@@ -4,6 +4,7 @@ import {
   computeMonthMetrics,
   dayHasIncident,
   dayHasTaller,
+  dayDetailCopy,
   formatClassAttendanceLines,
   formatClassIncidentDayDetail,
   formatTallerIncidentDayDetail,
@@ -62,8 +63,26 @@ const incidentRecord = (overrides: Partial<Incident> = {}): Incident => ({
 });
 
 describe('parentAttendanceCalendar', () => {
+  it('marca feriado activo como sin clase y no como falta', () => {
+    const holidays = new Map([['2026-10-08', 'Combate de Angamos']]);
+    expect(resolveDayStatus('2026-10-08', undefined, '2026-10-10', holidays)).toBe('noclass');
+    expect(dayDetailCopy('noclass', 'Ana', undefined, null, 'Combate de Angamos').badge).toBe(
+      'Feriado',
+    );
+  });
+
+  it('con VITE_ATTENDANCE_BLANK_IF_NO_RECORD no marca falta', () => {
+    const prev = import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD;
+    import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD = 'true';
+    expect(resolveDayStatus('2026-06-03', undefined, '2026-06-28')).toBe('norecord');
+    import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD = prev;
+  });
+
   it('marca falta en día hábil pasado sin registro', () => {
+    const prev = import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD;
+    import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD = 'false';
     expect(resolveDayStatus('2026-06-03', undefined, '2026-06-28')).toBe('absent');
+    import.meta.env.VITE_ATTENDANCE_BLANK_IF_NO_RECORD = prev;
   });
 
   it('hoy sin registro no es falta todavía', () => {
