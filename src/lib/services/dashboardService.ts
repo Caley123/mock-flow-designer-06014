@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { DashboardStats, EducationalLevel } from '@/types';
+import { gradeFilterValues } from '@/lib/utils/gradeAliases';
 
 type IncidentCountFilters = {
   estado?: string;
@@ -578,7 +579,7 @@ export const dashboardService = {
       if (filters?.level || filters?.grade) {
         let studentQ = supabase.from('estudiantes').select('id_estudiante');
         if (filters.level) studentQ = studentQ.eq('nivel_educativo', filters.level);
-        if (filters.grade) studentQ = studentQ.eq('grado', filters.grade);
+        if (filters.grade) studentQ = studentQ.in('grado', gradeFilterValues(filters.grade));
         const { data: students } = await studentQ;
         studentIdsSection = (students ?? []).map((s: any) => s.id_estudiante);
         if (studentIdsSection.length === 0) return { comparison: [], error: null };

@@ -6,9 +6,12 @@ import { isTalleresEnabled } from '@/config/features';
 import {
   buildIncidentSelect,
   isMissingTallerSchemaError,
+  isMissingRecomendacionError,
   setTallerSchemaAvailable,
+  setRecomendacionAvailable,
   shouldIncludeTallerEmbed,
 } from './incidentSelect';
+import { gradeFilterValues } from '@/lib/utils/gradeAliases';
 
 export interface IncidentsListFilters {
   estudianteId?: number;
@@ -76,7 +79,8 @@ async function resolveIncidentQueryScope(
       studentQuery = studentQuery.eq('nivel_educativo', filters.nivelEducativo);
     }
     if (filters.grado) {
-      studentQuery = studentQuery.eq('grado', filters.grado);
+      const gradeVals = gradeFilterValues(filters.grado);
+      studentQuery = studentQuery.in('grado', gradeVals);
     }
     if (filters.seccion) {
       studentQuery = studentQuery.eq('seccion', filters.seccion);
@@ -359,10 +363,11 @@ export const incidentsService = {
     fullSelect = false,
   ): Promise<{ incidents: Incident[]; total: number; error: string | null }> {
     const includeTaller = shouldIncludeTallerEmbed(isTalleresEnabled());
-    const run = async (withTaller: boolean) => {
+    const run = async (withTaller: boolean, withRecomendacion = true) => {
       const selectClause = buildIncidentSelect({
         full: fullSelect,
         includeTaller: withTaller,
+        includeRecomendacion: withRecomendacion,
       });
       let query = supabase.from('incidencias').select(selectClause, { count: 'exact' });
       query = applyIncidentFilters(query, filters, dateRange, scope);
@@ -380,6 +385,11 @@ export const incidentsService = {
     if (error && includeTaller && isMissingTallerSchemaError(error)) {
       setTallerSchemaAvailable(false);
       ({ data, error, count } = await run(false));
+    }
+
+    if (error && isMissingRecomendacionError(error)) {
+      setRecomendacionAvailable(false);
+      ({ data, error, count } = await run(includeTaller, false));
     }
 
     if (error) {
